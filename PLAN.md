@@ -203,4 +203,13 @@ Chrome on Android can talk to BLE devices directly from a web page, so no Androi
 5. **Timer and routines:** beeps, rep detection, routine editor, built-in presets.
 6. **Tests and history:** max/CF/RFD protocols, session storage, progress charts.
 7. **Export/import:** CSV/JSON downloads, backup restore.
-8. **Hardware bring-up:** flash, RATE check, calibrate, real-world tuning.
+8. **Hardware bring-up:** flash, RATE check, calibrate, real-world tuning. Also:
+   - **Web app size:** measured at 127 KB raw / 48 KB gzipped (19 files), about 9 % of
+     the 1.38 MB LittleFS partition, so space is fine. To speed up the first load,
+     gzip `data/` at `uploadfs` time with a PlatformIO extra script (the web server
+     serves `.gz` automatically) and add cache headers for static files (with
+     versioned file names, so updates aren't hidden by the cache). Measure load time
+     on the real device before and after.
+   - **Program space:** firmware is at ~68 % of the 1.25 MB app partition. If
+     networking (HTTPS client for ntfy) makes it tight, switch to a partition
+     table without the second OTA slot.
