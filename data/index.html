@@ -46,6 +46,7 @@
         <div id="chart" class="chart"></div>
       </div>
       <div class="actions">
+        <button id="resetPeak" class="secondary" type="button">Reset peak</button>
         <button id="tare" class="primary" type="button">Tare</button>
       </div>
     </section>
@@ -65,6 +66,17 @@
             <span>Name</span>
             <input id="editName" type="text" maxlength="40" placeholder="My repeaters">
           </label>
+          <label class="field stacked">
+            <span>Hold type</span>
+            <select id="editHoldType"></select>
+          </label>
+          <div id="editHoldNewRow" hidden>
+            <div class="field">
+              <input id="editHoldNew" type="text" maxlength="30" placeholder="e.g. 18 mm edge" aria-label="New hold type">
+              <button id="editHoldAdd" class="secondary compact" type="button">Add</button>
+            </div>
+            <div id="editHoldError" class="error" hidden></div>
+          </div>
           <div class="grid2">
             <label class="field stacked"><span>Sets</span><input id="editSets" type="number" min="1" max="20" step="1" inputmode="numeric"></label>
             <label class="field stacked"><span>Reps per set</span><input id="editReps" type="number" min="1" max="50" step="1" inputmode="numeric"></label>
@@ -189,6 +201,16 @@
         </label>
         <button id="setSave" class="primary" type="button">Save</button>
         <p id="setMessage" class="message" aria-live="polite"></p>
+      </div>
+      <div class="card">
+        <h2>Your hold types</h2>
+        <p class="muted">Added to the standard list when choosing a hold type for a routine.</p>
+        <ul id="holdTypeList" class="item-list"></ul>
+        <div class="field">
+          <input id="holdTypeNew" type="text" maxlength="30" placeholder="e.g. 18 mm edge" aria-label="New hold type">
+          <button id="holdTypeAdd" class="secondary compact" type="button">Add</button>
+        </div>
+        <div id="holdTypeError" class="error" hidden></div>
       </div>
     </section>
   </main>

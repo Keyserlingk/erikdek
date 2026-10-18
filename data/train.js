@@ -2,6 +2,7 @@ import { beep, unlockAudio } from "./audio.js";
 import { LiveChart } from "./chart.js";
 import { device } from "./device.js";
 import { formatDuration, formatKg } from "./format.js";
+import { BUILTIN_HOLD_TYPES, holdTypes } from "./holdtypes.js";
 import { BUILTIN_ROUTINES, newRoutineId, routines, validateRoutine } from "./routines.js";
 import { settings } from "./settings.js";
 import {
@@ -17,6 +18,7 @@ import {
 } from "./workout.js";
 
 const TICK_MS = 50;
+const NEW_HOLD_TYPE = "__new__";
 const PHASE_NAMES = { prep: "Get ready", work: "Hang", rest: "Rest", setRest: "Set rest" };
 
 const $ = (id) => document.getElementById(id);
@@ -28,6 +30,11 @@ const el = {
   edit: {
     title: $("editTitle"),
     name: $("editName"),
+    holdType: $("editHoldType"),
+    holdNewRow: $("editHoldNewRow"),
+    holdNew: $("editHoldNew"),
+    holdAdd: $("editHoldAdd"),
+    holdError: $("editHoldError"),
     sets: $("editSets"),
     reps: $("editReps"),
     workS: $("editWork"),
@@ -78,6 +85,7 @@ function show(screen) {
 
 function describe(r) {
   const parts = [`${r.sets} × ${r.reps}`, `${r.workS} s on`];
+  if (r.holdType) parts.unshift(r.holdType);
   if (r.reps > 1) parts.push(`${r.restS} s off`);
   if (r.sets > 1) parts.push(`${formatDuration(r.setRestS)} between sets`);
   if (r.target.type === "kg") parts.push(`target ${r.target.value} kg`);
@@ -139,6 +147,9 @@ function openEditor(r) {
   const e = el.edit;
   e.title.textContent = isNew ? "New routine" : "Edit routine";
   e.name.value = editing.name;
+  editing.holdType = editing.holdType || "";
+  renderHoldTypeOptions(editing.holdType);
+  showHoldNew(false);
   for (const key of ["sets", "reps", "workS", "restS", "setRestS", "prepS"]) e[key].value = editing[key];
   e.targetType.value = editing.target.type;
   e.targetValue.value = editing.target.type === "none" ? "" : editing.target.value;
@@ -155,6 +166,7 @@ function readEditor() {
   return {
     id: editing.id,
     name: e.name.value.trim(),
+    holdType: e.holdType.value === NEW_HOLD_TYPE ? "" : e.holdType.value,
     sets: int(e.sets),
     reps: int(e.reps),
     workS: int(e.workS),
@@ -172,6 +184,50 @@ function updateEditorDerived() {
   e.targetUnit.textContent = type === "bw" ? "% BW" : "kg";
   const r = readEditor();
   e.duration.textContent = validateRoutine(r) ? "" : `Total time ${formatDuration(totalDurationS(r))}`;
+}
+
+function option(value, label) {
+  const o = document.createElement("option");
+  o.value = value;
+  o.textContent = label;
+  return o;
+}
+
+function renderHoldTypeOptions(selected) {
+  const select = el.edit.holdType;
+  const standard = document.createElement("optgroup");
+  standard.label = "Standard";
+  standard.append(...BUILTIN_HOLD_TYPES.map((h) => option(h, h)));
+  const own = document.createElement("optgroup");
+  own.label = "Your hold types";
+  // Keep a routine's hold type selectable even if it was removed from the list.
+  const custom = [...holdTypes.custom];
+  if (selected && !holdTypes.all.includes(selected)) custom.push(selected);
+  own.append(...custom.map((h) => option(h, h)));
+  select.replaceChildren(option("", "Not specified"), standard);
+  if (custom.length) select.append(own);
+  select.append(option(NEW_HOLD_TYPE, "+ Add new…"));
+  select.value = selected;
+}
+
+function showHoldNew(visible) {
+  el.edit.holdNewRow.hidden = !visible;
+  el.edit.holdError.hidden = true;
+  el.edit.holdNew.value = "";
+  if (visible) el.edit.holdNew.focus();
+}
+
+async function addHoldType() {
+  const name = el.edit.holdNew.value.trim();
+  try {
+    await holdTypes.add(name);
+    editing.holdType = name;
+    renderHoldTypeOptions(name);
+    showHoldNew(false);
+  } catch (err) {
+    el.edit.holdError.textContent = err.message;
+    el.edit.holdError.hidden = false;
+  }
 }
 
 async function saveEditor() {
@@ -363,7 +419,10 @@ function renderSummary(result) {
   const reps = result.reps;
   const totalReps = result.routine.sets * result.routine.reps;
   s.title.textContent = result.stopped ? `${result.routine.name} (stopped)` : result.routine.name;
-  s.meta.textContent = `${formatDuration(result.durationS)}${result.targetKg !== null ? ` · target ${formatKg(result.targetKg)} kg` : ""}`;
+  const meta = [formatDuration(result.durationS)];
+  if (result.routine.holdType) meta.push(result.routine.holdType);
+  if (result.targetKg !== null) meta.push(`target ${formatKg(result.targetKg)} kg`);
+  s.meta.textContent = meta.join(" · ");
 
   const completed = reps.filter((r) => r.completed).length;
   const best = reps.reduce((m, r) => Math.max(m, r.peakKg), 0);
@@ -401,7 +460,9 @@ export function initTrain() {
 
   routines.addEventListener("change", renderList);
   device.on("connection", (state) => {
-    if (state === "open") routines.load().then(() => showListError(""), (e) => showListError(e.message));
+    if (state !== "open") return;
+    routines.load().then(() => showListError(""), (e) => showListError(e.message));
+    holdTypes.load().catch((e) => showListError(e.message));
   });
   device.on("samples", (msg) => {
     if (!run) return;
@@ -415,6 +476,18 @@ export function initTrain() {
 
   el.newRoutine.addEventListener("click", () => openEditor(null));
   el.edit.cancel.addEventListener("click", () => show("list"));
+  el.edit.holdType.addEventListener("change", () => {
+    if (el.edit.holdType.value === NEW_HOLD_TYPE) {
+      showHoldNew(true);
+    } else {
+      editing.holdType = el.edit.holdType.value;
+      showHoldNew(false);
+    }
+  });
+  el.edit.holdAdd.addEventListener("click", addHoldType);
+  el.edit.holdNew.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") addHoldType();
+  });
   el.edit.save.addEventListener("click", saveEditor);
   el.edit.remove.addEventListener("click", deleteEditing);
   for (const input of el.screens.edit.querySelectorAll("input, select")) {

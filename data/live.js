@@ -15,6 +15,7 @@ const el = {
   peakKg: document.getElementById("peakKg"),
   peakBw: document.getElementById("peakBw"),
   tare: document.getElementById("tare"),
+  resetPeak: document.getElementById("resetPeak"),
   chart: document.getElementById("chart"),
   windows: document.querySelectorAll("#chartWindow button"),
 };
@@ -87,6 +88,7 @@ export function initLive() {
     resetPeak();
   });
   el.peak.addEventListener("click", resetPeak);
+  el.resetPeak.addEventListener("click", resetPeak);
   for (const b of el.windows) b.addEventListener("click", () => setWindow(Number(b.dataset.s)));
 
   let saved = 30;

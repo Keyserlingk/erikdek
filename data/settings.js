@@ -1,4 +1,5 @@
 import { device } from "./device.js";
+import { holdTypes } from "./holdtypes.js";
 
 export const MIN_BODYWEIGHT_KG = 20;
 export const MAX_BODYWEIGHT_KG = 250;
@@ -46,7 +47,48 @@ const el = {
   repThreshold: document.getElementById("setRepThreshold"),
   save: document.getElementById("setSave"),
   message: document.getElementById("setMessage"),
+  holdList: document.getElementById("holdTypeList"),
+  holdNew: document.getElementById("holdTypeNew"),
+  holdAdd: document.getElementById("holdTypeAdd"),
+  holdError: document.getElementById("holdTypeError"),
 };
+
+function showHoldError(text) {
+  el.holdError.textContent = text;
+  el.holdError.hidden = !text;
+}
+
+function renderHoldTypes() {
+  const items = holdTypes.custom.map((name) => {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = name;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "link danger";
+    remove.textContent = "Delete";
+    remove.addEventListener("click", () => holdTypes.remove(name).catch((e) => showHoldError(e.message)));
+    li.append(label, remove);
+    return li;
+  });
+  if (!items.length) {
+    const li = document.createElement("li");
+    li.className = "muted";
+    li.textContent = "None yet.";
+    items.push(li);
+  }
+  el.holdList.replaceChildren(...items);
+}
+
+async function addHoldType() {
+  try {
+    await holdTypes.add(el.holdNew.value.trim());
+    el.holdNew.value = "";
+    showHoldError("");
+  } catch (e) {
+    showHoldError(e.message);
+  }
+}
 
 function showMessage(text, isError = false) {
   el.message.textContent = text;
@@ -62,6 +104,13 @@ export function initSettings() {
     el.save.disabled = state !== "open";
     if (state === "open") settings.load().catch((e) => showMessage(e.message, true));
   });
+
+  holdTypes.addEventListener("change", renderHoldTypes);
+  el.holdAdd.addEventListener("click", addHoldType);
+  el.holdNew.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") addHoldType();
+  });
+  renderHoldTypes();
 
   el.save.addEventListener("click", async () => {
     const text = el.bodyweight.value.trim();

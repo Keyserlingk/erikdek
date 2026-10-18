@@ -26,7 +26,8 @@ CALIBRATION_SAMPLES = 80  # 1 s, same as firmware
 MIN_CALIBRATION_COUNTS = 5000
 MIN_BODYWEIGHT_KG, MAX_BODYWEIGHT_KG = 20, 250
 MIN_REP_THRESHOLD_KG, MAX_REP_THRESHOLD_KG = 0.5, 50
-MAX_ROUTINES, MAX_ROUTINES_BYTES = 50, 16384
+# User lists stored as JSON array files on the device: name -> (max items, max bytes)
+JSON_LISTS = {"routines": (50, 16384), "holdtypes": (50, 4096)}
 
 # The simulated cell is ~12 % off from the firmware's default factor, so calibration matters.
 DEFAULT_COUNTS_PER_KG = 14300.0
@@ -134,7 +135,7 @@ class Device:
         self.counts_per_kg = DEFAULT_COUNTS_PER_KG
         self.calibrated = False
         self.settings = {"bodyweightKg": 0, "repThresholdKg": 2}
-        self.routines = []
+        self.lists = {name: [] for name in JSON_LISTS}
         self.cal_kg = 0.0
         self.tared = False
         self.tare_avg = RawAverager()
@@ -154,7 +155,8 @@ class Device:
             self.counts_per_kg = state["counts_per_kg"]
             self.calibrated = state["calibrated"]
             self.settings.update(state.get("settings", {}))
-            self.routines = state.get("routines", [])
+            for name in JSON_LISTS:
+                self.lists[name] = state.get(name, [])
         except (OSError, ValueError, KeyError):
             pass
 
@@ -165,7 +167,7 @@ class Device:
                     "counts_per_kg": self.counts_per_kg,
                     "calibrated": self.calibrated,
                     "settings": self.settings,
-                    "routines": self.routines,
+                    **self.lists,
                 },
                 f,
             )
@@ -185,13 +187,13 @@ class Device:
         self.save_state()
         return None
 
-    def replace_routines(self, body):
-        """Same rules as the firmware's PUT /api/routines. Returns an error string or None."""
+    def replace_list(self, name, body):
+        """Same rules as the firmware's PUT /api/<list>. Returns an error string or None."""
         if not isinstance(body, list):
             return "expected an array"
-        if len(body) > MAX_ROUTINES:
-            return "too many routines"
-        self.routines = body
+        if len(body) > JSON_LISTS[name][0]:
+            return "too many items"
+        self.lists[name] = body
         self.save_state()
         return None
 
@@ -344,13 +346,15 @@ def make_handler(device):
                 return self.serve_websocket()
             if self.path == "/api/settings":
                 return self.send_json(200, device.settings)
-            if self.path == "/api/routines":
-                return self.send_json(200, device.routines)
+            name = self.path.removeprefix("/api/")
+            if name in JSON_LISTS:
+                return self.send_json(200, device.lists[name])
             return super().do_GET()
 
         def do_PUT(self):
             length = int(self.headers.get("Content-Length", 0))
-            if self.path == "/api/routines" and length > MAX_ROUTINES_BYTES:
+            name = self.path.removeprefix("/api/")
+            if name in JSON_LISTS and length > JSON_LISTS[name][1]:
                 return self.send_json(413, {"error": "too large"})
             try:
                 body = json.loads(self.rfile.read(length))
@@ -359,9 +363,9 @@ def make_handler(device):
             if self.path == "/api/settings":
                 error = device.update_settings(body) if isinstance(body, dict) else "expected an object"
                 result = device.settings
-            elif self.path == "/api/routines":
-                error = device.replace_routines(body)
-                result = device.routines
+            elif name in JSON_LISTS:
+                error = device.replace_list(name, body)
+                result = device.lists[name]
             else:
                 return self.send_json(404, {"error": "not found"})
             if error:
