@@ -378,12 +378,12 @@ function renderSummary(result) {
 
   const rows = reps.map((r) => {
     const tr = document.createElement("tr");
-    for (const text of [`${r.set}.${r.rep}`, formatKg(r.peakKg), formatKg(r.meanKg), `${r.tutS.toFixed(1)} s`, r.completed ? "✓" : "✗"]) {
+    for (const text of [`${r.set}.${r.rep}`, formatKg(r.peakKg), formatKg(r.meanKg), `${r.tutS.toFixed(1)} s`, r.completed ? "✓" : ""]) {
       const td = document.createElement("td");
       td.textContent = text;
       tr.append(td);
     }
-    tr.lastChild.className = r.completed ? "ok" : "bad";
+    tr.lastChild.className = "ok";
     return tr;
   });
   s.reps.replaceChildren(...rows);
@@ -409,7 +409,6 @@ export function initTrain() {
     for (const kg of msg.kg) run.smoothed = run.smoothed === null ? kg : run.smoothed + 0.08 * (kg - run.smoothed);
     if (run.repSamples && !run.engine.paused) run.repSamples.push(...msg.kg);
   });
-  settings.onChange((v) => chart.setBodyweight(v.bodyweightKg));
   document.addEventListener("visibilitychange", () => {
     if (run && document.visibilityState === "visible" && run.wakeLock?.released !== false) requestWakeLock();
   });

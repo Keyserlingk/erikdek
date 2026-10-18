@@ -78,8 +78,7 @@ export function initLive() {
     resetPeak();
     chart.clear();
   });
-  settings.onChange((v) => {
-    chart.setBodyweight(v.bodyweightKg);
+  settings.onChange(() => {
     state.dirty = true;
   });
 

@@ -295,7 +295,6 @@ table.reps th { text-align: right; font-size: 13px; font-weight: 600; color: var
 table.reps td { text-align: right; padding: 6px; border-top: 1px solid var(--border); }
 table.reps th:first-child, table.reps td:first-child { text-align: left; }
 td.ok { color: var(--ok); }
-td.bad { color: var(--bad); }
 
 .reading {
   display: flex;

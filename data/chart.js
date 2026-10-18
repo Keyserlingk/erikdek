@@ -11,7 +11,6 @@ export class LiveChart {
   constructor(container) {
     this.container = container;
     this.windowS = 30;
-    this.bodyweightKg = 0;
     this.peakKg = 0;
     this.target = null; // { min, max } band in kg
     this.x = [];
@@ -64,13 +63,6 @@ export class LiveChart {
     this.dirty = true;
   }
 
-  setBodyweight(kg) {
-    if (kg !== this.bodyweightKg) {
-      this.bodyweightKg = kg;
-      this._build();
-    }
-  }
-
   // Call once per animation frame.
   render() {
     if (!this.dirty || !this.plot) return;
@@ -99,7 +91,6 @@ export class LiveChart {
     const line = cssVar("--accent");
     const peak = cssVar("--warn");
     const band = cssVar("--band");
-    const bw = this.bodyweightKg;
 
     const axes = [
       {
@@ -107,24 +98,22 @@ export class LiveChart {
         grid: { stroke: grid, width: 1 },
         ticks: { show: false },
         size: 28,
+        // Ticks at fixed offsets from "now", so labels and grid stay put while the data scrolls.
+        splits: (u) => {
+          const end = u.scales.x.max;
+          const step = this.windowS <= 10 ? 2 : this.windowS <= 30 ? 5 : 10;
+          const splits = [];
+          for (let off = this.windowS; off >= 0; off -= step) splits.push(end - off);
+          return splits;
+        },
         values: (u, vals) => {
           const end = u.scales.x.max;
           return vals.map((v) => `${Math.round(v - end)}s`);
         },
       },
       { scale: "kg", stroke: text, grid: { stroke: grid, width: 1 }, ticks: { show: false }, size: 40 },
+      { scale: "kg", side: 1, stroke: text, grid: { show: false }, ticks: { show: false }, size: 40 },
     ];
-    if (bw > 0) {
-      axes.push({
-        scale: "kg",
-        side: 1,
-        stroke: text,
-        grid: { show: false },
-        ticks: { show: false },
-        size: 44,
-        values: (u, vals) => vals.map((v) => `${Math.round((v / bw) * 100)}%`),
-      });
-    }
 
     this.plot = new uPlot(
       {
