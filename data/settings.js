@@ -1,4 +1,6 @@
 import { device } from "./device.js";
+import { formatBytes } from "./format.js";
+import { sessions } from "./sessions.js";
 import { grips, holdTypes, initTagManager } from "./tags.js";
 
 export const MIN_BODYWEIGHT_KG = 20;
@@ -49,6 +51,41 @@ const el = {
   message: document.getElementById("setMessage"),
 };
 
+// ---------------------------------------------------------------- About
+
+const about = {
+  web: document.getElementById("aboutWeb"),
+  fw: document.getElementById("aboutFw"),
+  storage: document.getElementById("aboutStorage"),
+  app: document.getElementById("aboutApp"),
+  sessions: document.getElementById("aboutSessions"),
+  lists: document.getElementById("aboutLists"),
+  fs: document.getElementById("aboutFs"),
+};
+
+// Refreshes versions and the storage breakdown; called when Settings is shown.
+export async function showAbout() {
+  about.fw.textContent = device.status?.fw || "–";
+  try {
+    const res = await fetch("/version.json");
+    about.web.textContent = res.ok ? (await res.json()).version : "–";
+  } catch {
+    about.web.textContent = "–";
+  }
+  try {
+    const st = await sessions.storage();
+    // Whatever isn't in a file: directories and the file system's own bookkeeping.
+    const fsBytes = Math.max(0, st.usedBytes - st.sessionsBytes - st.listsBytes - st.appBytes);
+    about.storage.textContent = `${formatBytes(st.usedBytes)} of ${formatBytes(st.totalBytes)} (${Math.round((100 * st.usedBytes) / st.totalBytes)} %)`;
+    about.app.textContent = formatBytes(st.appBytes);
+    about.sessions.textContent = formatBytes(st.sessionsBytes);
+    about.lists.textContent = formatBytes(st.listsBytes);
+    about.fs.textContent = formatBytes(fsBytes);
+  } catch {
+    for (const key of ["storage", "app", "sessions", "lists", "fs"]) about[key].textContent = "–";
+  }
+}
+
 function showMessage(text, isError = false) {
   el.message.textContent = text;
   el.message.classList.toggle("error-text", isError);
@@ -58,6 +95,9 @@ export function initSettings() {
   settings.onChange((v) => {
     el.bodyweight.value = v.bodyweightKg > 0 ? v.bodyweightKg : "";
     el.repThreshold.value = v.repThresholdKg;
+  });
+  device.on("status", (st) => {
+    about.fw.textContent = st.fw || "–";
   });
   device.on("connection", (state) => {
     el.save.disabled = state !== "open";

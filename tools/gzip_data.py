@@ -6,8 +6,10 @@
 # browser unpacks it transparently. data/ itself stays uncompressed (source, mock).
 
 import gzip
+import json
 import os
 import shutil
+import subprocess
 
 from SCons.Script import COMMAND_LINE_TARGETS
 
@@ -36,8 +38,20 @@ def gzip_data_dir(src, dst):
     print(f"gzip_data: {src} -> {dst}: {raw_total // 1024} KB -> {gz_total // 1024} KB")
 
 
+def write_version(dst, project_dir):
+    """version.json(.gz): the git version of the web app, shown under Settings → About."""
+    try:
+        out = subprocess.run(["git", "describe", "--always", "--dirty"], cwd=project_dir, capture_output=True, text=True)
+        version = out.stdout.strip() or "unknown"
+    except OSError:
+        version = "unknown"
+    with open(os.path.join(dst, "version.json.gz"), "wb") as f:
+        f.write(gzip.compress(json.dumps({"version": version}).encode(), mtime=0))
+
+
 if FS_TARGETS & set(COMMAND_LINE_TARGETS):
     src = env.subst("$PROJECT_DATA_DIR")  # noqa: F821
     dst = os.path.join(env.subst("$BUILD_DIR"), "data_gz")  # noqa: F821
     gzip_data_dir(src, dst)
+    write_version(dst, env.subst("$PROJECT_DIR"))  # noqa: F821
     env.Replace(PROJECT_DATA_DIR=dst)  # noqa: F821

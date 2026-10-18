@@ -20,6 +20,10 @@
 #include "wifi_secrets.h"
 #endif
 
+#ifndef ERKDEK_VERSION
+#define ERKDEK_VERSION "unknown"  // set by tools/version.py
+#endif
+
 static constexpr const char* kApSsid = "Erkdek";
 static constexpr const char* kApPassword = "erkdek123";  // min 8 chars
 static constexpr uint32_t kStaTimeoutMs = 15000;
@@ -62,6 +66,7 @@ static String statusJson() {
   doc["calibrated"] = st.calibrated;
   doc["cpk"] = st.countsPerKg;
   doc["uptime"] = millis();
+  doc["fw"] = ERKDEK_VERSION;
   doc["dropped"] = st.dropped;
   String out;
   serializeJson(doc, out);

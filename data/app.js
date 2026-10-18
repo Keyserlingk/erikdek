@@ -4,7 +4,7 @@ import { device } from "./device.js";
 import { initHistory, showHistory } from "./history.js";
 import { initLive } from "./live.js";
 import { initMock } from "./mock.js";
-import { initSettings } from "./settings.js";
+import { initSettings, showAbout } from "./settings.js";
 import { goHome, initTrain } from "./train.js";
 
 const LOW_RATE_HZ = 60; // below this the HX711 RATE pin is probably still at 10 Hz
@@ -26,6 +26,7 @@ function showView() {
   const tab = TAB_OF[view] || view;
   for (const t of el.tabs) t.classList.toggle("active", t.getAttribute("href") === `#${tab}`);
   if (view === "history") showHistory();
+  if (view === "settings") showAbout();
 }
 
 function renderStatus() {

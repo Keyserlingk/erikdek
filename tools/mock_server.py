@@ -14,6 +14,7 @@ import os
 import random
 import re
 import struct
+import subprocess
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -42,6 +43,19 @@ SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mock_s
 SESSION_ID = re.compile(r"^[a-z0-9]{1,16}$")
 MAX_SESSION_BYTES = 32768
 FS_TOTAL_BYTES = 1441792  # LittleFS partition on the ESP32
+def git_version():
+    """Short git SHA (with -dirty), reported as firmware and web app version."""
+    try:
+        out = subprocess.run(
+            ["git", "describe", "--always", "--dirty"], cwd=os.path.dirname(DATA_DIR), capture_output=True, text=True
+        )
+        return out.stdout.strip() or "unknown"
+    except OSError:
+        return "unknown"
+
+
+VERSION = git_version()
+
 FS_BLOCK = 4096  # LittleFS stores every file in whole 4 KB blocks
 FS_OVERHEAD_BLOCKS = 4  # superblock and directories (root, /s, /vendor)
 LIST_FILES = 4  # routines, workouts, holdtypes, grips .json (1 block each)
@@ -367,6 +381,7 @@ class Device:
             "cpk": self.counts_per_kg,
             "uptime": self.millis(),
             "mock": True,
+            "fw": VERSION,
             "scenario": self.cell.scenario,
         }
 
@@ -466,6 +481,8 @@ def make_handler(device, gzip_dir=None):
                 return self.send_body(200, device.sessions.index().encode(), "application/x-ndjson")
             if self.path.startswith("/api/sessions/"):
                 return self.send_json(*device.sessions.get(self.path.removeprefix("/api/sessions/")))
+            if self.path == "/version.json" and not gzip_dir:  # generated at uploadfs on the ESP
+                return self.send_json(200, {"version": VERSION})
             if self.path == "/api/storage":
                 return self.send_json(200, device.sessions.storage())
             if gzip_dir:

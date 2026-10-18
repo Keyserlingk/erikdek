@@ -3,6 +3,10 @@ export function formatKg(kg, digits = 1) {
   return /^-0\.?0*$/.test(s) ? s.slice(1) : s;
 }
 
+export function formatBytes(b) {
+  return b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
+}
+
 // 45 -> "45 s", 180 -> "3 min", 1337 -> "22 min 17 s"
 export function formatDuration(totalS) {
   const s = Math.round(totalS);

@@ -1,5 +1,6 @@
 import { device } from "./device.js";
 import { downloadCsv, downloadJson } from "./download.js";
+import { formatBytes } from "./format.js";
 import { fileDate, historyCsv, storedCurveCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
@@ -16,7 +17,6 @@ const el = {
   main: $("historyMain"),
   detail: $("historyDetail"),
   storage: $("histStorage"),
-  storageDetail: $("histStorageDetail"),
   error: $("histError"),
   kind: $("histKind"),
   hold: $("histHold"),
@@ -232,16 +232,14 @@ function renderList(list, metric) {
 
 async function renderStorage() {
   try {
+    // Only the saved sessions here; the full breakdown is under Settings → About.
     const st = await sessions.storage();
-    const kb = (b) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
-    // Whatever isn't in a file: directories and the file system's own bookkeeping.
-    const fsBytes = Math.max(0, st.usedBytes - st.sessionsBytes - st.listsBytes - st.appBytes);
-    el.storage.textContent = `Device storage: ${kb(st.usedBytes)} of ${kb(st.totalBytes)} used (${Math.round((st.usedBytes / st.totalBytes) * 100)} %)`;
-    el.storageDetail.textContent =
-      `Sessions ${kb(st.sessionsBytes)} · App ${kb(st.appBytes)} · Routines & lists ${kb(st.listsBytes)} · File system ${kb(fsBytes)}`;
+    const n = sessions.index.length;
+    el.storage.textContent =
+      `Saved routines & tests: ${formatBytes(st.sessionsBytes)} (${n} session${n === 1 ? "" : "s"}) · ` +
+      `${formatBytes(st.totalBytes - st.usedBytes)} free`;
   } catch {
     el.storage.textContent = "";
-    el.storageDetail.textContent = "";
   }
 }
 
@@ -317,7 +315,9 @@ export function initHistory() {
   });
 
   sessions.addEventListener("change", () => {
-    if (isVisible() && el.detail.hidden) render();
+    if (!isVisible()) return;
+    if (el.detail.hidden) render();
+    renderStorage();
   });
   device.on("connection", (state) => {
     if (state === "open") sessions.load().then(() => showError(el.error, ""), (e) => showError(el.error, e.message));

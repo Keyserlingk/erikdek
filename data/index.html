@@ -255,7 +255,6 @@
       <div id="historyMain">
         <h1>History</h1>
         <p id="histStorage" class="muted storage-line"></p>
-        <p id="histStorageDetail" class="muted storage-detail"></p>
         <div id="histError" class="error" hidden></div>
         <div class="card filters">
           <label class="field stacked">
@@ -360,6 +359,19 @@
         </label>
         <button id="setSave" class="primary" type="button">Save</button>
         <p id="setMessage" class="message" aria-live="polite"></p>
+      </div>
+      <div class="card">
+        <h2>About</h2>
+        <dl class="about">
+          <dt>Web app version</dt><dd id="aboutWeb">–</dd>
+          <dt>Firmware version</dt><dd id="aboutFw">–</dd>
+          <dt>Device storage</dt><dd id="aboutStorage">–</dd>
+          <dt>Web app</dt><dd id="aboutApp">–</dd>
+          <dt>Saved sessions</dt><dd id="aboutSessions">–</dd>
+          <dt>Routines &amp; lists</dt><dd id="aboutLists">–</dd>
+          <dt>File system</dt><dd id="aboutFs">–</dd>
+        </dl>
+        <p class="muted about-note">Web app and firmware are flashed separately (uploadfs / upload), so their versions can differ. "-dirty" means built with uncommitted changes.</p>
       </div>
       <div id="manageHolds" class="card"></div>
       <div id="manageGrips" class="card"></div>
