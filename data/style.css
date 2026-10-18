@@ -293,7 +293,7 @@ h2.spaced { margin-top: 20px; }
 .run-kg[data-status="on"] { color: var(--ok); }
 .run-kg[data-status="below"] { color: var(--warn); }
 .run-kg[data-status="above"] { color: var(--accent); }
-.chart.small { height: 420px; }
+.chart.small { height: 315px; }
 .hint { font-size: 14px; margin-top: 12px; }
 
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
