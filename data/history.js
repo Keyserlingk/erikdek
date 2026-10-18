@@ -16,6 +16,7 @@ const el = {
   main: $("historyMain"),
   detail: $("historyDetail"),
   storage: $("histStorage"),
+  storageDetail: $("histStorageDetail"),
   error: $("histError"),
   kind: $("histKind"),
   hold: $("histHold"),
@@ -231,11 +232,16 @@ function renderList(list, metric) {
 
 async function renderStorage() {
   try {
-    const { totalBytes, usedBytes } = await sessions.storage();
+    const st = await sessions.storage();
     const kb = (b) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
-    el.storage.textContent = `Device storage: ${kb(usedBytes)} of ${kb(totalBytes)} used (${Math.round((usedBytes / totalBytes) * 100)} %)`;
+    // Whatever isn't in a file: directories and the file system's own bookkeeping.
+    const fsBytes = Math.max(0, st.usedBytes - st.sessionsBytes - st.listsBytes - st.appBytes);
+    el.storage.textContent = `Device storage: ${kb(st.usedBytes)} of ${kb(st.totalBytes)} used (${Math.round((st.usedBytes / st.totalBytes) * 100)} %)`;
+    el.storageDetail.textContent =
+      `Sessions ${kb(st.sessionsBytes)} · App ${kb(st.appBytes)} · Routines & lists ${kb(st.listsBytes)} · File system ${kb(fsBytes)}`;
   } catch {
     el.storage.textContent = "";
+    el.storageDetail.textContent = "";
   }
 }
 

@@ -426,6 +426,8 @@ label.pill-button { display: inline-flex; align-items: center; cursor: pointer; 
 #trainSetup .field.stacked { margin-bottom: 14px; }
 .session-chart { min-height: 160px; }
 
+.storage-line { margin-bottom: 2px; }
+.storage-detail { font-size: 13px; }
 .filters { padding-bottom: 2px; }
 .filters .field { margin-bottom: 12px; }
 .progress-chart { height: 220px; }

@@ -10,5 +10,5 @@
 //   POST   /api/sessions        save a session (JSON object with "id")
 //   GET    /api/sessions/<id>   full session
 //   DELETE /api/sessions/<id>
-//   GET    /api/storage         {"totalBytes":..,"usedBytes":..}
+//   GET    /api/storage         {"totalBytes", "usedBytes", "sessionsBytes", "listsBytes", "appBytes"}
 void sessionsRegister(AsyncWebServer& server);

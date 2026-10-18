@@ -72,10 +72,19 @@ class SessionStore:
     def path(self, sid):
         return os.path.join(SESSIONS_DIR, f"{sid}.json")
 
-    def used_bytes(self):
-        """Estimate of LittleFS usage on the ESP: whole blocks per file."""
+    def storage(self):
+        """Estimate of LittleFS usage on the ESP (whole blocks per file), like /api/storage."""
         sessions = sum(fs_blocks(os.path.getsize(os.path.join(SESSIONS_DIR, f))) for f in os.listdir(SESSIONS_DIR))
-        return web_app_bytes() + (FS_OVERHEAD_BLOCKS + LIST_FILES + sessions) * FS_BLOCK
+        use = {
+            "sessionsBytes": sessions * FS_BLOCK,
+            "listsBytes": LIST_FILES * FS_BLOCK,
+            "appBytes": web_app_bytes(),
+        }
+        used = sum(use.values()) + FS_OVERHEAD_BLOCKS * FS_BLOCK
+        return {"totalBytes": FS_TOTAL_BYTES, "usedBytes": used, **use}
+
+    def used_bytes(self):
+        return self.storage()["usedBytes"]
 
     def index(self):
         try:
@@ -458,7 +467,7 @@ def make_handler(device, gzip_dir=None):
             if self.path.startswith("/api/sessions/"):
                 return self.send_json(*device.sessions.get(self.path.removeprefix("/api/sessions/")))
             if self.path == "/api/storage":
-                return self.send_json(200, {"totalBytes": FS_TOTAL_BYTES, "usedBytes": device.sessions.used_bytes()})
+                return self.send_json(200, device.sessions.storage())
             if gzip_dir:
                 return self.serve_gzipped()
             return super().do_GET()

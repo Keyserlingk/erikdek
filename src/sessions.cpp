@@ -115,10 +115,46 @@ static void handlePost(AsyncWebServerRequest* req, JsonVariant& body) {
   req->send(201, "application/json", out);
 }
 
+static constexpr size_t kFsBlock = 4096;  // LittleFS stores files in whole blocks
+
+struct StorageUse {
+  size_t sessions = 0;  // /s/*.json + index
+  size_t lists = 0;     // routines, workouts, holds, grips (*.json in /)
+  size_t app = 0;       // web app (gzipped files)
+};
+
+static size_t blocksOf(size_t size) { return (size + kFsBlock - 1) / kFsBlock * kFsBlock; }
+
+// Walks the file system and adds up each file's size rounded to whole blocks.
+static void addDir(const String& path, StorageUse& use) {
+  File dir = LittleFS.open(path);
+  if (!dir || !dir.isDirectory()) return;
+  for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
+    String full = String(f.path());
+    if (f.isDirectory()) {
+      addDir(full, use);
+      continue;
+    }
+    size_t bytes = blocksOf(f.size());
+    if (full.startsWith(String(kSessionDir) + "/") || full == kIndexPath) {
+      use.sessions += bytes;
+    } else if (full.endsWith(".json") && full.lastIndexOf('/') == 0) {
+      use.lists += bytes;
+    } else {
+      use.app += bytes;
+    }
+  }
+}
+
 static void handleStorage(AsyncWebServerRequest* req) {
+  StorageUse use;
+  addDir("/", use);
   JsonDocument doc;
   doc["totalBytes"] = LittleFS.totalBytes();
   doc["usedBytes"] = LittleFS.usedBytes();
+  doc["sessionsBytes"] = use.sessions;
+  doc["listsBytes"] = use.lists;
+  doc["appBytes"] = use.app;
   String out;
   serializeJson(doc, out);
   req->send(200, "application/json", out);
