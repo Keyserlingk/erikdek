@@ -30,7 +30,6 @@ pulling training. It should:
 | HX711 breakout | **Bridge RATE to VCC for 80 Hz** (most boards default to 10 Hz) |
 | ESP32 NodeMCU WROOM-32 (USB-C, CH340) | 4 MB flash |
 | Power | USB power bank or 18650 + charger/protection board |
-| Optional: 0.96" SSD1306 OLED (I²C) | Shows IP address and weight; very handy for finding the device |
 
 ### Wiring
 
@@ -43,8 +42,6 @@ pulling training. It should:
 
 Load cell → HX711: red → E+, black → E−, white → A−, green → A+.
 If force reads negative under load, swap white and green.
-
-Optional OLED: SDA → GPIO 21, SCL → GPIO 22.
 
 ### Safety
 Every shackle, sling and carabiner in the chain must be rated well above the
@@ -78,14 +75,10 @@ Ways to find the ESP in station mode (several, because none of them is perfect a
   posts `Tindek at http://<ip>` to a private ntfy topic. With the ntfy Android app,
   the notification is clickable and opens the page. Free, no account needed.
 - **mDNS `http://tindek.local`:** works on some Android/Chrome versions; free to add.
-- **OLED display** (optional hardware) showing the IP.
 - **Remember the last IP:** the web app stores it, and the ESP asks DHCP for the same address.
 
-Considered alternative: **Web Bluetooth** (the real Tindeq uses BLE). A web app over
-HTTPS (for example on GitHub Pages) connects directly over BLE, keeps phone internet,
-supports wake lock, and needs no IP discovery. Downside: the app is hosted outside
-the device and needs a Bluetooth layer. Kept as a possible later transport; the
-web app is written so the transport can be swapped.
+The web app keeps the transport (WebSocket) behind a small interface so that
+Bluetooth can be added later (see Future options).
 
 ## Architecture
 
@@ -177,6 +170,27 @@ tindek/
 - **History:** saved sessions, progress charts per test type, personal bests.
 - **Settings:** WiFi/hotspot credentials, ntfy topic, bodyweight, units, smoothing, rep threshold.
 - **Export/import:** CSV/JSON per session, full JSON backup and restore.
+
+## Future options (not in planned work)
+
+### OLED display
+A 0.96" SSD1306 OLED (I²C, SDA → GPIO 21, SCL → GPIO 22) showing the IP address,
+WiFi mode and live weight. Makes finding the device in hotspot mode trivial and gives
+a readout without the phone.
+
+### Bluetooth instead of WiFi (Web Bluetooth)
+Chrome on Android can talk to BLE devices directly from a web page, so no Android app is needed.
+- The web app must be served over HTTPS, so it would be hosted, for example on GitHub
+  Pages, and installed as an offline-capable PWA. The ESP then only does BLE: no web
+  server, no WiFi.
+- Pros: no IP discovery, phone keeps its internet, proper screen wake lock,
+  app updates without reflashing, lower power use.
+- Cons: Chrome-based browsers only (no iPhone/Firefox), needs hosting, the user taps
+  "Connect" and picks the device each session, and history would naturally move to the
+  phone (IndexedDB) with calibration staying on the ESP.
+- 80 Hz is easy over BLE: notifications at about 20 Hz with 4 samples each.
+- Bonus idea: Tindeq has published the Progressor BLE protocol. Copying it might
+  make the device usable from the official Tindeq app (unverified).
 
 ## Milestones
 
