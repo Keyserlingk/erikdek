@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import {
   PHASE,
-  repHand,
+  hangsPerRep,
   WorkoutEngine,
   buildPhases,
   loadThresholdKg,
@@ -26,20 +26,25 @@ test("buildPhases expands sets, reps and rests", () => {
   assert.equal(phases[2].rep, 2);
 });
 
-test("alternating hands switch every hang and restart each set with left", () => {
-  assert.equal(repHand("alternate", 1), "left");
-  assert.equal(repHand("alternate", 2), "right");
-  assert.equal(repHand("left", 2), "left");
-  assert.equal(repHand(undefined, 1), "both");
-  const phases = buildPhases({ ...repeaters, hands: "alternate" });
+test("alternating hands: each rep is left then right, separated by hand changes", () => {
+  const r = { sets: 2, reps: 2, workS: 7, restS: 3, setRestS: 60, prepS: 5, hands: "alternate" };
+  assert.equal(hangsPerRep(r), 2);
+  const phases = buildPhases(r);
+  const work = phases.filter((p) => p.type === "work");
+  assert.equal(work.length, 8); // 2 sets × 2 reps × 2 hands
   assert.deepEqual(
-    phases.filter((p) => p.type === "work").map((p) => p.hand),
-    ["left", "right", "left", "left", "right", "left"],
+    work.slice(0, 4).map((p) => `${p.set}.${p.rep}${p.hand[0]}`),
+    ["1.1l", "1.1r", "1.2l", "1.2r"],
   );
-  // rests and get-ready announce the hand of the next hang
+  // get-ready and the gaps between hangs announce the next hang
   assert.equal(phases[0].hand, "left");
-  assert.equal(phases[2].type, "rest");
-  assert.equal(phases[2].hand, "right");
+  assert.deepEqual(
+    phases.slice(1, 4).map((p) => [p.type, p.hand]),
+    [["work", "left"], ["rest", "right"], ["work", "right"]],
+  );
+  assert.equal(totalDurationS(r), 5 + 8 * 7 + 6 * 3 + 60);
+  assert.equal(hangsPerRep({ ...r, hands: "left" }), 1);
+  assert.ok(buildPhases({ ...r, hands: "left" }).filter((p) => p.type === "work").every((p) => p.hand === "left"));
 });
 
 test("buildPhases skips zero-length rests and prep", () => {

@@ -9,24 +9,28 @@ export const TARGET_TOLERANCE = 0.05;
 
 export const HAND_OPTIONS = ["both", "left", "right", "alternate"];
 
-// Hand for a rep: "alternate" goes left, right, left… within each set.
-export function repHand(hands, rep) {
-  if (hands === "alternate") return rep % 2 === 1 ? "left" : "right";
-  return hands === "left" || hands === "right" ? hands : "both";
+// Hangs in one set: with alternating hands each rep is a left and a right hang.
+export function hangsPerRep(r) {
+  return r.hands === "alternate" ? 2 : 1;
 }
 
 // Expands a routine into the timed phases it consists of. Rests and get-ready carry
-// the set/rep/hand of the hang that follows.
+// the set/rep/hand of the hang that follows. With alternating hands every rep is
+// left then right, and the rest between hangs is the time to change hand.
 export function buildPhases(r) {
+  const hands = r.hands === "alternate" ? ["left", "right"] : [r.hands === "left" || r.hands === "right" ? r.hands : "both"];
+  const hangs = []; // per set: { rep, hand }
+  for (let rep = 1; rep <= r.reps; rep++) for (const hand of hands) hangs.push({ rep, hand });
+
   const phases = [];
-  const hand = (rep) => repHand(r.hands, rep);
-  if (r.prepS > 0) phases.push({ type: PHASE.PREP, durS: r.prepS, set: 1, rep: 1, hand: hand(1) });
+  if (r.prepS > 0) phases.push({ type: PHASE.PREP, durS: r.prepS, set: 1, ...hangs[0] });
   for (let set = 1; set <= r.sets; set++) {
-    for (let rep = 1; rep <= r.reps; rep++) {
-      phases.push({ type: PHASE.WORK, durS: r.workS, set, rep, hand: hand(rep) });
-      if (rep < r.reps && r.restS > 0) phases.push({ type: PHASE.REST, durS: r.restS, set, rep: rep + 1, hand: hand(rep + 1) });
-    }
-    if (set < r.sets && r.setRestS > 0) phases.push({ type: PHASE.SET_REST, durS: r.setRestS, set: set + 1, rep: 1, hand: hand(1) });
+    hangs.forEach((hang, i) => {
+      phases.push({ type: PHASE.WORK, durS: r.workS, set, ...hang });
+      const next = hangs[i + 1];
+      if (next && r.restS > 0) phases.push({ type: PHASE.REST, durS: r.restS, set, ...next });
+    });
+    if (set < r.sets && r.setRestS > 0) phases.push({ type: PHASE.SET_REST, durS: r.setRestS, set: set + 1, ...hangs[0] });
   }
   return phases;
 }

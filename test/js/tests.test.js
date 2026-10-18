@@ -59,7 +59,10 @@ test("alternating sessions get per-hand values and L/R rep labels", () => {
     { set: 1, rep: 2, hand: "right", meanKg: 16, peakKg: 17, tutS: 5.6, holdPct: 80, completed: false },
     { set: 1, rep: 3, hand: "left", meanKg: 18, peakKg: 19, tutS: 7, holdPct: 90, completed: true },
   ];
-  const summary = KINDS.workout.analyze({ reps, routine: { sets: 1, reps: 3, workS: 7 }, target: null });
+  // 3 of 4 planned hangs done (2 reps per hand)
+  const summary = KINDS.workout.analyze({ reps, routine: { sets: 1, reps: 2, workS: 7, hands: "alternate" }, target: null });
+  assert.equal(summary.totalReps, 4);
+  assert.equal(summary.holdPct, (100 + 80 + 90) / 4);
   assert.deepEqual(summary.byHand, { left: { avgKg: 19, holdPct: 95 }, right: { avgKg: 16, holdPct: 80 } });
   const s = { targetKg: null, routine: { workS: 7 }, reps, summary };
   const labels = KINDS.workout.tiles(s).map((t) => t[1]);

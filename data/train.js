@@ -22,6 +22,7 @@ import {
   PHASE,
   WorkoutEngine,
   buildPhases,
+  hangsPerRep,
   loadThresholdKg,
   repStats,
   targetKg,
@@ -70,6 +71,8 @@ const el = {
     setRestS: $("editSetRest"),
     prepS: $("editPrep"),
     hands: $("editHands"),
+    repsLabel: $("editRepsLabel"),
+    restLabel: $("editRestLabel"),
     targetType: $("editTargetType"),
     targetValue: $("editTargetValue"),
     targetUnit: $("editTargetUnit"),
@@ -156,8 +159,10 @@ function button(className, text, onClick) {
 }
 
 function describe(r) {
-  const parts = [`${r.sets} × ${r.reps}`, `${r.workS} s on`];
-  if (r.reps > 1) parts.push(`${r.restS} s off`);
+  const alternate = r.hands === "alternate";
+  const parts = [`${r.sets} × ${r.reps}${alternate ? " per hand" : ""}`, `${r.workS} s on`];
+  if (alternate) parts.push(`${r.restS} s hand change`);
+  else if (r.reps > 1) parts.push(`${r.restS} s off`);
   if (r.sets > 1) parts.push(`${formatDuration(r.setRestS)} between sets`);
   if (r.target.type === "kg") parts.push(`target ${r.target.value} kg`);
   if (r.target.type === "bw") parts.push(`target ${r.target.value} % BW`);
@@ -303,6 +308,9 @@ function updateEditorDerived() {
   const e = el.edit;
   const type = e.targetType.value;
   e.targetRow.hidden = type === "none";
+  const alternate = e.hands.value === "alternate";
+  e.repsLabel.textContent = alternate ? "Reps per set (per hand)" : "Reps per set";
+  e.restLabel.textContent = alternate ? "Change hand (s)" : "Rest (s)";
   e.targetUnit.textContent = type === "bw" ? "% BW" : "kg";
   const r = readEditor();
   e.duration.textContent = validateRoutine(r) ? "" : `Total time ${formatDuration(totalDurationS(r))}`;
@@ -499,7 +507,9 @@ function enterPhase(i) {
 }
 
 function phaseName(type) {
-  return type === PHASE.WORK ? KINDS[run.kind].workLabel : { prep: "Get ready", rest: "Rest", setRest: "Set rest" }[type];
+  if (type === PHASE.WORK) return KINDS[run.kind].workLabel;
+  if (type === PHASE.REST && run.routine.hands === "alternate") return "Change hand";
+  return { prep: "Get ready", rest: "Rest", setRest: "Set rest" }[type];
 }
 
 function tick() {
@@ -520,7 +530,8 @@ function tick() {
   const handLabel = (p) => (p.hand && p.hand !== "both" ? ` · ${p.hand}` : "");
   el.run.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type) + (phase.type === PHASE.WORK ? handLabel(phase) : "");
   el.run.countdown.textContent = Math.ceil(remainingS);
-  el.run.progress.textContent = r.reps > 1 ? `Set ${phase.set}/${r.sets} · Rep ${phase.rep}/${r.reps}` : `Attempt ${phase.set}/${r.sets}`;
+  el.run.progress.textContent =
+    r.reps * hangsPerRep(r) > 1 ? `Set ${phase.set}/${r.sets} · Rep ${phase.rep}/${r.reps}` : `Attempt ${phase.set}/${r.sets}`;
   el.run.next.textContent = next ? `Next: ${phaseName(next.type)} ${formatDuration(next.durS)}${handLabel(next)}` : "Last one!";
 
   const kg = run.smoothed ?? 0;

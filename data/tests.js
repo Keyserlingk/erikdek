@@ -4,6 +4,7 @@
 
 import { CF_LAST_REPS, criticalForceSummary, forceRetention, maxPullSummary, rfdSummary } from "./analysis.js";
 import { formatDuration, formatKg } from "./format.js";
+import { hangsPerRep } from "./workout.js";
 
 const kg = (v) => (v === null || v === undefined ? "–" : `${formatKg(v)} kg`);
 const kgPerS = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)} kg/s`);
@@ -76,7 +77,7 @@ export const KINDS = {
     ],
     // Per-rep values are averaged over all planned reps, so skipped reps count as 0.
     analyze({ reps, routine, target }) {
-      const totalReps = routine.sets * routine.reps;
+      const totalReps = routine.sets * routine.reps * hangsPerRep(routine); // planned hangs
       const sum = (key) => reps.reduce((s, r) => s + (r[key] ?? 0), 0);
       return {
         completed: reps.filter((r) => r.completed).length,
@@ -91,7 +92,11 @@ export const KINDS = {
       };
     },
     tiles: (s) => [
-      [pct(KINDS.workout.metrics[0].value(s)), `hold · ${s.summary.completed}/${s.summary.totalReps} full reps`, INFO.hold],
+      [
+        pct(KINDS.workout.metrics[0].value(s)),
+        `hold · ${s.summary.completed}/${s.summary.totalReps} full ${s.summary.byHand ? "hangs" : "reps"}`,
+        INFO.hold,
+      ],
       [pct(s.summary.retentionPct), "force retention", INFO.retention],
       ...["left", "right"]
         .filter((h) => s.summary.byHand?.[h])
