@@ -23,6 +23,9 @@ static constexpr const char* kApPassword = "tindek123";  // min 8 chars
 static constexpr uint32_t kStaTimeoutMs = 15000;
 static constexpr uint32_t kSamplePushMs = 50;
 static constexpr uint32_t kStatusPushMs = 1000;
+static constexpr const char* kRoutinesPath = "/routines.json";
+static constexpr size_t kMaxRoutinesBytes = 16384;
+static constexpr size_t kMaxRoutines = 50;
 
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
@@ -125,7 +128,18 @@ static void onWsEvent(AsyncWebSocket*, AsyncWebSocketClient* client, AwsEventTyp
   }
 }
 
-static void settingsToJson(JsonObject obj) { obj["bodyweightKg"] = settings.bodyweightKg; }
+static void settingsToJson(JsonObject obj) {
+  obj["bodyweightKg"] = settings.bodyweightKg;
+  obj["repThresholdKg"] = settings.repThresholdKg;
+}
+
+static void sendError(AsyncWebServerRequest* req, int code, const char* message) {
+  JsonDocument doc;
+  doc["error"] = message;
+  String out;
+  serializeJson(doc, out);
+  req->send(code, "application/json", out);
+}
 
 static void handleGetSettings(AsyncWebServerRequest* req) {
   auto* res = new AsyncJsonResponse();
@@ -140,14 +154,37 @@ static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& body) {
   if (body["bodyweightKg"].is<float>()) {
     float bw = body["bodyweightKg"];
     if (bw != 0 && (bw < kMinBodyweightKg || bw > kMaxBodyweightKg)) {
-      req->send(400, "application/json", "{\"error\":\"bodyweightKg out of range\"}");
-      return;
+      return sendError(req, 400, "bodyweightKg out of range");
     }
     next.bodyweightKg = bw;
+  }
+  if (body["repThresholdKg"].is<float>()) {
+    float thr = body["repThresholdKg"];
+    if (thr < kMinRepThresholdKg || thr > kMaxRepThresholdKg) {
+      return sendError(req, 400, "repThresholdKg out of range");
+    }
+    next.repThresholdKg = thr;
   }
   settings = next;
   storageSaveSettings(settings);
   handleGetSettings(req);
+}
+
+// Custom routines are stored as one JSON array; the web app owns the format and
+// replaces the whole list on every change. Built-in routines live in the web app.
+static void handleGetRoutines(AsyncWebServerRequest* req) {
+  String data;
+  if (!storageReadFile(kRoutinesPath, data) || data.isEmpty()) data = "[]";
+  req->send(200, "application/json", data);
+}
+
+static void handlePutRoutines(AsyncWebServerRequest* req, JsonVariant& body) {
+  if (!body.is<JsonArray>()) return sendError(req, 400, "expected an array");
+  if (body.size() > kMaxRoutines) return sendError(req, 400, "too many routines");
+  String data;
+  serializeJson(body, data);
+  if (!storageWriteFile(kRoutinesPath, data)) return sendError(req, 500, "write failed");
+  req->send(200, "application/json", data);
 }
 
 void netBegin() {
@@ -159,6 +196,11 @@ void netBegin() {
   auto* putSettings = new AsyncCallbackJsonWebHandler("/api/settings", handlePutSettings);
   putSettings->setMethod(HTTP_PUT);
   server.addHandler(putSettings);
+  server.on("/api/routines", HTTP_GET, handleGetRoutines);
+  auto* putRoutines = new AsyncCallbackJsonWebHandler("/api/routines", handlePutRoutines);
+  putRoutines->setMethod(HTTP_PUT);
+  putRoutines->setMaxContentLength(kMaxRoutinesBytes);
+  server.addHandler(putRoutines);
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
   server.onNotFound([](AsyncWebServerRequest* req) { req->send(404, "text/plain", "Not found"); });
   server.begin();

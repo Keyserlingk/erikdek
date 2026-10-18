@@ -13,6 +13,7 @@ export class LiveChart {
     this.windowS = 30;
     this.bodyweightKg = 0;
     this.peakKg = 0;
+    this.target = null; // { min, max } band in kg
     this.x = [];
     this.y = [];
     this.dirty = false;
@@ -58,6 +59,11 @@ export class LiveChart {
     }
   }
 
+  setTarget(band) {
+    this.target = band;
+    this.dirty = true;
+  }
+
   setBodyweight(kg) {
     if (kg !== this.bodyweightKg) {
       this.bodyweightKg = kg;
@@ -77,7 +83,7 @@ export class LiveChart {
       this.plot.setData([this.x.slice(i), this.y.slice(i)], false);
       this.plot.setScale("x", { min: start, max: end });
       let min = 0;
-      let max = this.peakKg; // keep the peak line in view
+      let max = Math.max(this.peakKg, this.target ? this.target.max : 0); // keep lines in view
       for (let j = i; j < this.y.length; j++) {
         if (this.y[j] > max) max = this.y[j];
         if (this.y[j] < min) min = this.y[j];
@@ -92,6 +98,7 @@ export class LiveChart {
     const grid = cssVar("--border");
     const line = cssVar("--accent");
     const peak = cssVar("--warn");
+    const band = cssVar("--band");
     const bw = this.bodyweightKg;
 
     const axes = [
@@ -128,7 +135,10 @@ export class LiveChart {
         scales: { x: { time: false }, kg: { auto: false } },
         axes,
         series: [{}, { scale: "kg", stroke: line, width: 2, points: { show: false } }],
-        hooks: { draw: [(u) => this._drawPeak(u, peak)] },
+        hooks: {
+          drawClear: [(u) => this._drawTarget(u, band)],
+          draw: [(u) => this._drawPeak(u, peak)],
+        },
       },
       [[], []],
       this.container,
@@ -149,6 +159,18 @@ export class LiveChart {
     ctx.moveTo(left, y);
     ctx.lineTo(left + width, y);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawTarget(u, color) {
+    if (!this.target) return;
+    const top = u.valToPos(this.target.max, "kg", true);
+    const bottom = u.valToPos(this.target.min, "kg", true);
+    const { ctx } = u;
+    const { left, width } = u.bbox;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.fillRect(left, top, width, bottom - top);
     ctx.restore();
   }
 

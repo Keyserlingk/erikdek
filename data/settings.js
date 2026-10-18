@@ -2,12 +2,14 @@ import { device } from "./device.js";
 
 export const MIN_BODYWEIGHT_KG = 20;
 export const MAX_BODYWEIGHT_KG = 250;
+export const MIN_REP_THRESHOLD_KG = 0.5;
+export const MAX_REP_THRESHOLD_KG = 50;
 
 // Settings stored on the device (GET/PUT /api/settings). Fires "change" after load/save.
 class SettingsStore extends EventTarget {
   constructor() {
     super();
-    this.values = { bodyweightKg: 0 };
+    this.values = { bodyweightKg: 0, repThresholdKg: 2 };
   }
 
   async load() {
@@ -41,6 +43,7 @@ export const settings = new SettingsStore();
 
 const el = {
   bodyweight: document.getElementById("setBodyweight"),
+  repThreshold: document.getElementById("setRepThreshold"),
   save: document.getElementById("setSave"),
   message: document.getElementById("setMessage"),
 };
@@ -53,6 +56,7 @@ function showMessage(text, isError = false) {
 export function initSettings() {
   settings.onChange((v) => {
     el.bodyweight.value = v.bodyweightKg > 0 ? v.bodyweightKg : "";
+    el.repThreshold.value = v.repThresholdKg;
   });
   device.on("connection", (state) => {
     el.save.disabled = state !== "open";
@@ -66,8 +70,13 @@ export function initSettings() {
       showMessage(`Bodyweight must be between ${MIN_BODYWEIGHT_KG} and ${MAX_BODYWEIGHT_KG} kg.`, true);
       return;
     }
+    const thr = parseFloat(el.repThreshold.value);
+    if (!(thr >= MIN_REP_THRESHOLD_KG && thr <= MAX_REP_THRESHOLD_KG)) {
+      showMessage(`Rep threshold must be between ${MIN_REP_THRESHOLD_KG} and ${MAX_REP_THRESHOLD_KG} kg.`, true);
+      return;
+    }
     try {
-      await settings.save({ bodyweightKg: bw });
+      await settings.save({ bodyweightKg: bw, repThresholdKg: thr });
       showMessage("Saved on the device.");
     } catch (e) {
       showMessage(e.message, true);

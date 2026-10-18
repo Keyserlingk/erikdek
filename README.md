@@ -15,6 +15,8 @@ The mock simulates hangs and pulls at 80 Hz using the same protocol as the firmw
 
 Requires PlatformIO (`pipx install platformio`).
 
+Web app logic tests (Node 18+): `npm test`
+
 ```sh
 pio test -e native        # unit tests for lib/core on the PC
 pio run                   # build firmware

@@ -113,7 +113,7 @@ Phone browser ◄── WebSocket / HTTP ──► live view, graph, timer, rout
     `{"t":"status","rate":80.1,"tared":true,...}`
   - Browser → ESP: `{"cmd":"tare"}`, `{"cmd":"calibrate","kg":20.0}`
 - `GET/PUT /api/settings`
-- `GET/PUT/DELETE /api/routines[/id]`
+- `GET/PUT /api/routines` (custom routines as one JSON array; built-ins live in the web app)
 - `GET/POST/DELETE /api/sessions[/id]`
 - `GET /api/export` (full JSON backup), `POST /api/import`
 - `GET /api/sessions/<id>.csv`

@@ -3,6 +3,15 @@ export function formatKg(kg, digits = 1) {
   return /^-0\.?0*$/.test(s) ? s.slice(1) : s;
 }
 
+// 45 -> "45 s", 180 -> "3 min", 1337 -> "22 min 17 s"
+export function formatDuration(totalS) {
+  const s = Math.round(totalS);
+  if (s < 60) return `${s} s`;
+  const min = Math.floor(s / 60);
+  const rest = s % 60;
+  return rest ? `${min} min ${rest} s` : `${min} min`;
+}
+
 // Rolling window of recent samples, used for stability checks.
 export class SampleWindow {
   constructor(size) {

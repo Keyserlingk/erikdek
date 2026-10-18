@@ -3,9 +3,10 @@ import { device } from "./device.js";
 import { initLive } from "./live.js";
 import { initMock } from "./mock.js";
 import { initSettings } from "./settings.js";
+import { initTrain } from "./train.js";
 
 const LOW_RATE_HZ = 60; // below this the HX711 RATE pin is probably still at 10 Hz
-const VIEWS = ["live", "calibrate", "settings"];
+const VIEWS = ["live", "train", "calibrate", "settings"];
 
 const el = {
   rate: document.getElementById("rate"),
@@ -51,6 +52,7 @@ initLive();
 initCalibrate();
 initMock();
 initSettings();
+initTrain();
 
 window.addEventListener("hashchange", showView);
 showView();
