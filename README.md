@@ -11,6 +11,14 @@ python3 tools/mock_server.py            # http://localhost:8080
 To use it from your phone, open `http://<laptop-ip>:8080` (same WiFi).
 The mock simulates hangs and pulls at 80 Hz using the same protocol as the firmware.
 
+The ESP stores the web app gzipped (`tools/gzip_data.py` runs on `buildfs`/`uploadfs`)
+and serves `foo.js.gz` for `/foo.js`. To test that exact bundle with the mock:
+
+```sh
+pio run -t buildfs
+python3 tools/mock_server.py --gzip .pio/build/esp32dev/data_gz
+```
+
 ## Firmware
 
 Requires PlatformIO (`pipx install platformio`).
@@ -21,7 +29,7 @@ Web app logic tests (Node 18+): `npm test`
 pio test -e native        # unit tests for lib/core on the PC
 pio run                   # build firmware
 pio run -t upload         # flash
-pio run -t uploadfs       # upload the web app (data/) to LittleFS
+pio run -t uploadfs       # upload the web app (data/, gzipped) to LittleFS
 pio device monitor        # serial log, shows the IP address
 ```
 

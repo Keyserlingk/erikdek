@@ -414,7 +414,7 @@ class WebSocketConnection:
         return opcode, data
 
 
-def make_handler(device):
+def make_handler(device, gzip_dir=None):
     class Handler(SimpleHTTPRequestHandler):
         protocol_version = "HTTP/1.1"  # required for the WebSocket upgrade
 
@@ -442,7 +442,26 @@ def make_handler(device):
                 return self.send_json(*device.sessions.get(self.path.removeprefix("/api/sessions/")))
             if self.path == "/api/storage":
                 return self.send_json(200, {"totalBytes": FS_TOTAL_BYTES, "usedBytes": device.sessions.used_bytes()})
+            if gzip_dir:
+                return self.serve_gzipped()
             return super().do_GET()
+
+        def serve_gzipped(self):
+            """Like the ESP: /foo.js is answered with foo.js.gz and Content-Encoding: gzip."""
+            path = self.path.split("?")[0]
+            if path.endswith("/"):
+                path += "index.html"
+            gz = os.path.normpath(os.path.join(gzip_dir, path.lstrip("/") + ".gz"))
+            if not gz.startswith(os.path.normpath(gzip_dir)) or not os.path.isfile(gz):
+                return self.send_body(404, b"Not found", "text/plain")
+            with open(gz, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", self.guess_type(path))
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
 
         def do_POST(self):
             if self.path != "/api/sessions":
@@ -537,11 +556,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument(
+        "--gzip",
+        metavar="DIR",
+        help="serve the gzipped web app from DIR like the ESP does (build it with: pio run -t buildfs, "
+        "then use .pio/build/esp32dev/data_gz)",
+    )
     args = parser.parse_args()
 
     device = Device()
     threading.Thread(target=device.run, daemon=True).start()
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(device))
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(device, args.gzip))
     server.daemon_threads = True
     print(f"Mock Erkdek on http://localhost:{args.port}  (serving {os.path.normpath(DATA_DIR)})")
     try:
