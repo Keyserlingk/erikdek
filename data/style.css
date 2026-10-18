@@ -255,7 +255,7 @@ h2.spaced { margin-top: 20px; }
 .phase-card[data-phase="rest"], .phase-card[data-phase="setRest"] { border-color: var(--rest); }
 .phase-card[data-phase="prep"] { border-color: var(--warn); }
 .phase-label {
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -263,20 +263,37 @@ h2.spaced { margin-top: 20px; }
 .phase-card[data-phase="work"] .phase-label { color: var(--work); }
 .phase-card[data-phase="rest"] .phase-label, .phase-card[data-phase="setRest"] .phase-label { color: var(--rest); }
 .phase-card[data-phase="prep"] .phase-label { color: var(--warn); }
+.run-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.run-row .card { margin-bottom: 16px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; padding: 14px 8px; }
 .countdown {
-  font-size: clamp(72px, 26vw, 128px);
+  font-size: clamp(56px, 17vw, 96px);
   font-weight: 700;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
-.progress { font-weight: 600; margin-bottom: 2px; }
+.progress { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+.next { font-size: 13px; }
 
-.run-force { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 16px; }
-.run-kg { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.run-force { border-width: 2px; }
+.run-force-label {
+  font-size: 17px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.run-force-value { display: flex; align-items: baseline; gap: 4px; }
+.run-kg {
+  font-size: clamp(44px, 13vw, 72px);
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.run-force #runTarget { font-size: 13px; }
 .run-kg[data-status="on"] { color: var(--ok); }
 .run-kg[data-status="below"] { color: var(--warn); }
 .run-kg[data-status="above"] { color: var(--accent); }
-.chart.small { height: 150px; }
+.chart.small { height: 210px; }
 .hint { font-size: 14px; margin-top: 12px; }
 
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }

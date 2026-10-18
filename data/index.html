@@ -96,17 +96,20 @@
       </div>
 
       <div id="trainRun" hidden>
-        <div id="runPhaseCard" class="card phase-card" data-phase="prep">
-          <div id="runPhase" class="phase-label">Get ready</div>
-          <div id="runCountdown" class="countdown">10</div>
-          <div id="runProgress" class="progress"></div>
-          <div id="runNext" class="muted"></div>
-        </div>
-        <div class="card run-force">
-          <div><span id="runKg" class="run-kg">–</span> <span class="unit">kg</span></div>
-          <span id="runTarget" class="muted"></span>
-        </div>
         <div class="card chart-card"><div id="runChart" class="chart small"></div></div>
+        <div class="run-row">
+          <div id="runPhaseCard" class="card phase-card" data-phase="prep">
+            <div id="runPhase" class="phase-label">Get ready</div>
+            <div id="runCountdown" class="countdown">10</div>
+            <div id="runProgress" class="progress"></div>
+            <div id="runNext" class="muted next"></div>
+          </div>
+          <div class="card run-force">
+            <div class="run-force-label">Force</div>
+            <div class="run-force-value"><span id="runKg" class="run-kg">–</span><span class="unit">kg</span></div>
+            <div id="runTarget" class="muted"></div>
+          </div>
+        </div>
         <div class="actions">
           <button id="runStop" class="secondary" type="button">Stop</button>
           <button id="runSkip" class="secondary" type="button">Skip</button>
