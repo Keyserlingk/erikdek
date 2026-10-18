@@ -64,6 +64,12 @@
         <h1>Train</h1>
         <div id="trainListError" class="error" hidden></div>
         <div id="trainListNotice" class="notice" hidden></div>
+        <div id="routineTabs" class="segmented wide list-tabs" role="tablist" aria-label="Routines">
+          <button type="button" data-list="mine" role="tab">My routines</button>
+          <button type="button" data-list="templates" role="tab">Templates</button>
+        </div>
+        <p id="routineEmpty" class="muted empty-note" hidden>No routines of your own yet. Create one, or open Templates and use "Copy &amp; edit" to start from a template.</p>
+        <p id="templatesNote" class="muted empty-note" hidden>Ready-made routines. Start one as is, or "Copy &amp; edit" to make your own version under My routines.</p>
         <div id="routineList"></div>
         <button id="routineNew" class="secondary" type="button">New routine</button>
       </div>

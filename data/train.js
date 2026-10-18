@@ -27,6 +27,7 @@ const TICK_MS = 50;
 const CURVE_MIN_KG = 1;
 const CURVE_MAX_POINTS = 1000;
 const SETUP_KEY = "tindek.testSetup";
+const LIST_KEY = "tindek.routineList";
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -45,6 +46,9 @@ const el = {
   listError: $("trainListError"),
   notices: { list: $("trainListNotice"), tests: $("testsNotice") },
   newRoutine: $("routineNew"),
+  listTabs: document.querySelectorAll("#routineTabs button"),
+  routineEmpty: $("routineEmpty"),
+  templatesNote: $("templatesNote"),
   edit: {
     title: $("editTitle"),
     name: $("editName"),
@@ -166,9 +170,38 @@ function renderTests() {
   );
 }
 
+// Which list the Train tab shows: "mine" or "templates". Null until chosen, then
+// remembered per browser; by default "mine" when there are own routines.
+let listView = null;
+try {
+  listView = localStorage.getItem(LIST_KEY);
+} catch {
+  // storage unavailable: use the default
+}
+
+function setListView(view) {
+  listView = view;
+  try {
+    localStorage.setItem(LIST_KEY, view);
+  } catch {
+    // not remembered
+  }
+  renderList();
+}
+
 function renderList() {
+  const view = listView ?? (routines.custom.length ? "mine" : "templates");
+  for (const b of el.listTabs) {
+    const active = b.dataset.list === view;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-selected", String(active));
+  }
+  const list = view === "mine" ? routines.custom : BUILTIN_ROUTINES;
+  el.routineEmpty.hidden = view !== "mine" || list.length > 0;
+  el.templatesNote.hidden = view !== "templates";
+  el.newRoutine.hidden = view !== "mine";
   el.list.replaceChildren(
-    ...routines.all.map((r) =>
+    ...list.map((r) =>
       create("div", { className: "card routine" }, [
         create("div", { className: "routine-head" }, [
           create("h2", { textContent: r.name }),
@@ -264,6 +297,7 @@ async function saveEditor() {
   if (error) return;
   try {
     await routines.save(r);
+    setListView("mine"); // a copied template lands under My routines
     show("list");
   } catch (err) {
     el.edit.error.textContent = err.message;
@@ -590,6 +624,7 @@ export function initTrain() {
   window.addEventListener("hashchange", () => showNotice(null, ""));
 
   el.newRoutine.addEventListener("click", () => openEditor(null));
+  for (const b of el.listTabs) b.addEventListener("click", () => setListView(b.dataset.list));
   el.edit.cancel.addEventListener("click", () => show("list"));
   el.edit.save.addEventListener("click", saveEditor);
   el.edit.remove.addEventListener("click", deleteEditing);
