@@ -1,5 +1,7 @@
 // Rolling force chart on top of uPlot (loaded globally from vendor/uPlot.iife.min.js).
 
+import { TARGET_TOLERANCE } from "./workout.js";
+
 const MAX_WINDOW_S = 60;
 const MAX_POINTS = MAX_WINDOW_S * 80 * 1.2;
 
@@ -12,7 +14,7 @@ export class LiveChart {
     this.container = container;
     this.windowS = 30;
     this.peakKg = 0;
-    this.target = null; // { min, max } band in kg
+    this.targetKg = null; // drawn as a line with a ±TARGET_TOLERANCE band
     this.x = [];
     this.y = [];
     this.dirty = false;
@@ -21,6 +23,16 @@ export class LiveChart {
     new ResizeObserver(() => this._resize()).observe(container);
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => this._build());
     this._build();
+  }
+
+  // Calls handler(kg) with the force at the tapped height inside the plot area.
+  onTap(handler) {
+    this.container.addEventListener("click", (ev) => {
+      if (!this.plot) return;
+      const rect = this.plot.over.getBoundingClientRect();
+      if (ev.clientX < rect.left || ev.clientX > rect.right || ev.clientY < rect.top || ev.clientY > rect.bottom) return;
+      handler(this.plot.posToVal(ev.clientY - rect.top, "kg"));
+    });
   }
 
   // ts/te: device millis() of the first and last sample in kg[].
@@ -58,8 +70,8 @@ export class LiveChart {
     }
   }
 
-  setTarget(band) {
-    this.target = band;
+  setTarget(kg) {
+    this.targetKg = kg;
     this.dirty = true;
   }
 
@@ -75,7 +87,8 @@ export class LiveChart {
       this.plot.setData([this.x.slice(i), this.y.slice(i)], false);
       this.plot.setScale("x", { min: start, max: end });
       let min = 0;
-      let max = Math.max(this.peakKg, this.target ? this.target.max : 0); // keep lines in view
+      // keep the peak and target lines in view
+      let max = Math.max(this.peakKg, this.targetKg !== null ? this.targetKg * (1 + TARGET_TOLERANCE) : 0);
       for (let j = i; j < this.y.length; j++) {
         if (this.y[j] > max) max = this.y[j];
         if (this.y[j] < min) min = this.y[j];
@@ -125,7 +138,7 @@ export class LiveChart {
         axes,
         series: [{}, { scale: "kg", stroke: line, width: 2, points: { show: false } }],
         hooks: {
-          drawClear: [(u) => this._drawTarget(u, band)],
+          drawClear: [(u) => this._drawTarget(u, band, cssVar("--ok"))],
           draw: [(u) => this._drawPeak(u, peak)],
         },
       },
@@ -151,15 +164,22 @@ export class LiveChart {
     ctx.restore();
   }
 
-  _drawTarget(u, color) {
-    if (!this.target) return;
-    const top = u.valToPos(this.target.max, "kg", true);
-    const bottom = u.valToPos(this.target.min, "kg", true);
+  _drawTarget(u, bandColor, lineColor) {
+    if (this.targetKg === null) return;
+    const top = u.valToPos(this.targetKg * (1 + TARGET_TOLERANCE), "kg", true);
+    const bottom = u.valToPos(this.targetKg * (1 - TARGET_TOLERANCE), "kg", true);
+    const y = Math.round(u.valToPos(this.targetKg, "kg", true));
     const { ctx } = u;
     const { left, width } = u.bbox;
     ctx.save();
-    ctx.fillStyle = color;
+    ctx.fillStyle = bandColor;
     ctx.fillRect(left, top, width, bottom - top);
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = devicePixelRatio;
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(left + width, y);
+    ctx.stroke();
     ctx.restore();
   }
 

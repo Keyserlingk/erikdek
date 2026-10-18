@@ -7,7 +7,6 @@ import { BUILTIN_ROUTINES, newRoutineId, routines, validateRoutine } from "./rou
 import { settings } from "./settings.js";
 import {
   PHASE,
-  TARGET_TOLERANCE,
   WorkoutEngine,
   buildPhases,
   loadThresholdKg,
@@ -288,7 +287,7 @@ async function startWorkout(r) {
     timer: null,
   };
   chart.clear();
-  chart.setTarget(target !== null ? { min: target * (1 - TARGET_TOLERANCE), max: target * (1 + TARGET_TOLERANCE) } : null);
+  chart.setTarget(target);
   el.run.target.textContent = target !== null ? `Target ${formatKg(target)} kg` : "No target";
   if (r.target.type === "bw" && target === null) el.run.target.textContent = "Set bodyweight for a % target";
   el.run.pause.textContent = "Pause";

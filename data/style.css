@@ -152,6 +152,9 @@ main {
   font-variant-numeric: tabular-nums;
 }
 #kg { font-size: clamp(60px, 22vw, 112px); font-weight: 700; line-height: 1; }
+#kg[data-status="on"] { color: var(--ok); }
+#kg[data-status="below"] { color: var(--warn); }
+#kg[data-status="above"] { color: var(--accent); }
 .unit { font-size: 24px; color: var(--muted); }
 
 .peak {
@@ -172,11 +175,32 @@ main {
 
 .chart-card { padding: 10px 6px 4px 0; }
 .chart { height: 220px; }
+.chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 0 6px 6px 16px;
+  font-size: 13px;
+}
+.target-info { display: flex; align-items: center; gap: 6px; color: var(--ok); }
+.pill-button {
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.chart.tappable { cursor: crosshair; }
 .segmented {
   display: flex;
   justify-content: flex-end;
   gap: 4px;
-  padding: 0 6px 6px;
+  margin-left: auto;
 }
 .segmented button {
   font: inherit;

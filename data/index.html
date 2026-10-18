@@ -38,12 +38,19 @@
         </button>
       </div>
       <div class="card chart-card">
-        <div id="chartWindow" class="segmented" role="group" aria-label="Chart time window">
-          <button type="button" data-s="10">10 s</button>
-          <button type="button" data-s="30">30 s</button>
-          <button type="button" data-s="60">60 s</button>
+        <div class="chart-head">
+          <span id="targetHint" class="muted">Tap the graph to set a target</span>
+          <span id="targetInfo" class="target-info" hidden>
+            Target <strong id="targetKg"></strong> kg
+            <button id="removeTarget" class="pill-button" type="button">Remove target</button>
+          </span>
+          <div id="chartWindow" class="segmented" role="group" aria-label="Chart time window">
+            <button type="button" data-s="10">10 s</button>
+            <button type="button" data-s="30">30 s</button>
+            <button type="button" data-s="60">60 s</button>
+          </div>
         </div>
-        <div id="chart" class="chart"></div>
+        <div id="chart" class="chart tappable"></div>
       </div>
       <div class="actions">
         <button id="resetPeak" class="secondary" type="button">Reset peak</button>
