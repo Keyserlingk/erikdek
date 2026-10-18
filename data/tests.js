@@ -8,12 +8,30 @@ import { formatDuration, formatKg } from "./format.js";
 const kg = (v) => (v === null || v === undefined ? "–" : `${formatKg(v)} kg`);
 const kgPerS = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)} kg/s`);
 const pctBw = (v, bw) => (v && bw > 0 ? ` · ${Math.round((v / bw) * 100)} % BW` : "");
+const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)} %`);
+const seconds = (v) => (v === null || v === undefined ? "–" : formatDuration(Math.round(v)));
+const num = (v) => (typeof v === "number" ? v : null);
+
+// Progress metrics: value(session) reads it from a saved session (index entry is enough).
+// Kinds list them in `metrics`; the first one is the default.
+const summaryMetric = (key, label, format) => ({ key, label, format, value: (s) => num(s.summary?.[key]) });
 
 export const KINDS = {
   workout: {
     name: "Workout",
     workLabel: "Hang",
-    metric: { key: "avgKg", label: "Average force", format: kg },
+    metrics: [
+      {
+        key: "heldPct",
+        label: "Reps held",
+        format: pct,
+        value: (s) => (s.summary?.totalReps ? (100 * s.summary.completed) / s.summary.totalReps : null),
+      },
+      summaryMetric("tutS", "Time under tension", seconds),
+      summaryMetric("avgKg", "Average force", kg),
+      summaryMetric("peakKg", "Peak force", kg),
+      { key: "targetKg", label: "Target load", format: kg, value: (s) => num(s.targetKg) },
+    ],
     analyze({ reps, routine }) {
       return {
         completed: reps.filter((r) => r.completed).length,
@@ -40,7 +58,7 @@ export const KINDS = {
     description: "3 all-out pulls of 5 s with 90 s rest. Measures your strongest pull.",
     workLabel: "Pull",
     routine: { sets: 3, reps: 1, workS: 5, restS: 0, setRestS: 90, prepS: 10 },
-    metric: { key: "peakKg", label: "Peak force", format: kg },
+    metrics: [summaryMetric("peakKg", "Peak force", kg)],
     analyze: ({ attempts, dtS }) => maxPullSummary(attempts, dtS),
     tiles: (s) => [
       [kg(s.summary.peakKg), `peak force${pctBw(s.summary.peakKg, s.bodyweightKg)}`],
@@ -57,7 +75,7 @@ export const KINDS = {
     description: `24 all-out pulls of 7 s with 3 s rest. Critical force is the average of the last ${CF_LAST_REPS} reps: the load you can sustain.`,
     workLabel: "Pull",
     routine: { sets: 1, reps: 24, workS: 7, restS: 3, setRestS: 0, prepS: 10 },
-    metric: { key: "cfKg", label: "Critical force", format: kg },
+    metrics: [summaryMetric("cfKg", "Critical force", kg)],
     analyze({ reps, routine }) {
       const cf = criticalForceSummary(
         reps.map((r) => r.meanKg),
@@ -84,7 +102,7 @@ export const KINDS = {
     description: "3 explosive pulls of 3 s with 30 s rest. Pull as fast and hard as you can from a relaxed hang.",
     workLabel: "Pull",
     routine: { sets: 3, reps: 1, workS: 3, restS: 0, setRestS: 30, prepS: 10 },
-    metric: { key: "rfdKgS", label: "RFD 0–200 ms", format: kgPerS },
+    metrics: [summaryMetric("rfdKgS", "RFD 0–200 ms", kgPerS)],
     analyze: ({ attempts, dtS }) =>
       rfdSummary(attempts, dtS) ?? { rfdKgS: null, peakRfdKgS: null, timeToPeakS: null, peakKg: null, attemptRfdKgS: [] },
     tiles: (s) => [

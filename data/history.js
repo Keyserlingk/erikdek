@@ -21,6 +21,8 @@ const el = {
   grip: $("histGrip"),
   routineRow: $("histRoutineRow"),
   routine: $("histRoutine"),
+  metricRow: $("histMetricRow"),
+  metric: $("histMetric"),
   bests: $("histBests"),
   progressTitle: $("histProgressTitle"),
   legend: $("histLegend"),
@@ -40,6 +42,7 @@ let progressChart = null;
 let detailChart = null;
 let openId = null;
 let openSession = null;
+let metricKind = null; // kind the metric picker was filled for
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -84,9 +87,13 @@ function filtered() {
   );
 }
 
+function currentMetric() {
+  const metrics = KINDS[el.kind.value].metrics;
+  return metrics.find((m) => m.key === el.metric.value) || metrics[0];
+}
+
 function metricOf(s) {
-  const v = s.summary?.[KINDS[s.type].metric.key];
-  return typeof v === "number" ? v : null;
+  return currentMetric().value(s);
 }
 
 // ---------------------------------------------------------------- main view
@@ -97,6 +104,15 @@ function renderFilters() {
   fillSelect(el.grip, "All grips", distinct(ofKind, "grip"));
   fillSelect(el.routine, "All routines", distinct(ofKind, "name"));
   el.routineRow.hidden = el.kind.value !== "workout";
+
+  // New kind: refill the metric picker and start at its default (first) metric.
+  if (metricKind !== el.kind.value) {
+    metricKind = el.kind.value;
+    const metrics = KINDS[metricKind].metrics;
+    el.metric.replaceChildren(...metrics.map((m) => create("option", { value: m.key, textContent: m.label })));
+    el.metric.value = metrics[0].key;
+    el.metricRow.hidden = metrics.length < 2;
+  }
 }
 
 function renderBests(list, metric) {
@@ -211,7 +227,7 @@ async function renderStorage() {
 function render() {
   renderFilters();
   const list = filtered();
-  const metric = KINDS[el.kind.value].metric;
+  const metric = currentMetric();
   renderBests(list, metric);
   renderProgress(list, metric);
   renderList(list, metric);
@@ -263,7 +279,7 @@ export function initHistory() {
   el.kind.replaceChildren(
     ...KIND_ORDER.map((k) => create("option", { value: k, textContent: k === "workout" ? "Workouts" : KINDS[k].name })),
   );
-  for (const select of [el.kind, el.hold, el.grip, el.routine]) select.addEventListener("change", render);
+  for (const select of [el.kind, el.hold, el.grip, el.routine, el.metric]) select.addEventListener("change", render);
   el.back.addEventListener("click", closeDetail);
   el.remove.addEventListener("click", deleteOpen);
   el.csv.addEventListener("click", () => downloadCsv(`tindek-history-${fileDate()}.csv`, historyCsv(sessions.index)));
