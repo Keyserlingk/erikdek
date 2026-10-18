@@ -4,6 +4,24 @@ A DIY force gauge for climbing training (Tindeq Progressor style). An S-type loa
 feeds an HX711, which feeds an ESP32. The ESP32 serves a web app that runs in the
 phone's browser and shows live force, graphs, timers, workout routines and progress history.
 
+## Objective
+
+Build a cheap, self-made alternative to the Tindeq Progressor for finger-strength and
+pulling training. It should:
+
+- **Measure force accurately:** 80 Hz sampling, calibrated with known weights, good
+  enough to capture peak force and rate of force development.
+- **Work from the phone with no extra app:** the ESP32 joins the phone's hotspot
+  (with its own network as a fallback) and serves a web app to the phone's browser.
+- **Support structured training:** live force and graph, work/rest timer, custom
+  workout routines and standard tests (max pull, critical force, RFD).
+- **Track progress over time:** results and personal bests stored on the device,
+  with progress charts.
+- **Keep the data accessible:** export sessions or everything as CSV/JSON, and
+  restore from a backup.
+- **Be developable without hardware:** a mock ESP server for the web app and
+  PC-run unit tests for the logic.
+
 ## Hardware
 
 | Part | Notes |
