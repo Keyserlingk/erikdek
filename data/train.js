@@ -589,6 +589,14 @@ function discardResult() {
 
 // ---------------------------------------------------------------- init
 
+// Tab tapped again: back to that tab's main screen, unless a run or an unsaved
+// summary is showing there (those are only left via Stop / Save / Discard).
+export function goHome(group) {
+  const busy = group === runHost && (run !== null || result !== null);
+  if (!busy) show(HOME[group]);
+  window.scrollTo(0, 0);
+}
+
 export function initTrain() {
   chart = new LiveChart(el.run.chart);
   chart.setWindow(10);

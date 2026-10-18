@@ -5,7 +5,7 @@ import { initHistory, showHistory } from "./history.js";
 import { initLive } from "./live.js";
 import { initMock } from "./mock.js";
 import { initSettings } from "./settings.js";
-import { initTrain } from "./train.js";
+import { goHome, initTrain } from "./train.js";
 
 const LOW_RATE_HZ = 60; // below this the HX711 RATE pin is probably still at 10 Hz
 const VIEWS = ["live", "train", "tests", "history", "calibrate", "settings"];
@@ -64,6 +64,26 @@ initSettings();
 initTrain();
 initHistory();
 initBackup();
+
+// Tapping the tab you're already on goes back to that tab's main screen.
+const REHOME = {
+  "#train": () => goHome("train"),
+  "#tests": () => goHome("tests"),
+  "#history": () => {
+    showHistory();
+    window.scrollTo(0, 0);
+  },
+  "#live": () => window.scrollTo(0, 0),
+  "#settings": () => window.scrollTo(0, 0),
+};
+for (const t of el.tabs) {
+  t.addEventListener("click", (ev) => {
+    const href = t.getAttribute("href");
+    if (href !== location.hash) return; // normal navigation via hashchange
+    ev.preventDefault();
+    REHOME[href]?.();
+  });
+}
 
 window.addEventListener("hashchange", showView);
 showView();
