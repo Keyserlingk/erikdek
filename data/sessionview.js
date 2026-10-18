@@ -80,7 +80,7 @@ export function renderSession(root, s) {
   const chartBox = el("div", { className: "session-chart" });
   const table = kind.table(s);
   const rows = table.rows.map((cells) => el("tr", {}, cells.map((c) => el("td", { textContent: c }))));
-  if (table.head.at(-1) === "") for (const tr of rows) tr.lastChild.className = "ok";
+  if (table.head.at(-1) === "Held") for (const tr of rows) tr.lastChild.className = "ok";
   const tableCard = el("div", { className: "card" }, [
     el("table", { className: "reps" }, [
       el("thead", {}, [el("tr", {}, table.head.map((h) => el("th", { textContent: h })))]),

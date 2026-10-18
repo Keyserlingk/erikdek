@@ -329,6 +329,11 @@ h2.spaced { margin-top: 20px; }
   font-variant-numeric: tabular-nums;
 }
 .run-force #runTarget { font-size: 13px; }
+.held-count { font-size: 13px; font-weight: 600; margin-top: 2px; }
+.rep-info { font-size: 13px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.rep-info[data-state="held"] { color: var(--ok); }
+.rep-info[data-state="short"] { color: var(--warn); }
+.mock-panel .follow { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .run-kg[data-status="on"] { color: var(--ok); }
 .run-kg[data-status="below"] { color: var(--warn); }
 .run-kg[data-status="above"] { color: var(--accent); }

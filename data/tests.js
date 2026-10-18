@@ -24,13 +24,13 @@ export const KINDS = {
       };
     },
     tiles: (s) => [
-      [`${s.summary.completed}/${s.summary.totalReps}`, "reps completed"],
+      [`${s.summary.completed}/${s.summary.totalReps}`, "reps held"],
       [kg(s.summary.peakKg), "best peak"],
       [kg(s.summary.avgKg), "avg force"],
       [formatDuration(Math.round(s.summary.tutS)), "time under tension"],
     ],
     table: (s) => ({
-      head: ["Rep", "Peak", "Avg", "Loaded", ""],
+      head: ["Rep", "Peak", "Avg", "Loaded", "Held"],
       rows: s.reps.map((r) => [`${r.set}.${r.rep}`, formatKg(r.peakKg), formatKg(r.meanKg), `${r.tutS.toFixed(1)} s`, r.completed ? "✓" : ""]),
     }),
   },

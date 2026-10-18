@@ -77,6 +77,8 @@ const el = {
     next: $("runNext"),
     kg: $("runKg"),
     target: $("runTarget"),
+    held: $("runHeld"),
+    repInfo: $("runRepInfo"),
     chart: $("runChart"),
     pause: $("runPause"),
     skip: $("runSkip"),
@@ -381,6 +383,11 @@ function sampleDtS() {
   return 1 / (device.status?.rate || 80);
 }
 
+// Lets the simulator follow the workout (see mock.js).
+function announcePhase(type) {
+  window.dispatchEvent(new CustomEvent("tindek:phase", { detail: { type } }));
+}
+
 function finishRep() {
   if (!run.repSamples) return;
   const phase = run.phases[run.index];
@@ -393,10 +400,15 @@ function enterPhase(i) {
   finishRep();
   run.index = i;
   run.lastCountdown = null;
-  if (i >= run.phases.length) return;
+  if (i >= run.phases.length) {
+    announcePhase("done");
+    return;
+  }
   const phase = run.phases[i];
+  announcePhase(phase.type);
   if (phase.type === PHASE.WORK) {
     run.repSamples = [];
+    run.repLoadedSamples = 0;
     beep.work();
   } else if (i > 0) {
     beep.rest();
@@ -437,6 +449,7 @@ function tick() {
   const kg = run.smoothed ?? 0;
   el.run.kg.textContent = device.connected ? formatKg(kg) : "–";
   el.run.kg.dataset.status = targetStatus(kg, run.target) ?? "";
+  renderHeld(phase);
   chart.render();
 }
 
@@ -470,7 +483,31 @@ function buildSession(stopped) {
   return session;
 }
 
+// Routines only: how long the current rep has been held, the last rep's result and
+// the running count of held reps.
+function renderHeld(phase) {
+  const show = run.kind === "workout";
+  el.run.held.hidden = !show || !run.reps.length;
+  el.run.repInfo.hidden = !show;
+  if (!show) return;
+  const held = run.reps.filter((r) => r.completed).length;
+  el.run.held.textContent = `${held}/${run.reps.length} reps held`;
+
+  const last = run.reps.at(-1);
+  if (phase.type === PHASE.WORK) {
+    el.run.repInfo.textContent = `Held ${(run.repLoadedSamples * sampleDtS()).toFixed(1)} / ${phase.durS} s`;
+    el.run.repInfo.dataset.state = "live";
+  } else if (last) {
+    const lastDur = run.phases.find((p) => p.type === PHASE.WORK).durS;
+    el.run.repInfo.textContent = last.completed ? "Last rep held ✓" : `Last rep ${last.tutS.toFixed(1)} / ${lastDur} s`;
+    el.run.repInfo.dataset.state = last.completed ? "held" : "short";
+  } else {
+    el.run.repInfo.textContent = "";
+  }
+}
+
 function endRun(stopped) {
+  if (stopped) announcePhase("done");
   clearInterval(run.timer);
   if (run.wakeLock) run.wakeLock.release().catch(() => {});
   if (stopped) finishRep();
@@ -554,7 +591,10 @@ export function initTrain() {
     if (run.engine.paused || run.index < 0) return; // not started yet (or paused)
     run.curve.push(...msg.kg);
     for (let i = 0; i < msg.kg.length; i++) run.curvePhase.push(run.index);
-    if (run.repSamples) run.repSamples.push(...msg.kg);
+    if (run.repSamples) {
+      run.repSamples.push(...msg.kg);
+      for (const kg of msg.kg) if (kg >= run.threshold) run.repLoadedSamples++;
+    }
   });
   document.addEventListener("visibilitychange", () => {
     if (run && document.visibilityState === "visible" && run.wakeLock?.released !== false) requestWakeLock();

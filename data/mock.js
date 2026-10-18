@@ -6,7 +6,16 @@ const el = {
   panel: document.getElementById("mockPanel"),
   kg: document.getElementById("mockKg"),
   buttons: document.querySelectorAll("#mockPanel [data-scenario]"),
+  follow: document.getElementById("mockFollow"),
 };
+
+// "Pull during each hang": pull the simulated weight while a workout/test is in a
+// hang phase and let go otherwise, like a real climber following the timer.
+function followPhase(type) {
+  if (!device.status?.mock || !el.follow.checked) return;
+  if (type === "work") device.send("mock", { scenario: "pull", kg: parseFloat(el.kg.value) || 20 });
+  else device.send("mock", { scenario: "idle" });
+}
 
 function render() {
   const st = device.status;
@@ -18,6 +27,7 @@ function render() {
 export function initMock() {
   device.on("status", render);
   device.on("connection", render);
+  window.addEventListener("tindek:phase", (ev) => followPhase(ev.detail.type));
   el.badge.addEventListener("click", () => {
     el.panel.hidden = !el.panel.hidden;
   });

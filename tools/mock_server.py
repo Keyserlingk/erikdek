@@ -117,6 +117,7 @@ class SimulatedLoadCell:
     workout: rest, ramp up, hold with tremor and fatigue, release (repeats)
     idle:    nothing hanging
     weight:  a fixed known weight, swinging a bit after it is hung
+    pull:    a climber pulling: quick ramp up, slight fatigue and tremor
     """
 
     def __init__(self):
@@ -167,6 +168,11 @@ class SimulatedLoadCell:
     def _force(self, t):
         if self.scenario == "idle":
             return 0.0
+        if self.scenario == "pull":
+            dt = t - self.scenario_start
+            ramp = min(1.0, dt / 0.25)
+            tremor = 0.3 * math.sin(2 * math.pi * 6 * t)
+            return self.weight_kg * ramp * (1 - 0.01 * dt) + tremor * ramp
         if self.scenario == "weight":
             dt = t - self.scenario_start
             swing = 0.25 * self.weight_kg * math.exp(-dt * 1.5) * math.sin(2 * math.pi * 1.8 * dt)
