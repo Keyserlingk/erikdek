@@ -1,5 +1,7 @@
 import { decimate } from "./analysis.js";
 import { beep, unlockAudio } from "./audio.js";
+import { downloadCsv, downloadJson } from "./download.js";
+import { curveCsv, fileDate } from "./export.js";
 import { LiveChart } from "./chart.js";
 import { device } from "./device.js";
 import { formatDuration, formatKg } from "./format.js";
@@ -86,6 +88,8 @@ const el = {
     error: $("sumError"),
     discard: $("sumDiscard"),
     save: $("sumSave"),
+    rawCsv: $("sumRawCsv"),
+    json: $("sumJson"),
   },
 };
 
@@ -93,6 +97,7 @@ let editing = null; // routine being edited (copy)
 let setup = null; // test being set up: { kind, hand }
 let run = null; // active workout or test
 let result = null; // finished, unsaved session
+let resultRaw = null; // its full-rate curve and per-sample phase (not stored on the device)
 let chart = null;
 let summaryChart = null;
 let selects = null; // TagSelects: editHold, editGrip, setupHold, setupGrip
@@ -352,6 +357,7 @@ async function startRun(kind, routine, hand) {
     attempts: [], // raw samples of each work phase
     reps: [],
     curve: [], // every sample while not paused
+    curvePhase: [], // phase index of each curve sample
     smoothed: null,
     lastCountdown: null,
     startedAt: new Date(),
@@ -470,6 +476,7 @@ function endRun(stopped) {
   if (stopped) finishRep();
   else beep.finished();
   result = buildSession(stopped);
+  resultRaw = { hz: 1 / sampleDtS(), kg: run.curve, phases: run.curvePhase.map((i) => run.phases[i] ?? null) };
   run = null;
   showSummary();
 }
@@ -503,6 +510,7 @@ async function saveResult() {
     await sessions.save(result);
     const home = homeOf(result.type);
     result = null;
+    resultRaw = null;
     show(home);
     showNotice(home, "Saved to history.");
   } catch (err) {
@@ -516,6 +524,7 @@ function discardResult() {
   if (!confirm("Discard this session? It will not be saved.")) return;
   const home = homeOf(result.type);
   result = null;
+  resultRaw = null;
   show(home);
 }
 
@@ -542,8 +551,9 @@ export function initTrain() {
     if (!run) return;
     chart.push(msg.ts, msg.te ?? msg.ts, msg.kg);
     for (const kg of msg.kg) run.smoothed = run.smoothed === null ? kg : run.smoothed + 0.08 * (kg - run.smoothed);
-    if (run.engine.paused) return;
+    if (run.engine.paused || run.index < 0) return; // not started yet (or paused)
     run.curve.push(...msg.kg);
+    for (let i = 0; i < msg.kg.length; i++) run.curvePhase.push(run.index);
     if (run.repSamples) run.repSamples.push(...msg.kg);
   });
   document.addEventListener("visibilitychange", () => {
@@ -568,6 +578,12 @@ export function initTrain() {
   });
   el.run.stop.addEventListener("click", stopRun);
   el.summary.save.addEventListener("click", saveResult);
+  el.summary.rawCsv.addEventListener("click", () =>
+    downloadCsv(`tindek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}-raw.csv`, curveCsv(resultRaw, resultRaw.phases)),
+  );
+  el.summary.json.addEventListener("click", () =>
+    downloadJson(`tindek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}.json`, result),
+  );
   el.summary.discard.addEventListener("click", discardResult);
 
   renderTests();

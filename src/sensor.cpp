@@ -21,6 +21,8 @@ static RawAverager calAverager{0};
 static volatile bool tareRequested = false;
 static volatile bool calRequested = false;
 static volatile bool calResetRequested = false;
+static volatile bool calSetRequested = false;
+static volatile float calSetCountsPerKg = 0;
 static volatile float calRequestKg = 0;
 static volatile bool tared = false;
 
@@ -37,6 +39,12 @@ static void handleRequests() {
     calResetRequested = false;
     calibration.countsPerKg = Calibration::kDefaultCountsPerKg;
     calibration.calibrated = false;
+    events.push({SensorEvent::Calibrated, CalResult::Ok, calibration});
+  }
+  if (calSetRequested) {
+    calSetRequested = false;
+    calibration.countsPerKg = calSetCountsPerKg;
+    calibration.calibrated = true;
     events.push({SensorEvent::Calibrated, CalResult::Ok, calibration});
   }
 }
@@ -90,6 +98,14 @@ void sensorRequestCalibration(float kg) {
 }
 
 void sensorResetCalibration() { calResetRequested = true; }
+
+bool sensorSetCalibration(float countsPerKg) {
+  // Reject implausible factors; negative is fine (swapped A+/A- wires).
+  if (!isfinite(countsPerKg) || fabsf(countsPerKg) < 100.0f) return false;
+  calSetCountsPerKg = countsPerKg;
+  calSetRequested = true;
+  return true;
+}
 
 size_t sensorDrain(Sample* out, size_t max) {
   size_t n = 0;

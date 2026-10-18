@@ -78,6 +78,8 @@ static void handleCommand(const char* data, size_t len) {
     sensorRequestCalibration(doc["kg"] | 0.0f);
   } else if (strcmp(cmd, "calReset") == 0) {
     sensorResetCalibration();
+  } else if (strcmp(cmd, "setCalibration") == 0) {
+    sensorSetCalibration(doc["cpk"] | 0.0f);
   }
 }
 

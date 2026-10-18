@@ -357,6 +357,13 @@ class Device:
             self.calibrated = False
             self.save_state()
             self.broadcast({"t": "calibrated", "calibrated": False, "cpk": self.counts_per_kg})
+        elif cmd == "setCalibration":
+            cpk = msg.get("cpk")
+            if isinstance(cpk, (int, float)) and math.isfinite(cpk) and abs(cpk) >= 100:
+                self.counts_per_kg = float(cpk)
+                self.calibrated = True
+                self.save_state()
+                self.broadcast({"t": "calibrated", "calibrated": True, "cpk": self.counts_per_kg})
         elif cmd == "mock":  # simulator only: switch what is hanging on the cell
             self.cell.set_scenario(msg.get("scenario", "workout"), msg.get("kg"))
             self.broadcast(self.status())

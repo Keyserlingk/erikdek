@@ -118,6 +118,10 @@ class RoutineStore extends EventTarget {
     await this._put(this.custom.filter((r) => r.id !== id));
   }
 
+  async replaceAll(list) {
+    await this._put(list);
+  }
+
   async _put(list) {
     const res = await fetch("/api/routines", {
       method: "PUT",

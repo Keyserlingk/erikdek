@@ -136,6 +136,10 @@
           <button id="sumDiscard" class="secondary" type="button">Discard</button>
           <button id="sumSave" class="primary" type="button">Save to history</button>
         </div>
+        <div class="downloads">
+          <button id="sumRawCsv" class="pill-button" type="button">Download raw data (CSV)</button>
+          <button id="sumJson" class="pill-button" type="button">Download JSON</button>
+        </div>
       </div>
     </section>
 
@@ -195,11 +199,16 @@
         </div>
         <h2 class="section">Sessions</h2>
         <div id="histList"></div>
+        <button id="histCsv" class="secondary" type="button">Download all sessions (CSV)</button>
       </div>
       <div id="historyDetail" hidden>
         <button id="histBack" class="link" type="button">‹ Back to history</button>
         <div id="histDetailView"></div>
         <div id="histDetailError" class="error" hidden></div>
+        <div class="downloads">
+          <button id="histDetailCsv" class="pill-button" type="button">Download curve (CSV)</button>
+          <button id="histDetailJson" class="pill-button" type="button">Download JSON</button>
+        </div>
         <button id="histDelete" class="link danger" type="button">Delete session</button>
       </div>
     </section>
@@ -270,6 +279,26 @@
       </div>
       <div id="manageHolds" class="card"></div>
       <div id="manageGrips" class="card"></div>
+      <div class="card">
+        <h2>Backup</h2>
+        <p class="muted">Download everything (settings, calibration, routines, holds, grips and all sessions) as one file, or restore from one. Keep a backup before reflashing the device.</p>
+        <div class="actions">
+          <button id="backupDownload" class="secondary" type="button">Download backup</button>
+          <label class="button-link secondary file-button">Restore…<input id="backupFile" type="file" accept=".json,application/json" hidden></label>
+        </div>
+        <div id="restorePreview" class="restore" hidden>
+          <p id="restoreSummary"></p>
+          <label class="check"><input id="restoreSettings" type="checkbox"> Settings (bodyweight, rep threshold)</label>
+          <label class="check"><input id="restoreRoutines" type="checkbox"> Routines, holds and grips</label>
+          <label class="check"><input id="restoreSessions" type="checkbox"> Sessions (adds missing ones)</label>
+          <label class="check"><input id="restoreCalibration" type="checkbox"> Calibration (only if it's the same load cell)</label>
+          <div class="actions">
+            <button id="restoreCancel" class="secondary" type="button">Cancel</button>
+            <button id="restoreRun" class="primary" type="button">Restore</button>
+          </div>
+        </div>
+        <p id="backupMessage" class="message" aria-live="polite"></p>
+      </div>
     </section>
   </main>
 

@@ -33,6 +33,8 @@ void sensorRequestTare();
 void sensorRequestCalibration(float kg);
 // Goes back to the uncalibrated default factor.
 void sensorResetCalibration();
+// Sets a known factor (restoring a backup). Returns false if the value is implausible.
+bool sensorSetCalibration(float countsPerKg);
 // Copies up to max buffered samples into out; returns the count.
 size_t sensorDrain(Sample* out, size_t max);
 bool sensorPollEvent(SensorEvent& out);

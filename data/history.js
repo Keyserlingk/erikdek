@@ -1,4 +1,6 @@
 import { device } from "./device.js";
+import { downloadCsv, downloadJson } from "./download.js";
+import { curveCsv, fileDate, historyCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
 import { HANDS, KINDS, TEST_IDS } from "./tests.js";
@@ -29,11 +31,15 @@ const el = {
   detailView: $("histDetailView"),
   detailError: $("histDetailError"),
   remove: $("histDelete"),
+  csv: $("histCsv"),
+  detailCsv: $("histDetailCsv"),
+  detailJson: $("histDetailJson"),
 };
 
 let progressChart = null;
 let detailChart = null;
 let openId = null;
+let openSession = null;
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -223,6 +229,7 @@ async function openDetail(id) {
   try {
     const s = await sessions.get(id);
     if (openId !== id) return;
+    openSession = s;
     if (detailChart) detailChart.destroy();
     detailChart = renderSession(el.detailView, s);
   } catch (e) {
@@ -233,6 +240,7 @@ async function openDetail(id) {
 
 function closeDetail() {
   openId = null;
+  openSession = null;
   el.detail.hidden = true;
   el.main.hidden = false;
   render();
@@ -258,6 +266,14 @@ export function initHistory() {
   for (const select of [el.kind, el.hold, el.grip, el.routine]) select.addEventListener("change", render);
   el.back.addEventListener("click", closeDetail);
   el.remove.addEventListener("click", deleteOpen);
+  el.csv.addEventListener("click", () => downloadCsv(`tindek-history-${fileDate()}.csv`, historyCsv(sessions.index)));
+  const detailName = (s) => `tindek-${s.type}-${fileDate(new Date(s.startedAt))}-${s.id}`;
+  el.detailCsv.addEventListener("click", () => {
+    if (openSession?.curve) downloadCsv(`${detailName(openSession)}.csv`, curveCsv(openSession.curve));
+  });
+  el.detailJson.addEventListener("click", () => {
+    if (openSession) downloadJson(`${detailName(openSession)}.json`, openSession);
+  });
 
   sessions.addEventListener("change", () => {
     if (isVisible() && el.detail.hidden) render();

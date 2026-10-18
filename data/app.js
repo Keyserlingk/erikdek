@@ -1,3 +1,4 @@
+import { initBackup } from "./backup.js";
 import { initCalibrate } from "./calibrate.js";
 import { device } from "./device.js";
 import { initHistory, showHistory } from "./history.js";
@@ -62,6 +63,7 @@ initMock();
 initSettings();
 initTrain();
 initHistory();
+initBackup();
 
 window.addEventListener("hashchange", showView);
 showView();

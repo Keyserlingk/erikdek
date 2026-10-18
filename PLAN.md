@@ -117,8 +117,10 @@ Phone browser ◄── WebSocket / HTTP ──► live view, graph, timer, rout
 - `GET/PUT /api/holdtypes`, `GET/PUT /api/grips` (the user's own holds/grips as JSON arrays; standard ones live in the web app)
 - `GET /api/sessions` (index as NDJSON, one summary per line), `POST /api/sessions`,
   `GET/DELETE /api/sessions/<id>`, `GET /api/storage`
-- `GET /api/export` (full JSON backup), `POST /api/import`
-- `GET /api/sessions/<id>.csv`
+- Export/import is done in the browser from the APIs above (no firmware code or RAM
+  needed): raw 80 Hz CSV right after a run, per-session CSV/JSON, all-sessions CSV,
+  and a full JSON backup restored item by item. WebSocket `{"cmd":"setCalibration","cpk":..}`
+  restores the scale factor.
 
 ## Storage
 

@@ -42,6 +42,10 @@ class TagList extends EventTarget {
     await this._put(this.custom.filter((h) => h !== name));
   }
 
+  async replaceAll(list) {
+    await this._put(list);
+  }
+
   async _put(list) {
     const res = await fetch(this.url, {
       method: "PUT",
