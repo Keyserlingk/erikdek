@@ -389,6 +389,8 @@ h2.section { margin: 20px 0 10px; font-size: 15px; text-transform: uppercase; le
 .segmented.wide { justify-content: stretch; margin-left: 0; }
 .segmented.wide button { flex: 1; padding: 10px; font-size: 15px; }
 .list-tabs { margin-bottom: 14px; }
+.edit-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+label.pill-button { display: inline-flex; align-items: center; cursor: pointer; }
 .empty-note { font-size: 14px; }
 #trainSetup .field.stacked { margin-bottom: 14px; }
 .session-chart { min-height: 160px; }

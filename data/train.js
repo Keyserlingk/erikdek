@@ -5,7 +5,14 @@ import { curveCsv, fileDate } from "./export.js";
 import { LiveChart } from "./chart.js";
 import { device } from "./device.js";
 import { formatDuration, formatKg } from "./format.js";
-import { BUILTIN_ROUTINES, newRoutineId, routines, validateRoutine } from "./routines.js";
+import {
+  BUILTIN_ROUTINES,
+  buildRoutineFile,
+  newRoutineId,
+  parseRoutineFile,
+  routines,
+  validateRoutine,
+} from "./routines.js";
 import { newSessionId, sessions } from "./sessions.js";
 import { renderSession } from "./sessionview.js";
 import { settings } from "./settings.js";
@@ -46,6 +53,10 @@ const el = {
   listError: $("trainListError"),
   notices: { list: $("trainListNotice"), tests: $("testsNotice") },
   newRoutine: $("routineNew"),
+  routineFileActions: $("routineFileActions"),
+  routinesDownload: $("routinesDownload"),
+  routinesImport: $("routinesImport"),
+  routineFileMessage: $("routineFileMessage"),
   listTabs: document.querySelectorAll("#routineTabs button"),
   routineEmpty: $("routineEmpty"),
   templatesNote: $("templatesNote"),
@@ -67,6 +78,7 @@ const el = {
     cancel: $("editCancel"),
     save: $("editSave"),
     remove: $("editDelete"),
+    download: $("editDownload"),
   },
   setup: {
     title: $("setupTitle"),
@@ -200,6 +212,9 @@ function renderList() {
   el.routineEmpty.hidden = view !== "mine" || list.length > 0;
   el.templatesNote.hidden = view !== "templates";
   el.newRoutine.hidden = view !== "mine";
+  el.routineFileActions.hidden = view !== "mine";
+  el.routinesDownload.hidden = !routines.custom.length;
+  if (view !== "mine") showRoutineFileMessage("");
   el.list.replaceChildren(
     ...list.map((r) =>
       create("div", { className: "card routine" }, [
@@ -256,6 +271,7 @@ function openEditor(r) {
   e.targetType.value = editing.target.type;
   e.targetValue.value = editing.target.type === "none" ? "" : editing.target.value;
   e.remove.hidden = isNew;
+  e.download.hidden = isNew;
   e.error.hidden = true;
   updateEditorDerived();
   show("edit");
@@ -302,6 +318,39 @@ async function saveEditor() {
   } catch (err) {
     el.edit.error.textContent = err.message;
     el.edit.error.hidden = false;
+  }
+}
+
+// ---------------------------------------------------------------- routine files
+
+function showRoutineFileMessage(text, isError = false) {
+  el.routineFileMessage.textContent = text;
+  el.routineFileMessage.classList.toggle("error-text", isError);
+}
+
+function routineFileName(name) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "routine";
+  return `erkdek-routine-${slug}.json`;
+}
+
+async function importRoutines() {
+  const file = el.routinesImport.files[0];
+  el.routinesImport.value = "";
+  if (!file) return;
+  try {
+    const { routines: imported, skipped } = parseRoutineFile(await file.text(), routines.all.map((r) => r.name));
+    if (!imported.length) throw new Error(skipped ? "No valid routines in this file." : "The file has no routines.");
+    await routines.replaceAll([...routines.custom, ...imported]);
+    // Holds/grips the routines use but the lists don't have yet.
+    for (const [store, key] of [[holdTypes, "holdType"], [grips, "grip"]]) {
+      const missing = [...new Set(imported.map((r) => r[key]).filter((v) => v && !store.all.includes(v)))];
+      if (missing.length) await store.replaceAll([...store.custom, ...missing]);
+    }
+    showRoutineFileMessage(
+      `Imported ${imported.length} routine${imported.length === 1 ? "" : "s"}` + (skipped ? ` (${skipped} invalid skipped).` : "."),
+    );
+  } catch (err) {
+    showRoutineFileMessage(err.message, true);
   }
 }
 
@@ -636,6 +685,20 @@ export function initTrain() {
   el.edit.cancel.addEventListener("click", () => show("list"));
   el.edit.save.addEventListener("click", saveEditor);
   el.edit.remove.addEventListener("click", deleteEditing);
+  el.edit.download.addEventListener("click", () => {
+    const r = readEditor();
+    const error = validateRoutine(r);
+    if (error) {
+      el.edit.error.textContent = error;
+      el.edit.error.hidden = false;
+      return;
+    }
+    downloadJson(routineFileName(r.name), buildRoutineFile([r]));
+  });
+  el.routinesDownload.addEventListener("click", () =>
+    downloadJson(`erkdek-routines-${fileDate()}.json`, buildRoutineFile(routines.custom)),
+  );
+  el.routinesImport.addEventListener("change", importRoutines);
   for (const input of el.screens.edit.querySelectorAll("input, select")) {
     input.addEventListener("input", updateEditorDerived);
   }

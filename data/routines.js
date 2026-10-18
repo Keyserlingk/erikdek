@@ -137,6 +137,52 @@ class RoutineStore extends EventTarget {
 
 export const routines = new RoutineStore();
 
+let idCounter = 0;
+
 export function newRoutineId() {
-  return `r${Date.now().toString(36)}`;
+  idCounter = (idCounter + 1) % 1296;
+  return `r${Date.now().toString(36)}${idCounter.toString(36)}`;
+}
+
+// Routine file: { format, version, routines: [...] } for sharing routines.
+export const ROUTINE_FORMAT = "erkdek-routines";
+export const ROUTINE_VERSION = 1;
+const ROUTINE_FIELDS = ["name", "holdType", "grip", "sets", "reps", "workS", "restS", "setRestS", "prepS", "target"];
+
+function pickRoutine(r) {
+  return Object.fromEntries(ROUTINE_FIELDS.map((k) => [k, r[k]]));
+}
+
+export function buildRoutineFile(list) {
+  return { format: ROUTINE_FORMAT, version: ROUTINE_VERSION, routines: list.map(pickRoutine) };
+}
+
+// Parses a routine file into importable routines: valid ones get new ids and a
+// "(imported)" suffix when the name is taken. Returns { routines, skipped }.
+export function parseRoutineFile(text, existingNames = []) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error("This is not a valid routine file (not JSON).");
+  }
+  if (!data || data.format !== ROUTINE_FORMAT || !Array.isArray(data.routines)) {
+    throw new Error("This is not an Erkdek routine file.");
+  }
+  if (data.version > ROUTINE_VERSION) throw new Error("This file was made by a newer version of the app.");
+  const taken = new Set(existingNames.map((n) => n.toLowerCase()));
+  const routines = [];
+  let skipped = 0;
+  for (const raw of data.routines) {
+    const r = { ...pickRoutine(raw || {}), holdType: raw?.holdType ?? "", grip: raw?.grip ?? "" };
+    if (typeof r.name !== "string" || !r.target || typeof r.target.type !== "string" || validateRoutine(r)) {
+      skipped++;
+      continue;
+    }
+    let name = r.name.trim();
+    if (taken.has(name.toLowerCase())) name = `${name.slice(0, 29)} (imported)`;
+    taken.add(name.toLowerCase());
+    routines.push({ ...r, name, id: newRoutineId() });
+  }
+  return { routines, skipped };
 }

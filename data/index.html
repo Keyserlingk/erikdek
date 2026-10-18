@@ -72,6 +72,11 @@
         <p id="templatesNote" class="muted empty-note" hidden>Ready-made routines. Start one as is, or "Copy &amp; edit" to make your own version under My routines.</p>
         <div id="routineList"></div>
         <button id="routineNew" class="secondary" type="button">New routine</button>
+        <div id="routineFileActions" class="downloads">
+          <button id="routinesDownload" class="pill-button" type="button">Download all routines</button>
+          <label class="pill-button">Import routines…<input id="routinesImport" type="file" accept=".json,application/json" hidden></label>
+        </div>
+        <p id="routineFileMessage" class="message" aria-live="polite"></p>
       </div>
 
       <div id="trainEdit" hidden>
@@ -110,7 +115,10 @@
             <button id="editSave" class="primary" type="button">Save</button>
           </div>
         </div>
-        <button id="editDelete" class="link danger" type="button" hidden>Delete routine</button>
+        <div class="edit-footer">
+          <button id="editDownload" class="pill-button" type="button" hidden>Download routine</button>
+          <button id="editDelete" class="link danger" type="button" hidden>Delete routine</button>
+        </div>
       </div>
 
       <div id="trainRun" hidden>

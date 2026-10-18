@@ -119,7 +119,8 @@ Phone browser ◄── WebSocket / HTTP ──► live view, graph, timer, rout
   `GET/DELETE /api/sessions/<id>`, `GET /api/storage`
 - Export/import is done in the browser from the APIs above (no firmware code or RAM
   needed): raw 80 Hz CSV right after a run, per-session CSV/JSON, all-sessions CSV,
-  and a full JSON backup restored item by item. WebSocket `{"cmd":"setCalibration","cpk":..}`
+  a full JSON backup restored item by item, and routine files (`erkdek-routines`,
+  one or all routines) for sharing, imported as new routines. WebSocket `{"cmd":"setCalibration","cpk":..}`
   restores the scale factor.
 
 ## Storage
