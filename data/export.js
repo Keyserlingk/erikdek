@@ -1,8 +1,6 @@
 // CSV/JSON export and backup format. No DOM access, so it runs under node --test too.
 
 export const BACKUP_FORMAT = "erkdek-backup";
-// Backups made before the rename to Erkdek.
-const OLD_BACKUP_FORMATS = ["tindek-backup"];
 export const BACKUP_VERSION = 1;
 
 export function csvEscape(value) {
@@ -83,9 +81,7 @@ export function parseBackup(text) {
   } catch {
     throw new Error("This is not a valid backup file (not JSON).");
   }
-  if (!data || (data.format !== BACKUP_FORMAT && !OLD_BACKUP_FORMATS.includes(data.format))) {
-    throw new Error("This is not an Erkdek backup file.");
-  }
+  if (!data || data.format !== BACKUP_FORMAT) throw new Error("This is not an Erkdek backup file.");
   if (data.version > BACKUP_VERSION) throw new Error("This backup was made by a newer version of the app.");
   const arrays = ["routines", "holdTypes", "grips", "sessions"];
   for (const key of arrays) {

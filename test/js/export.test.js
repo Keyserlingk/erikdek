@@ -59,7 +59,6 @@ test("backup round trip and validation", () => {
 
   assert.throws(() => parseBackup("{nope"), /not JSON/);
   assert.throws(() => parseBackup('{"format":"other"}'), /not an Erkdek backup/);
-  assert.equal(parseBackup(JSON.stringify({ ...backup, format: "tindek-backup" })).sessions.length, 1); // pre-rename
   assert.throws(() => parseBackup(JSON.stringify({ ...backup, version: 99 })), /newer version/);
   assert.throws(() => parseBackup(JSON.stringify({ ...backup, sessions: "x" })), /damaged/);
 });
