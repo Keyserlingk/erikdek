@@ -66,6 +66,17 @@ function curveChart(container, curve) {
   );
 }
 
+// Row of bars, one per rep, with a gap between sets. Bar height is pct (0–100).
+function renderStrip(strip) {
+  const bars = strip.bars.map((b, i) =>
+    el("div", { className: `strip-bar${i > 0 && b.set !== strip.bars[i - 1].set ? " new-set" : ""}`, title: b.title }, [
+      el("div", { className: `strip-fill ${b.cls}` }),
+    ]),
+  );
+  strip.bars.forEach((b, i) => (bars[i].firstChild.style.height = `${Math.max(2, b.pct)}%`));
+  return el("div", { className: "strip-block" }, [el("div", { className: "strip-label", textContent: strip.label }), el("div", { className: "strip" }, bars)]);
+}
+
 // Fills `root` with the session view. Returns the chart (or null) so callers can destroy it.
 export function renderSession(root, s) {
   const kind = KINDS[s.type];
@@ -80,8 +91,11 @@ export function renderSession(root, s) {
 
   const chartBox = el("div", { className: "session-chart" });
   const table = kind.table(s);
-  const rows = table.rows.map((cells) => el("tr", {}, cells.map((c) => el("td", { textContent: c }))));
-  if (table.head.at(-1) === "Held") for (const tr of rows) tr.lastChild.className = "ok";
+  // A cell is text, or { text, cls } for a colored cell.
+  const rows = table.rows.map((cells) =>
+    el("tr", {}, cells.map((c) => (typeof c === "object" ? el("td", { textContent: c.text, className: c.cls }) : el("td", { textContent: c })))),
+  );
+  const strips = (kind.strips?.(s) ?? []).filter((strip) => strip.bars.length > 1);
   const tableCard = el("div", { className: "card" }, [
     el("table", { className: "reps" }, [
       el("thead", {}, [el("tr", {}, table.head.map((h) => el("th", { textContent: h })))]),
@@ -94,6 +108,7 @@ export function renderSession(root, s) {
     el("p", { className: "muted", textContent: meta.join(" · ") }),
     tiles,
     el("div", { className: "card chart-card" }, [chartBox]),
+    ...(strips.length ? [el("div", { className: "card strips" }, strips.map(renderStrip))] : []),
     ...(rows.length ? [tableCard] : []),
   );
   return s.curve && curvePoints(s.curve).x.length > 1 ? curveChart(chartBox, s.curve) : null;

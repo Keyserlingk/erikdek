@@ -6,6 +6,7 @@ import {
   bestWindowMean,
   compressCurve,
   curvePoints,
+  forceRetention,
   criticalForceSummary,
   maxPullSummary,
   rfdOfPull,
@@ -24,6 +25,14 @@ function pull({ restS = 0.5, rampS = 0.2, peakKg = 40, holdS = 2 } = {}) {
   for (let t = 0; t < holdS; t += DT) out.push(peakKg);
   return out;
 }
+
+test("forceRetention compares the last reps with the first", () => {
+  assert.equal(forceRetention([30, 30, 30, 24, 24, 24]), 80);
+  assert.equal(forceRetention([30, 20]), (100 * 20) / 30); // 1 vs 1
+  assert.equal(forceRetention([30, 25, 20, 15, 10]), (100 * 12.5) / 27.5); // 2 vs 2
+  assert.equal(forceRetention([30]), null);
+  assert.equal(forceRetention([0, 0, 5, 5]), null);
+});
 
 test("bestWindowMean finds the best 1 s average", () => {
   const s = [...Array(80).fill(10), ...Array(80).fill(30), ...Array(40).fill(20)];

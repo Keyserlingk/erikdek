@@ -393,7 +393,7 @@ function finishRep() {
   if (!run.repSamples) return;
   const phase = run.phases[run.index];
   run.attempts.push(run.repSamples);
-  run.reps.push({ set: phase.set, rep: phase.rep, ...repStats(run.repSamples, sampleDtS(), run.threshold, phase.durS) });
+  run.reps.push({ set: phase.set, rep: phase.rep, ...repStats(run.repSamples, sampleDtS(), run.threshold, phase.durS, run.target) });
   run.repSamples = null;
 }
 
@@ -448,8 +448,8 @@ const round2 = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
 function buildSession(stopped) {
   const dtS = sampleDtS();
   const r = run.routine;
-  const reps = run.reps.map((rep) => ({ ...rep, peakKg: round2(rep.peakKg), meanKg: round2(rep.meanKg), tutS: round2(rep.tutS) }));
-  const summary = KINDS[run.kind].analyze({ reps: run.reps, attempts: run.attempts, dtS, routine: r });
+  const reps = run.reps.map((rep) => Object.fromEntries(Object.entries(rep).map(([k, v]) => [k, round2(v)])));
+  const summary = KINDS[run.kind].analyze({ reps: run.reps, attempts: run.attempts, dtS, routine: r, target: run.target });
   const session = {
     id: newSessionId(),
     type: run.kind,
@@ -473,23 +473,22 @@ function buildSession(stopped) {
   return session;
 }
 
-// Routines only: how long the current rep has been held, the last rep's result and
-// the running count of held reps.
+// Routines only: how long the current rep has been held, the last rep's hold % and
+// the average hold % of the reps done so far.
 function renderHeld(phase) {
   const show = run.kind === "workout";
   el.run.held.hidden = !show || !run.reps.length;
   el.run.repInfo.hidden = !show;
   if (!show) return;
-  const held = run.reps.filter((r) => r.completed).length;
-  el.run.held.textContent = `${held}/${run.reps.length} reps held`;
+  const avgHold = run.reps.reduce((sum, r) => sum + r.holdPct, 0) / (run.reps.length || 1);
+  el.run.held.textContent = `Hold ${Math.round(avgHold)} % so far`;
 
   const last = run.reps.at(-1);
   if (phase.type === PHASE.WORK) {
     el.run.repInfo.textContent = `Held ${(run.repLoadedSamples * sampleDtS()).toFixed(1)} / ${phase.durS} s`;
     el.run.repInfo.dataset.state = "live";
   } else if (last) {
-    const lastDur = run.phases.find((p) => p.type === PHASE.WORK).durS;
-    el.run.repInfo.textContent = last.completed ? "Last rep held ✓" : `Last rep ${last.tutS.toFixed(1)} / ${lastDur} s`;
+    el.run.repInfo.textContent = `Last rep ${Math.round(last.holdPct)} %${last.completed ? " ✓" : ""}`;
     el.run.repInfo.dataset.state = last.completed ? "held" : "short";
   } else {
     el.run.repInfo.textContent = "";

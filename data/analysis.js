@@ -8,6 +8,17 @@ export const RFD_WINDOW_S = 0.2;
 const ONSET_SHARE = 0.05;
 const ONSET_MIN_KG = 1;
 
+// Force retention: average of the last reps as % of the average of the first reps
+// (up to 3 each, never overlapping). Null with fewer than 2 reps.
+export function forceRetention(repMeansKg, count = 3) {
+  const n = repMeansKg.length;
+  if (n < 2) return null;
+  const k = Math.min(count, Math.floor(n / 2));
+  const avg = (list) => list.reduce((a, b) => a + b, 0) / list.length;
+  const first = avg(repMeansKg.slice(0, k));
+  return first > 0 ? (100 * avg(repMeansKg.slice(n - k))) / first : null;
+}
+
 // Highest average over any window of `windowS` seconds.
 export function bestWindowMean(samples, dtS, windowS) {
   const n = Math.max(1, Math.round(windowS / dtS));

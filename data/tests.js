@@ -2,7 +2,7 @@
 // summarise a recorded run, which metric shows progress, and how to present a session.
 // No DOM access, so it runs under node --test too.
 
-import { CF_LAST_REPS, criticalForceSummary, maxPullSummary, rfdSummary } from "./analysis.js";
+import { CF_LAST_REPS, criticalForceSummary, forceRetention, maxPullSummary, rfdSummary } from "./analysis.js";
 import { formatDuration, formatKg } from "./format.js";
 
 const kg = (v) => (v === null || v === undefined ? "–" : `${formatKg(v)} kg`);
@@ -11,6 +11,7 @@ const pctBw = (v, bw) => (v && bw > 0 ? ` · ${Math.round((v / bw) * 100)} % BW`
 const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)} %`);
 const seconds = (v) => (v === null || v === undefined ? "–" : formatDuration(Math.round(v)));
 const num = (v) => (typeof v === "number" ? v : null);
+const holdClass = (hold) => (hold >= 90 ? "ok" : hold >= 50 ? "warn" : "bad");
 
 // Progress metrics: value(session) reads it from a saved session (index entry is enough).
 // Kinds list them in `metrics`; the first one is the default.
@@ -22,35 +23,84 @@ export const KINDS = {
     workLabel: "Hang",
     metrics: [
       {
-        key: "heldPct",
-        label: "Reps held",
+        key: "holdPct",
+        label: "Hold %",
         format: pct,
-        value: (s) => (s.summary?.totalReps ? (100 * s.summary.completed) / s.summary.totalReps : null),
+        // Sessions saved before hold % existed: derive it from time under tension.
+        value: (s) =>
+          num(s.summary?.holdPct) ??
+          (s.summary?.totalReps && s.routine?.workS ? (100 * s.summary.tutS) / (s.summary.totalReps * s.routine.workS) : null),
       },
+      summaryMetric("retentionPct", "Force retention", pct),
+      summaryMetric("workPct", "Work vs target", pct),
       summaryMetric("tutS", "Time under tension", seconds),
       summaryMetric("avgKg", "Average force", kg),
       summaryMetric("peakKg", "Peak force", kg),
       { key: "targetKg", label: "Target load", format: kg, value: (s) => num(s.targetKg) },
     ],
-    analyze({ reps, routine }) {
+    // Per-rep values are averaged over all planned reps, so skipped reps count as 0.
+    analyze({ reps, routine, target }) {
+      const totalReps = routine.sets * routine.reps;
+      const sum = (key) => reps.reduce((s, r) => s + (r[key] ?? 0), 0);
       return {
         completed: reps.filter((r) => r.completed).length,
-        totalReps: routine.sets * routine.reps,
+        totalReps,
+        holdPct: sum("holdPct") / totalReps,
+        workPct: target ? sum("workPct") / totalReps : null,
+        retentionPct: forceRetention(reps.map((r) => r.meanKg)),
         peakKg: reps.reduce((m, r) => Math.max(m, r.peakKg), 0),
-        avgKg: reps.length ? reps.reduce((s, r) => s + r.meanKg, 0) / reps.length : null,
-        tutS: reps.reduce((s, r) => s + r.tutS, 0),
+        avgKg: reps.length ? sum("meanKg") / reps.length : null,
+        tutS: sum("tutS"),
       };
     },
     tiles: (s) => [
-      [`${s.summary.completed}/${s.summary.totalReps}`, "reps held"],
-      [kg(s.summary.peakKg), "best peak"],
+      [pct(KINDS.workout.metrics[0].value(s)), `hold · ${s.summary.completed}/${s.summary.totalReps} full reps`],
+      [pct(s.summary.retentionPct), "force retention (last vs first reps)"],
+      ...(s.targetKg ? [[pct(s.summary.workPct), "work vs target"]] : []),
       [kg(s.summary.avgKg), "avg force"],
+      [kg(s.summary.peakKg), "best peak"],
       [formatDuration(Math.round(s.summary.tutS)), "time under tension"],
     ],
-    table: (s) => ({
-      head: ["Rep", "Peak", "Avg", "Loaded", "Held"],
-      rows: s.reps.map((r) => [`${r.set}.${r.rep}`, formatKg(r.peakKg), formatKg(r.meanKg), `${r.tutS.toFixed(1)} s`, r.completed ? "✓" : ""]),
-    }),
+    table: (s) => {
+      const first = s.reps[0]?.meanKg;
+      const hasWork = s.reps.some((r) => typeof r.workPct === "number");
+      return {
+        head: ["Rep", "Avg", "Hold", ...(hasWork ? ["Work"] : []), "vs 1st"],
+        rows: s.reps.map((r) => {
+          const hold = r.holdPct ?? (100 * r.tutS) / s.routine.workS;
+          return [
+            `${r.set}.${r.rep}`,
+            formatKg(r.meanKg),
+            { text: `${Math.round(hold)} %${r.completed ? " ✓" : ""}`, cls: holdClass(hold) },
+            ...(hasWork ? [pct(r.workPct)] : []),
+            first > 0 ? pct((100 * r.meanKg) / first) : "–",
+          ];
+        }),
+      };
+    },
+    // Bar strips per rep: hold % and force relative to rep 1.
+    strips: (s) => {
+      const first = s.reps[0]?.meanKg;
+      const strips = [
+        {
+          label: "Hold per rep",
+          bars: s.reps.map((r) => {
+            const hold = r.holdPct ?? (100 * r.tutS) / s.routine.workS;
+            return { set: r.set, pct: hold, cls: holdClass(hold), title: `${r.set}.${r.rep}: ${Math.round(hold)} %` };
+          }),
+        },
+      ];
+      if (first > 0) {
+        strips.push({
+          label: "Force vs rep 1",
+          bars: s.reps.map((r) => {
+            const rel = (100 * r.meanKg) / first;
+            return { set: r.set, pct: Math.min(rel, 100), cls: "neutral", title: `${r.set}.${r.rep}: ${Math.round(rel)} %` };
+          }),
+        });
+      }
+      return strips;
+    },
   },
 
   maxPull: {

@@ -109,6 +109,20 @@ test("repStats computes peak, mean, time under tension and completion", () => {
   assert.ok(Math.abs(s.meanKg - (40 * 1 + 519 * 20 + 24) / 560) < 1e-9);
 });
 
+test("repStats hold % and work vs target", () => {
+  const dt = 1 / 80;
+  // 4 s of a 5 s hang loaded: 2 s at the 20 kg target, 2 s at 25 kg (counts as 20), 1 s off
+  const samples = [...Array(160).fill(20), ...Array(160).fill(25), ...Array(80).fill(0)];
+  const s = repStats(samples, dt, 16, 5, 20);
+  assert.ok(Math.abs(s.holdPct - 80) < 1e-9);
+  assert.ok(Math.abs(s.workPct - 80) < 1e-9);
+  // 5 s at 10 kg against a 20 kg target: fully held above a 5 kg threshold, half the work
+  const light = repStats(Array(400).fill(10), dt, 5, 5, 20);
+  assert.equal(light.holdPct, 100);
+  assert.ok(Math.abs(light.workPct - 50) < 1e-9);
+  assert.equal(repStats(samples, dt, 16, 5).workPct, null);
+});
+
 test("repStats marks a rep let go early as not completed", () => {
   const samples = [...Array(400).fill(20), ...Array(160).fill(0)]; // 5 of 7 s
   assert.equal(repStats(samples, 1 / 80, 10, 7).completed, false);

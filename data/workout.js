@@ -105,20 +105,27 @@ export class WorkoutEngine {
 }
 
 // Statistics for one work phase. dtS is the time per sample.
-export function repStats(samples, dtS, thresholdKg, workS) {
+//   holdPct: share of the hang time spent loaded (above thresholdKg), max 100
+//   workPct: force × time against target × hang time, counting force up to the
+//            target only (null without a target)
+export function repStats(samples, dtS, thresholdKg, workS, targetKg = null) {
   let peak = 0;
   let sum = 0;
   let loaded = 0;
+  let work = 0;
   for (const kg of samples) {
     if (kg > peak) peak = kg;
     sum += kg;
     if (kg >= thresholdKg) loaded++;
+    if (targetKg !== null) work += Math.min(Math.max(kg, 0), targetKg);
   }
   const tutS = loaded * dtS;
   return {
     peakKg: peak,
     meanKg: samples.length ? sum / samples.length : 0,
     tutS,
+    holdPct: Math.min(100, (100 * tutS) / workS),
+    workPct: targetKg ? Math.min(100, (100 * work * dtS) / (targetKg * workS)) : null,
     completed: samples.length > 0 && tutS >= COMPLETE_SHARE * workS,
   };
 }
