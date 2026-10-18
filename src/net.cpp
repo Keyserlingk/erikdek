@@ -6,7 +6,9 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 
+#include "api_util.h"
 #include "sensor.h"
+#include "sessions.h"
 #include "storage.h"
 
 // Optional: include/wifi_secrets.h with
@@ -130,13 +132,6 @@ static void settingsToJson(JsonObject obj) {
   obj["repThresholdKg"] = settings.repThresholdKg;
 }
 
-static void sendError(AsyncWebServerRequest* req, int code, const char* message) {
-  JsonDocument doc;
-  doc["error"] = message;
-  String out;
-  serializeJson(doc, out);
-  req->send(code, "application/json", out);
-}
 
 static void handleGetSettings(AsyncWebServerRequest* req) {
   auto* res = new AsyncJsonResponse();
@@ -180,6 +175,7 @@ struct JsonListFile {
 static constexpr JsonListFile kJsonLists[] = {
     {"/api/routines", "/routines.json", 50, 16384},
     {"/api/holdtypes", "/holdtypes.json", 50, 4096},
+    {"/api/grips", "/grips.json", 50, 4096},
 };
 
 static void registerJsonList(const JsonListFile& list) {
@@ -211,6 +207,7 @@ void netBegin() {
   putSettings->setMethod(HTTP_PUT);
   server.addHandler(putSettings);
   for (const auto& list : kJsonLists) registerJsonList(list);
+  sessionsRegister(server);
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
   server.onNotFound([](AsyncWebServerRequest* req) { req->send(404, "text/plain", "Not found"); });
   server.begin();

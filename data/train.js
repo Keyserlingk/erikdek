@@ -1,10 +1,14 @@
+import { decimate } from "./analysis.js";
 import { beep, unlockAudio } from "./audio.js";
 import { LiveChart } from "./chart.js";
 import { device } from "./device.js";
 import { formatDuration, formatKg } from "./format.js";
-import { BUILTIN_HOLD_TYPES, holdTypes } from "./holdtypes.js";
 import { BUILTIN_ROUTINES, newRoutineId, routines, validateRoutine } from "./routines.js";
+import { newSessionId, sessions } from "./sessions.js";
+import { renderSession } from "./sessionview.js";
 import { settings } from "./settings.js";
+import { TagSelect, grips, holdTypes } from "./tags.js";
+import { HANDS, KINDS, TEST_IDS } from "./tests.js";
 import {
   PHASE,
   WorkoutEngine,
@@ -17,23 +21,29 @@ import {
 } from "./workout.js";
 
 const TICK_MS = 50;
-const NEW_HOLD_TYPE = "__new__";
-const PHASE_NAMES = { prep: "Get ready", work: "Hang", rest: "Rest", setRest: "Set rest" };
+const CURVE_MAX_POINTS = 2000; // stored curve size (~10 KB per session)
+const SETUP_KEY = "tindek.testSetup";
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  screens: { list: $("trainList"), edit: $("trainEdit"), run: $("trainRun"), summary: $("trainSummary") },
+  // Screens of the Train and Tests tabs. Run and summary are shared and moved into the
+  // tab the run was started from.
+  screens: {
+    list: $("trainList"),
+    tests: $("testsMain"),
+    edit: $("trainEdit"),
+    setup: $("trainSetup"),
+    run: $("trainRun"),
+    summary: $("trainSummary"),
+  },
+  tests: $("testList"),
   list: $("routineList"),
   listError: $("trainListError"),
+  notices: { list: $("trainListNotice"), tests: $("testsNotice") },
   newRoutine: $("routineNew"),
   edit: {
     title: $("editTitle"),
     name: $("editName"),
-    holdType: $("editHoldType"),
-    holdNewRow: $("editHoldNewRow"),
-    holdNew: $("editHoldNew"),
-    holdAdd: $("editHoldAdd"),
-    holdError: $("editHoldError"),
     sets: $("editSets"),
     reps: $("editReps"),
     workS: $("editWork"),
@@ -50,6 +60,13 @@ const el = {
     save: $("editSave"),
     remove: $("editDelete"),
   },
+  setup: {
+    title: $("setupTitle"),
+    description: $("setupDescription"),
+    hands: document.querySelectorAll("#setupHand button"),
+    cancel: $("setupCancel"),
+    start: $("setupStart"),
+  },
   run: {
     card: $("runPhaseCard"),
     phase: $("runPhase"),
@@ -65,72 +82,118 @@ const el = {
     wakeHint: $("runWakeHint"),
   },
   summary: {
-    title: $("sumTitle"),
-    meta: $("sumMeta"),
-    tiles: $("sumTiles"),
-    reps: $("sumReps"),
-    done: $("sumDone"),
+    view: $("sumView"),
+    error: $("sumError"),
+    discard: $("sumDiscard"),
+    save: $("sumSave"),
   },
 };
 
 let editing = null; // routine being edited (copy)
-let run = null; // active workout
-let lastResult = null;
+let setup = null; // test being set up: { kind, hand }
+let run = null; // active workout or test
+let result = null; // finished, unsaved session
 let chart = null;
+let summaryChart = null;
+let selects = null; // TagSelects: editHold, editGrip, setupHold, setupGrip
+
+// Screens per tab; run and summary belong to the tab they are mounted in (runHost).
+const GROUPS = { train: ["list", "edit"], tests: ["tests", "setup"] };
+const HOME = { train: "list", tests: "tests" };
+let runHost = "train";
 
 function show(screen) {
-  for (const [name, node] of Object.entries(el.screens)) node.hidden = name !== screen;
+  const group = Object.keys(GROUPS).find((g) => GROUPS[g].includes(screen)) ?? runHost;
+  const names = [...GROUPS[group], ...(group === runHost ? ["run", "summary"] : [])];
+  for (const name of names) el.screens[name].hidden = name !== screen;
+  window.scrollTo(0, 0);
+}
+
+// Moves the shared run/summary screens into the tab a run starts from.
+function mountRunScreens(group) {
+  if (group === runHost) return;
+  if (!el.screens.run.hidden || !el.screens.summary.hidden) show(HOME[runHost]);
+  $(`view-${group}`).append(el.screens.run, el.screens.summary);
+  runHost = group;
+}
+
+function create(tag, props = {}, children = []) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+function button(className, text, onClick) {
+  const b = create("button", { type: "button", className, textContent: text });
+  b.addEventListener("click", onClick);
+  return b;
 }
 
 function describe(r) {
   const parts = [`${r.sets} × ${r.reps}`, `${r.workS} s on`];
-  if (r.holdType) parts.unshift(r.holdType);
   if (r.reps > 1) parts.push(`${r.restS} s off`);
   if (r.sets > 1) parts.push(`${formatDuration(r.setRestS)} between sets`);
   if (r.target.type === "kg") parts.push(`target ${r.target.value} kg`);
   if (r.target.type === "bw") parts.push(`target ${r.target.value} % BW`);
-  return parts.join(" · ");
+  const tags = [r.holdType, r.grip].filter(Boolean);
+  return [...tags, ...parts].join(" · ");
 }
 
 // ---------------------------------------------------------------- list
 
+function renderTests() {
+  el.tests.replaceChildren(
+    ...TEST_IDS.map((id) => {
+      const kind = KINDS[id];
+      return create("div", { className: "card routine" }, [
+        create("div", { className: "routine-head" }, [
+          create("h2", { textContent: kind.name }),
+          create("span", { className: "muted", textContent: formatDuration(totalDurationS(kind.routine)) }),
+        ]),
+        create("p", { className: "muted", textContent: kind.description }),
+        button("primary", "Start test", () => openSetup(id)),
+      ]);
+    }),
+  );
+}
+
 function renderList() {
-  el.list.replaceChildren();
-  for (const r of routines.all) {
-    const card = document.createElement("div");
-    card.className = "card routine";
-    const head = document.createElement("div");
-    head.className = "routine-head";
-    const name = document.createElement("h2");
-    name.textContent = r.name;
-    const dur = document.createElement("span");
-    dur.className = "muted";
-    dur.textContent = formatDuration(totalDurationS(r));
-    head.append(name, dur);
-    const desc = document.createElement("p");
-    desc.className = "muted";
-    desc.textContent = describe(r);
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "secondary";
-    editBtn.textContent = r.builtin ? "Copy & edit" : "Edit";
-    editBtn.addEventListener("click", () => openEditor(r));
-    const startBtn = document.createElement("button");
-    startBtn.type = "button";
-    startBtn.className = "primary";
-    startBtn.textContent = "Start";
-    startBtn.addEventListener("click", () => startWorkout(r));
-    actions.append(editBtn, startBtn);
-    card.append(head, desc, actions);
-    el.list.append(card);
-  }
+  el.list.replaceChildren(
+    ...routines.all.map((r) =>
+      create("div", { className: "card routine" }, [
+        create("div", { className: "routine-head" }, [
+          create("h2", { textContent: r.name }),
+          create("span", { className: "muted", textContent: formatDuration(totalDurationS(r)) }),
+        ]),
+        create("p", { className: "muted", textContent: describe(r) }),
+        create("div", { className: "actions" }, [
+          button("secondary", r.builtin ? "Copy & edit" : "Edit", () => openEditor(r)),
+          button("primary", "Start", () => startRun("workout", r, "both")),
+        ]),
+      ]),
+    ),
+  );
 }
 
 function showListError(text) {
   el.listError.textContent = text;
   el.listError.hidden = !text;
+}
+
+// Home screen of the tab a run started from.
+function homeOf(kind) {
+  return HOME[groupOf(kind)];
+}
+
+function groupOf(kind) {
+  return kind === "workout" ? "train" : "tests";
+}
+
+function showNotice(home, text) {
+  for (const [name, node] of Object.entries(el.notices)) {
+    node.textContent = name === home ? text : "";
+    node.hidden = name !== home || !text;
+  }
 }
 
 // ---------------------------------------------------------------- editor
@@ -141,14 +204,12 @@ function openEditor(r) {
     ? structuredClone({ ...r, id: r.builtin ? newRoutineId() : r.id, builtin: false })
     : { ...structuredClone(BUILTIN_ROUTINES[0]), id: newRoutineId(), name: "", builtin: false };
   if (r && r.builtin) editing.name = `${r.name} (copy)`;
-  editing.isNew = isNew;
 
   const e = el.edit;
   e.title.textContent = isNew ? "New routine" : "Edit routine";
   e.name.value = editing.name;
-  editing.holdType = editing.holdType || "";
-  renderHoldTypeOptions(editing.holdType);
-  showHoldNew(false);
+  selects.editHold.value = editing.holdType || "";
+  selects.editGrip.value = editing.grip || "";
   for (const key of ["sets", "reps", "workS", "restS", "setRestS", "prepS"]) e[key].value = editing[key];
   e.targetType.value = editing.target.type;
   e.targetValue.value = editing.target.type === "none" ? "" : editing.target.value;
@@ -165,7 +226,8 @@ function readEditor() {
   return {
     id: editing.id,
     name: e.name.value.trim(),
-    holdType: e.holdType.value === NEW_HOLD_TYPE ? "" : e.holdType.value,
+    holdType: selects.editHold.value,
+    grip: selects.editGrip.value,
     sets: int(e.sets),
     reps: int(e.reps),
     workS: int(e.workS),
@@ -183,50 +245,6 @@ function updateEditorDerived() {
   e.targetUnit.textContent = type === "bw" ? "% BW" : "kg";
   const r = readEditor();
   e.duration.textContent = validateRoutine(r) ? "" : `Total time ${formatDuration(totalDurationS(r))}`;
-}
-
-function option(value, label) {
-  const o = document.createElement("option");
-  o.value = value;
-  o.textContent = label;
-  return o;
-}
-
-function renderHoldTypeOptions(selected) {
-  const select = el.edit.holdType;
-  const standard = document.createElement("optgroup");
-  standard.label = "Standard";
-  standard.append(...BUILTIN_HOLD_TYPES.map((h) => option(h, h)));
-  const own = document.createElement("optgroup");
-  own.label = "Your hold types";
-  // Keep a routine's hold type selectable even if it was removed from the list.
-  const custom = [...holdTypes.custom];
-  if (selected && !holdTypes.all.includes(selected)) custom.push(selected);
-  own.append(...custom.map((h) => option(h, h)));
-  select.replaceChildren(option("", "Not specified"), standard);
-  if (custom.length) select.append(own);
-  select.append(option(NEW_HOLD_TYPE, "+ Add new…"));
-  select.value = selected;
-}
-
-function showHoldNew(visible) {
-  el.edit.holdNewRow.hidden = !visible;
-  el.edit.holdError.hidden = true;
-  el.edit.holdNew.value = "";
-  if (visible) el.edit.holdNew.focus();
-}
-
-async function addHoldType() {
-  const name = el.edit.holdNew.value.trim();
-  try {
-    await holdTypes.add(name);
-    editing.holdType = name;
-    renderHoldTypeOptions(name);
-    showHoldNew(false);
-  } catch (err) {
-    el.edit.holdError.textContent = err.message;
-    el.edit.holdError.hidden = false;
-  }
 }
 
 async function saveEditor() {
@@ -255,6 +273,55 @@ async function deleteEditing() {
   }
 }
 
+// ---------------------------------------------------------------- test setup
+
+function loadSetupDefaults(kind) {
+  try {
+    return JSON.parse(localStorage.getItem(SETUP_KEY))?.[kind] || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSetupDefaults(kind, values) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SETUP_KEY)) || {};
+    all[kind] = values;
+    localStorage.setItem(SETUP_KEY, JSON.stringify(all));
+  } catch {
+    // storage unavailable: setup just isn't remembered
+  }
+}
+
+function setHand(hand) {
+  setup.hand = hand;
+  for (const b of el.setup.hands) b.classList.toggle("active", b.dataset.hand === hand);
+}
+
+function openSetup(kind) {
+  const defaults = loadSetupDefaults(kind);
+  setup = { kind };
+  el.setup.title.textContent = KINDS[kind].name;
+  el.setup.description.textContent = KINDS[kind].description;
+  setHand(defaults.hand || "both");
+  selects.setupHold.value = defaults.holdType || "";
+  selects.setupGrip.value = defaults.grip || "";
+  show("setup");
+}
+
+function startTest() {
+  const values = { hand: setup.hand, holdType: selects.setupHold.value, grip: selects.setupGrip.value };
+  saveSetupDefaults(setup.kind, values);
+  const routine = {
+    ...KINDS[setup.kind].routine,
+    name: KINDS[setup.kind].name,
+    holdType: values.holdType,
+    grip: values.grip,
+    target: { type: "none", value: 0 },
+  };
+  startRun(setup.kind, routine, values.hand);
+}
+
 // ---------------------------------------------------------------- running
 
 async function requestWakeLock() {
@@ -267,19 +334,24 @@ async function requestWakeLock() {
   }
 }
 
-async function startWorkout(r) {
+async function startRun(kind, routine, hand) {
   unlockAudio();
-  const target = targetKg(r, settings.values.bodyweightKg);
-  const phases = buildPhases(r);
+  mountRunScreens(groupOf(kind));
+  const target = targetKg(routine, settings.values.bodyweightKg);
+  const phases = buildPhases(routine);
   run = {
-    routine: r,
+    kind,
+    routine,
+    hand,
     phases,
     engine: new WorkoutEngine(phases),
     target,
     threshold: loadThresholdKg(target, settings.values.repThresholdKg),
     index: -1,
     repSamples: null,
+    attempts: [], // raw samples of each work phase
     reps: [],
+    curve: [], // every sample while not paused
     smoothed: null,
     lastCountdown: null,
     startedAt: new Date(),
@@ -288,8 +360,8 @@ async function startWorkout(r) {
   };
   chart.clear();
   chart.setTarget(target);
-  el.run.target.textContent = target !== null ? `Target ${formatKg(target)} kg` : "No target";
-  if (r.target.type === "bw" && target === null) el.run.target.textContent = "Set bodyweight for a % target";
+  el.run.target.textContent = target !== null ? `Target ${formatKg(target)} kg` : kind === "workout" ? "No target" : HANDS[hand];
+  if (routine.target.type === "bw" && target === null) el.run.target.textContent = "Set bodyweight for a % target";
   el.run.pause.textContent = "Pause";
   show("run");
   el.run.wakeHint.hidden = await requestWakeLock();
@@ -299,11 +371,15 @@ async function startWorkout(r) {
   tick();
 }
 
+function sampleDtS() {
+  return 1 / (device.status?.rate || 80);
+}
+
 function finishRep() {
   if (!run.repSamples) return;
   const phase = run.phases[run.index];
-  const dtS = 1 / (device.status?.rate || 80);
-  run.reps.push({ set: phase.set, rep: phase.rep, ...repStats(run.repSamples, dtS, run.threshold, phase.durS) });
+  run.attempts.push(run.repSamples);
+  run.reps.push({ set: phase.set, rep: phase.rep, ...repStats(run.repSamples, sampleDtS(), run.threshold, phase.durS) });
   run.repSamples = null;
 }
 
@@ -321,12 +397,16 @@ function enterPhase(i) {
   }
 }
 
+function phaseName(type) {
+  return type === PHASE.WORK ? KINDS[run.kind].workLabel : { prep: "Get ready", rest: "Rest", setRest: "Set rest" }[type];
+}
+
 function tick() {
   const now = performance.now() / 1000;
   const state = run.engine.update(now);
   for (const i of state.entered) enterPhase(i);
   if (state.done) {
-    finishWorkout();
+    endRun(false);
     return;
   }
 
@@ -343,10 +423,10 @@ function tick() {
 
   const r = run.routine;
   el.run.card.dataset.phase = phase.type;
-  el.run.phase.textContent = run.engine.paused ? "Paused" : PHASE_NAMES[phase.type];
+  el.run.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type);
   el.run.countdown.textContent = Math.ceil(remainingS);
-  el.run.progress.textContent = `Set ${phase.set}/${r.sets} · Rep ${phase.rep}/${r.reps}`;
-  el.run.next.textContent = next ? `Next: ${PHASE_NAMES[next.type]} ${formatDuration(next.durS)}` : "Last one!";
+  el.run.progress.textContent = r.reps > 1 ? `Set ${phase.set}/${r.sets} · Rep ${phase.rep}/${r.reps}` : `Attempt ${phase.set}/${r.sets}`;
+  el.run.next.textContent = next ? `Next: ${phaseName(next.type)} ${formatDuration(next.durS)}` : "Last one!";
 
   const kg = run.smoothed ?? 0;
   el.run.kg.textContent = device.connected ? formatKg(kg) : "–";
@@ -354,42 +434,49 @@ function tick() {
   chart.render();
 }
 
-function stopTimers() {
+const round2 = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
+
+function buildSession(stopped) {
+  const dtS = sampleDtS();
+  const r = run.routine;
+  const reps = run.reps.map((rep) => ({ ...rep, peakKg: round2(rep.peakKg), meanKg: round2(rep.meanKg), tutS: round2(rep.tutS) }));
+  const summary = KINDS[run.kind].analyze({ reps: run.reps, attempts: run.attempts, dtS, routine: r });
+  const session = {
+    id: newSessionId(),
+    type: run.kind,
+    name: r.name,
+    startedAt: run.startedAt.toISOString(),
+    durationS: Math.round((Date.now() - run.startedAt.getTime()) / 1000), // wall time, incl. skips/pauses
+    holdType: r.holdType || "",
+    grip: r.grip || "",
+    hand: run.hand,
+    bodyweightKg: settings.values.bodyweightKg || 0,
+    targetKg: run.target,
+    summary: Object.fromEntries(Object.entries(summary).map(([k, v]) => [k, Array.isArray(v) ? v.map(round2) : round2(v)])),
+    reps,
+    curve: decimate(run.curve, 1 / dtS, CURVE_MAX_POINTS),
+  };
+  if (run.kind === "workout") {
+    const { name, holdType, grip, sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;
+    session.routine = { id: r.id, name, holdType, grip, sets, reps: repCount, workS, restS, setRestS, prepS, target };
+  }
+  if (stopped) session.stopped = true;
+  return session;
+}
+
+function endRun(stopped) {
   clearInterval(run.timer);
   if (run.wakeLock) run.wakeLock.release().catch(() => {});
+  if (stopped) finishRep();
+  else beep.finished();
+  result = buildSession(stopped);
+  run = null;
+  showSummary();
 }
 
-function finishWorkout() {
-  stopTimers();
-  beep.finished();
-  lastResult = {
-    routine: run.routine,
-    startedAt: run.startedAt.toISOString(),
-    durationS: Math.round(run.engine.totalS),
-    targetKg: run.target,
-    reps: run.reps,
-  };
-  run = null;
-  renderSummary(lastResult);
-  show("summary");
-}
-
-function stopWorkout() {
-  if (!confirm("Stop the workout?")) return;
-  stopTimers();
-  finishRep();
-  const result = {
-    routine: run.routine,
-    startedAt: run.startedAt.toISOString(),
-    durationS: Math.round(run.engine.elapsed(performance.now() / 1000)),
-    targetKg: run.target,
-    reps: run.reps,
-    stopped: true,
-  };
-  run = null;
-  lastResult = result;
-  renderSummary(result);
-  show("summary");
+function stopRun() {
+  if (!confirm("Stop now? You can still save what you've done so far.")) return;
+  endRun(true);
 }
 
 function togglePause() {
@@ -402,104 +489,89 @@ function togglePause() {
 
 // ---------------------------------------------------------------- summary
 
-function tile(label, value) {
-  const div = document.createElement("div");
-  div.className = "tile";
-  const v = document.createElement("strong");
-  v.textContent = value;
-  const l = document.createElement("span");
-  l.textContent = label;
-  div.append(v, l);
-  return div;
+function showSummary() {
+  if (summaryChart) summaryChart.destroy();
+  el.summary.error.hidden = true;
+  el.summary.save.disabled = false;
+  show("summary");
+  summaryChart = renderSession(el.summary.view, result);
 }
 
-function renderSummary(result) {
-  const s = el.summary;
-  const reps = result.reps;
-  const totalReps = result.routine.sets * result.routine.reps;
-  s.title.textContent = result.stopped ? `${result.routine.name} (stopped)` : result.routine.name;
-  const meta = [formatDuration(result.durationS)];
-  if (result.routine.holdType) meta.push(result.routine.holdType);
-  if (result.targetKg !== null) meta.push(`target ${formatKg(result.targetKg)} kg`);
-  s.meta.textContent = meta.join(" · ");
+async function saveResult() {
+  el.summary.save.disabled = true;
+  try {
+    await sessions.save(result);
+    const home = homeOf(result.type);
+    result = null;
+    show(home);
+    showNotice(home, "Saved to history.");
+  } catch (err) {
+    el.summary.error.textContent = err.message;
+    el.summary.error.hidden = false;
+    el.summary.save.disabled = false;
+  }
+}
 
-  const completed = reps.filter((r) => r.completed).length;
-  const best = reps.reduce((m, r) => Math.max(m, r.peakKg), 0);
-  const avg = reps.length ? reps.reduce((sum, r) => sum + r.meanKg, 0) / reps.length : 0;
-  const tut = reps.reduce((sum, r) => sum + r.tutS, 0);
-  s.tiles.replaceChildren(
-    tile("reps completed", `${completed}/${totalReps}`),
-    tile("best peak", `${formatKg(best)} kg`),
-    tile("avg force", `${formatKg(avg)} kg`),
-    tile("time under tension", formatDuration(Math.round(tut))),
-  );
-
-  const rows = reps.map((r) => {
-    const tr = document.createElement("tr");
-    for (const text of [`${r.set}.${r.rep}`, formatKg(r.peakKg), formatKg(r.meanKg), `${r.tutS.toFixed(1)} s`, r.completed ? "✓" : ""]) {
-      const td = document.createElement("td");
-      td.textContent = text;
-      tr.append(td);
-    }
-    tr.lastChild.className = "ok";
-    return tr;
-  });
-  s.reps.replaceChildren(...rows);
+function discardResult() {
+  if (!confirm("Discard this session? It will not be saved.")) return;
+  const home = homeOf(result.type);
+  result = null;
+  show(home);
 }
 
 // ---------------------------------------------------------------- init
 
-export function getLastResult() {
-  return lastResult;
-}
-
 export function initTrain() {
   chart = new LiveChart(el.run.chart);
   chart.setWindow(10);
+  selects = {
+    editHold: new TagSelect($("editHold"), holdTypes, "Hold", "e.g. 18 mm edge"),
+    editGrip: new TagSelect($("editGrip"), grips, "Grip", "e.g. Four-finger open"),
+    setupHold: new TagSelect($("setupHold"), holdTypes, "Hold", "e.g. 18 mm edge"),
+    setupGrip: new TagSelect($("setupGrip"), grips, "Grip", "e.g. Four-finger open"),
+  };
 
   routines.addEventListener("change", renderList);
   device.on("connection", (state) => {
     if (state !== "open") return;
     routines.load().then(() => showListError(""), (e) => showListError(e.message));
     holdTypes.load().catch((e) => showListError(e.message));
+    grips.load().catch((e) => showListError(e.message));
   });
   device.on("samples", (msg) => {
     if (!run) return;
     chart.push(msg.ts, msg.te ?? msg.ts, msg.kg);
     for (const kg of msg.kg) run.smoothed = run.smoothed === null ? kg : run.smoothed + 0.08 * (kg - run.smoothed);
-    if (run.repSamples && !run.engine.paused) run.repSamples.push(...msg.kg);
+    if (run.engine.paused) return;
+    run.curve.push(...msg.kg);
+    if (run.repSamples) run.repSamples.push(...msg.kg);
   });
   document.addEventListener("visibilitychange", () => {
     if (run && document.visibilityState === "visible" && run.wakeLock?.released !== false) requestWakeLock();
   });
+  window.addEventListener("hashchange", () => showNotice(null, ""));
 
   el.newRoutine.addEventListener("click", () => openEditor(null));
   el.edit.cancel.addEventListener("click", () => show("list"));
-  el.edit.holdType.addEventListener("change", () => {
-    if (el.edit.holdType.value === NEW_HOLD_TYPE) {
-      showHoldNew(true);
-    } else {
-      editing.holdType = el.edit.holdType.value;
-      showHoldNew(false);
-    }
-  });
-  el.edit.holdAdd.addEventListener("click", addHoldType);
-  el.edit.holdNew.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") addHoldType();
-  });
   el.edit.save.addEventListener("click", saveEditor);
   el.edit.remove.addEventListener("click", deleteEditing);
   for (const input of el.screens.edit.querySelectorAll("input, select")) {
     input.addEventListener("input", updateEditorDerived);
   }
+  for (const b of el.setup.hands) b.addEventListener("click", () => setHand(b.dataset.hand));
+  el.setup.cancel.addEventListener("click", () => show("tests"));
+  el.setup.start.addEventListener("click", startTest);
   el.run.pause.addEventListener("click", togglePause);
   el.run.skip.addEventListener("click", () => {
     run.engine.skip(performance.now() / 1000);
     tick();
   });
-  el.run.stop.addEventListener("click", stopWorkout);
-  el.summary.done.addEventListener("click", () => show("list"));
+  el.run.stop.addEventListener("click", stopRun);
+  el.summary.save.addEventListener("click", saveResult);
+  el.summary.discard.addEventListener("click", discardResult);
 
+  renderTests();
   renderList();
   show("list");
+  show("tests");
 }

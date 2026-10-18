@@ -11,6 +11,7 @@ import json
 import math
 import os
 import random
+import re
 import struct
 import threading
 import time
@@ -27,7 +28,7 @@ MIN_CALIBRATION_COUNTS = 5000
 MIN_BODYWEIGHT_KG, MAX_BODYWEIGHT_KG = 20, 250
 MIN_REP_THRESHOLD_KG, MAX_REP_THRESHOLD_KG = 0.5, 50
 # User lists stored as JSON array files on the device: name -> (max items, max bytes)
-JSON_LISTS = {"routines": (50, 16384), "holdtypes": (50, 4096)}
+JSON_LISTS = {"routines": (50, 16384), "holdtypes": (50, 4096), "grips": (50, 4096)}
 
 # The simulated cell is ~12 % off from the firmware's default factor, so calibration matters.
 DEFAULT_COUNTS_PER_KG = 14300.0
@@ -36,6 +37,78 @@ RAW_ZERO = 52000  # raw reading with no load
 NOISE_COUNTS = 900  # ~0.06 kg
 
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mock_state.json")
+SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mock_sessions")
+SESSION_ID = re.compile(r"^[a-z0-9]{1,16}$")
+MAX_SESSION_BYTES = 32768
+FS_TOTAL_BYTES = 1441792  # LittleFS partition on the ESP32
+FS_BASE_USED_BYTES = 160000  # web app + settings files
+
+
+class SessionStore:
+    """Same layout and rules as src/sessions.cpp: one file per session plus an NDJSON index."""
+
+    def __init__(self):
+        os.makedirs(SESSIONS_DIR, exist_ok=True)
+        self.index_path = os.path.join(SESSIONS_DIR, "sessions.ndjson")
+        self.lock = threading.Lock()
+
+    def path(self, sid):
+        return os.path.join(SESSIONS_DIR, f"{sid}.json")
+
+    def used_bytes(self):
+        return FS_BASE_USED_BYTES + sum(
+            os.path.getsize(os.path.join(SESSIONS_DIR, f)) for f in os.listdir(SESSIONS_DIR)
+        )
+
+    def index(self):
+        try:
+            with open(self.index_path) as f:
+                return f.read()
+        except OSError:
+            return ""
+
+    def get(self, sid):
+        """Returns (status, body)."""
+        if not SESSION_ID.match(sid):
+            return 400, {"error": "invalid id"}
+        try:
+            with open(self.path(sid)) as f:
+                return 200, json.load(f)
+        except OSError:
+            return 404, {"error": "not found"}
+
+    def save(self, body):
+        if not isinstance(body, dict):
+            return 400, {"error": "expected an object"}
+        sid = body.get("id", "")
+        if not isinstance(sid, str) or not SESSION_ID.match(sid):
+            return 400, {"error": "invalid id"}
+        data = json.dumps(body, separators=(",", ":"))
+        with self.lock:
+            if os.path.exists(self.path(sid)):
+                return 409, {"error": "session exists"}
+            if FS_TOTAL_BYTES - self.used_bytes() < 65536 + len(data):
+                return 507, {"error": "storage full"}
+            with open(self.path(sid), "w") as f:
+                f.write(data)
+            entry = {"id": sid, **{k: v for k, v in body.items() if k not in ("id", "curve", "reps")}}
+            with open(self.index_path, "a") as f:
+                f.write(json.dumps(entry, separators=(",", ":")) + "\n")
+        return 201, entry
+
+    def delete(self, sid):
+        if not SESSION_ID.match(sid):
+            return 400, {"error": "invalid id"}
+        with self.lock:
+            try:
+                os.remove(self.path(sid))
+            except OSError:
+                pass
+            prefix = '{"id":"%s"' % sid
+            lines = [l for l in self.index().splitlines() if l and not l.startswith(prefix)]
+            with open(self.index_path, "w") as f:
+                f.write("".join(l + "\n" for l in lines))
+        return 204, None
 
 
 class SimulatedLoadCell:
@@ -136,6 +209,7 @@ class Device:
         self.calibrated = False
         self.settings = {"bodyweightKg": 0, "repThresholdKg": 2}
         self.lists = {name: [] for name in JSON_LISTS}
+        self.sessions = SessionStore()
         self.cal_kg = 0.0
         self.tared = False
         self.tare_avg = RawAverager()
@@ -349,7 +423,34 @@ def make_handler(device):
             name = self.path.removeprefix("/api/")
             if name in JSON_LISTS:
                 return self.send_json(200, device.lists[name])
+            if self.path == "/api/sessions":
+                return self.send_body(200, device.sessions.index().encode(), "application/x-ndjson")
+            if self.path.startswith("/api/sessions/"):
+                return self.send_json(*device.sessions.get(self.path.removeprefix("/api/sessions/")))
+            if self.path == "/api/storage":
+                return self.send_json(200, {"totalBytes": FS_TOTAL_BYTES, "usedBytes": device.sessions.used_bytes()})
             return super().do_GET()
+
+        def do_POST(self):
+            if self.path != "/api/sessions":
+                return self.send_json(404, {"error": "not found"})
+            length = int(self.headers.get("Content-Length", 0))
+            if length > MAX_SESSION_BYTES:
+                self.rfile.read(length)
+                return self.send_json(413, {"error": "too large"})
+            try:
+                body = json.loads(self.rfile.read(length))
+            except ValueError:
+                return self.send_json(400, {"error": "invalid JSON"})
+            return self.send_json(*device.sessions.save(body))
+
+        def do_DELETE(self):
+            if not self.path.startswith("/api/sessions/"):
+                return self.send_json(404, {"error": "not found"})
+            status, body = device.sessions.delete(self.path.removeprefix("/api/sessions/"))
+            if body is None:
+                return self.send_body(status, b"", "text/plain")
+            return self.send_json(status, body)
 
         def do_PUT(self):
             length = int(self.headers.get("Content-Length", 0))
@@ -373,12 +474,15 @@ def make_handler(device):
             return self.send_json(200, result)
 
         def send_json(self, code, obj):
-            data = json.dumps(obj).encode()
+            self.send_body(code, json.dumps(obj).encode(), "application/json")
+
+        def send_body(self, code, data, content_type):
             self.send_response(code)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
-            self.wfile.write(data)
+            if code != 204:
+                self.wfile.write(data)
 
         def serve_websocket(self):
             key = self.headers["Sec-WebSocket-Key"]

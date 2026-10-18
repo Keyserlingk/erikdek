@@ -1,12 +1,15 @@
 import { initCalibrate } from "./calibrate.js";
 import { device } from "./device.js";
+import { initHistory, showHistory } from "./history.js";
 import { initLive } from "./live.js";
 import { initMock } from "./mock.js";
 import { initSettings } from "./settings.js";
 import { initTrain } from "./train.js";
 
 const LOW_RATE_HZ = 60; // below this the HX711 RATE pin is probably still at 10 Hz
-const VIEWS = ["live", "train", "calibrate", "settings"];
+const VIEWS = ["live", "train", "tests", "history", "calibrate", "settings"];
+// Views without their own tab highlight this tab instead.
+const TAB_OF = { calibrate: "settings" };
 
 const el = {
   rate: document.getElementById("rate"),
@@ -19,7 +22,9 @@ function showView() {
   const name = location.hash.slice(1);
   const view = VIEWS.includes(name) ? name : "live";
   for (const v of VIEWS) document.getElementById(`view-${v}`).hidden = v !== view;
-  for (const t of el.tabs) t.classList.toggle("active", t.getAttribute("href") === `#${view}`);
+  const tab = TAB_OF[view] || view;
+  for (const t of el.tabs) t.classList.toggle("active", t.getAttribute("href") === `#${tab}`);
+  if (view === "history") showHistory();
 }
 
 function renderStatus() {
@@ -40,6 +45,9 @@ function renderStatus() {
   if (!st.tared) warnings.push("Not tared – press Tare with no load.");
   el.warning.hidden = warnings.length === 0;
   el.warning.textContent = warnings.join(" ");
+  if (!st.calibrated && location.hash !== "#calibrate") {
+    el.warning.append(" ", Object.assign(document.createElement("a"), { href: "#calibrate", textContent: "Calibrate now" }));
+  }
 }
 
 device.on("connection", (state) => {
@@ -53,6 +61,7 @@ initCalibrate();
 initMock();
 initSettings();
 initTrain();
+initHistory();
 
 window.addEventListener("hashchange", showView);
 showView();

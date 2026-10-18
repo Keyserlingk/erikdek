@@ -1,4 +1,4 @@
-import { MAX_HOLD_TYPE_LENGTH } from "./holdtypes.js";
+import { MAX_TAG_LENGTH } from "./tags.js";
 
 // Built-in routines ship with the web app; custom ones are stored on the device.
 
@@ -8,6 +8,7 @@ export const BUILTIN_ROUTINES = [
     name: "Repeaters 7/3",
     builtin: true,
     holdType: "",
+    grip: "",
     sets: 4,
     reps: 6,
     workS: 7,
@@ -21,6 +22,7 @@ export const BUILTIN_ROUTINES = [
     name: "Max hangs 10 s",
     builtin: true,
     holdType: "",
+    grip: "",
     sets: 5,
     reps: 1,
     workS: 10,
@@ -34,6 +36,7 @@ export const BUILTIN_ROUTINES = [
     name: "Endurance 10/5",
     builtin: true,
     holdType: "",
+    grip: "",
     sets: 3,
     reps: 6,
     workS: 10,
@@ -58,7 +61,9 @@ const TARGET_LIMITS = { kg: [1, 300], bw: [5, 200] };
 export function validateRoutine(r) {
   if (!r.name || !r.name.trim()) return "Give the routine a name.";
   if (r.name.length > 40) return "Name is too long (max 40 characters).";
-  if (typeof r.holdType !== "string" || r.holdType.length > MAX_HOLD_TYPE_LENGTH) return "Invalid hold type.";
+  for (const key of ["holdType", "grip"]) {
+    if (typeof r[key] !== "string" || r[key].length > MAX_TAG_LENGTH) return `Invalid ${key === "grip" ? "grip" : "hold"}.`;
+  }
   for (const [key, [min, max]] of Object.entries(LIMITS)) {
     if (!Number.isInteger(r[key]) || r[key] < min || r[key] > max) {
       return `${LABELS[key]} must be a whole number from ${min} to ${max}.`;

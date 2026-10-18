@@ -62,6 +62,7 @@
       <div id="trainList">
         <h1>Train</h1>
         <div id="trainListError" class="error" hidden></div>
+        <div id="trainListNotice" class="notice" hidden></div>
         <div id="routineList"></div>
         <button id="routineNew" class="secondary" type="button">New routine</button>
       </div>
@@ -73,17 +74,8 @@
             <span>Name</span>
             <input id="editName" type="text" maxlength="40" placeholder="My repeaters">
           </label>
-          <label class="field stacked">
-            <span>Hold type</span>
-            <select id="editHoldType"></select>
-          </label>
-          <div id="editHoldNewRow" hidden>
-            <div class="field">
-              <input id="editHoldNew" type="text" maxlength="30" placeholder="e.g. 18 mm edge" aria-label="New hold type">
-              <button id="editHoldAdd" class="secondary compact" type="button">Add</button>
-            </div>
-            <div id="editHoldError" class="error" hidden></div>
-          </div>
+          <div id="editHold"></div>
+          <div id="editGrip"></div>
           <div class="grid2">
             <label class="field stacked"><span>Sets</span><input id="editSets" type="number" min="1" max="20" step="1" inputmode="numeric"></label>
             <label class="field stacked"><span>Reps per set</span><input id="editReps" type="number" min="1" max="50" step="1" inputmode="numeric"></label>
@@ -138,20 +130,82 @@
       </div>
 
       <div id="trainSummary" hidden>
-        <h1 id="sumTitle">Done</h1>
-        <p id="sumMeta" class="muted"></p>
-        <div id="sumTiles" class="tiles"></div>
-        <div class="card">
-          <table class="reps">
-            <thead><tr><th>Rep</th><th>Peak</th><th>Avg</th><th>Loaded</th><th></th></tr></thead>
-            <tbody id="sumReps"></tbody>
-          </table>
+        <div id="sumView"></div>
+        <div id="sumError" class="error" hidden></div>
+        <div class="actions">
+          <button id="sumDiscard" class="secondary" type="button">Discard</button>
+          <button id="sumSave" class="primary" type="button">Save to history</button>
         </div>
-        <button id="sumDone" class="primary" type="button">Done</button>
+      </div>
+    </section>
+
+    <section id="view-tests" hidden>
+      <div id="testsMain">
+        <h1>Tests</h1>
+        <p class="muted">Standard tests to track your strength over time. Results are saved to History.</p>
+        <div id="testsNotice" class="notice" hidden></div>
+        <div id="testList"></div>
+      </div>
+
+      <div id="trainSetup" hidden>
+        <h1 id="setupTitle">Test</h1>
+        <p id="setupDescription" class="muted"></p>
+        <div class="card">
+          <div class="field stacked">
+            <span>Hand</span>
+            <div id="setupHand" class="segmented wide" role="group" aria-label="Hand">
+              <button type="button" data-hand="both">Both</button>
+              <button type="button" data-hand="left">Left</button>
+              <button type="button" data-hand="right">Right</button>
+            </div>
+          </div>
+          <div id="setupHold"></div>
+          <div id="setupGrip"></div>
+          <div class="actions">
+            <button id="setupCancel" class="secondary" type="button">Cancel</button>
+            <button id="setupStart" class="primary" type="button">Start</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-history" hidden>
+      <div id="historyMain">
+        <h1>History</h1>
+        <p id="histStorage" class="muted"></p>
+        <div id="histError" class="error" hidden></div>
+        <div class="card filters">
+          <label class="field stacked">
+            <span>Show</span>
+            <select id="histKind"></select>
+          </label>
+          <div class="grid2">
+            <label class="field stacked"><span>Hold</span><select id="histHold"></select></label>
+            <label class="field stacked"><span>Grip</span><select id="histGrip"></select></label>
+          </div>
+          <label id="histRoutineRow" class="field stacked" hidden><span>Routine</span><select id="histRoutine"></select></label>
+        </div>
+        <h2 class="section">Personal bests</h2>
+        <div id="histBests" class="tiles"></div>
+        <h2 class="section" id="histProgressTitle">Progress</h2>
+        <div class="card chart-card">
+          <div id="histLegend" class="legend"></div>
+          <div id="histChart" class="chart progress-chart"></div>
+          <p id="histChartEmpty" class="muted empty" hidden>Save at least two sessions to see progress.</p>
+        </div>
+        <h2 class="section">Sessions</h2>
+        <div id="histList"></div>
+      </div>
+      <div id="historyDetail" hidden>
+        <button id="histBack" class="link" type="button">‹ Back to history</button>
+        <div id="histDetailView"></div>
+        <div id="histDetailError" class="error" hidden></div>
+        <button id="histDelete" class="link danger" type="button">Delete session</button>
       </div>
     </section>
 
     <section id="view-calibrate" hidden>
+      <a href="#settings" class="link back-link">‹ Back to settings</a>
       <h1>Calibrate</h1>
       <p id="calCurrent" class="muted"></p>
 
@@ -192,6 +246,11 @@
     <section id="view-settings" hidden>
       <h1>Settings</h1>
       <div class="card">
+        <h2>Calibration</h2>
+        <p id="setCalStatus" class="muted"></p>
+        <a href="#calibrate" class="button-link secondary">Calibrate</a>
+      </div>
+      <div class="card">
         <h2>Bodyweight</h2>
         <p class="muted">Used to show force as % of bodyweight. Leave empty to hide.</p>
         <label class="field">
@@ -209,23 +268,16 @@
         <button id="setSave" class="primary" type="button">Save</button>
         <p id="setMessage" class="message" aria-live="polite"></p>
       </div>
-      <div class="card">
-        <h2>Your hold types</h2>
-        <p class="muted">Added to the standard list when choosing a hold type for a routine.</p>
-        <ul id="holdTypeList" class="item-list"></ul>
-        <div class="field">
-          <input id="holdTypeNew" type="text" maxlength="30" placeholder="e.g. 18 mm edge" aria-label="New hold type">
-          <button id="holdTypeAdd" class="secondary compact" type="button">Add</button>
-        </div>
-        <div id="holdTypeError" class="error" hidden></div>
-      </div>
+      <div id="manageHolds" class="card"></div>
+      <div id="manageGrips" class="card"></div>
     </section>
   </main>
 
   <nav class="tabs">
     <a href="#live">Live</a>
     <a href="#train">Train</a>
-    <a href="#calibrate">Calibrate</a>
+    <a href="#tests">Tests</a>
+    <a href="#history">History</a>
     <a href="#settings">Settings</a>
   </nav>
 

@@ -9,6 +9,7 @@ const STABLE_STD_REL = 0.005;
 
 const el = {
   current: document.getElementById("calCurrent"),
+  settingsStatus: document.getElementById("setCalStatus"),
   steps: document.querySelectorAll("#view-calibrate .step"),
   tare: document.getElementById("calTare"),
   weight: document.getElementById("calWeight"),
@@ -62,6 +63,7 @@ function renderCurrent() {
     el.current.textContent = "Not calibrated – using a rough default factor.";
   }
   el.reset.hidden = !st || !st.calibrated;
+  el.settingsStatus.textContent = el.current.textContent;
 }
 
 function showError(text) {
@@ -116,7 +118,7 @@ export function initCalibrate() {
   });
   el.done.addEventListener("click", () => {
     setStep("tare");
-    location.hash = "#live";
+    location.hash = "#settings";
   });
   el.restart.addEventListener("click", () => setStep("tare"));
   el.reset.addEventListener("click", () => {
