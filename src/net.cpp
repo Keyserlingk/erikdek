@@ -1,0 +1,125 @@
+#include "net.h"
+
+#include <ArduinoJson.h>
+#include <ESPAsyncWebServer.h>
+#include <LittleFS.h>
+#include <WiFi.h>
+
+#include "sensor.h"
+
+// Optional: include/wifi_secrets.h with
+//   #define WIFI_SSID "my-hotspot"
+//   #define WIFI_PASSWORD "secret"
+// to join the phone hotspot. Without it (or if it fails) the ESP starts its own network.
+// Replaced by WiFi settings in the web app in milestone 4.
+#if __has_include("wifi_secrets.h")
+#include "wifi_secrets.h"
+#endif
+
+static constexpr const char* kApSsid = "Tindek";
+static constexpr const char* kApPassword = "tindek123";  // min 8 chars
+static constexpr uint32_t kStaTimeoutMs = 15000;
+static constexpr uint32_t kSamplePushMs = 50;
+static constexpr uint32_t kStatusPushMs = 1000;
+
+static AsyncWebServer server(80);
+static AsyncWebSocket ws("/ws");
+
+static void startWifi() {
+#ifdef WIFI_SSID
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname("tindek");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.printf("Joining %s", WIFI_SSID);
+  uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < kStaTimeoutMs) {
+    delay(250);
+    Serial.print('.');
+  }
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("Connected: http://%s\n", WiFi.localIP().toString().c_str());
+    return;
+  }
+  Serial.println("Hotspot not found, starting own network");
+#endif
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(kApSsid, kApPassword);
+  Serial.printf("AP '%s': http://%s\n", kApSsid, WiFi.softAPIP().toString().c_str());
+}
+
+static String statusJson() {
+  SensorStatus st = sensorStatus();
+  JsonDocument doc;
+  doc["t"] = "status";
+  doc["rate"] = roundf(st.rateHz * 10) / 10;
+  doc["tared"] = st.tared;
+  doc["calibrated"] = st.calibrated;
+  doc["uptime"] = millis();
+  doc["dropped"] = st.dropped;
+  String out;
+  serializeJson(doc, out);
+  return out;
+}
+
+static void handleCommand(AsyncWebSocketClient* client, const char* data, size_t len) {
+  JsonDocument doc;
+  if (deserializeJson(doc, data, len)) return;
+  const char* cmd = doc["cmd"] | "";
+  if (strcmp(cmd, "tare") == 0) {
+    sensorRequestTare();
+  }
+}
+
+static void onWsEvent(AsyncWebSocket*, AsyncWebSocketClient* client, AwsEventType type, void* arg,
+                      uint8_t* data, size_t len) {
+  if (type == WS_EVT_CONNECT) {
+    client->text(statusJson());
+  } else if (type == WS_EVT_DATA) {
+    auto* info = (AwsFrameInfo*)arg;
+    if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+      handleCommand(client, (const char*)data, len);
+    }
+  }
+}
+
+void netBegin() {
+  startWifi();
+  ws.onEvent(onWsEvent);
+  server.addHandler(&ws);
+  server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+  server.onNotFound([](AsyncWebServerRequest* req) { req->send(404, "text/plain", "Not found"); });
+  server.begin();
+}
+
+void netLoop() {
+  static uint32_t lastSamples = 0;
+  static uint32_t lastStatus = 0;
+  uint32_t now = millis();
+
+  if (now - lastSamples >= kSamplePushMs) {
+    lastSamples = now;
+    Sample buf[32];
+    size_t n = sensorDrain(buf, 32);
+    if (n > 0 && ws.count() > 0 && ws.availableForWriteAll()) {
+      // {"t":"samples","ts":123,"kg":[1.234,...]}  built by hand, it runs 20x per second
+      String out;
+      out.reserve(40 + n * 9);
+      out += "{\"t\":\"samples\",\"ts\":";
+      out += buf[0].ms;
+      out += ",\"kg\":[";
+      for (size_t i = 0; i < n; i++) {
+        if (i) out += ',';
+        out += String(buf[i].kg, 3);
+      }
+      out += "]}";
+      ws.textAll(out);
+    }
+  }
+
+  if (now - lastStatus >= kStatusPushMs) {
+    lastStatus = now;
+    if (ws.count() > 0) ws.textAll(statusJson());
+    ws.cleanupClients();
+  }
+}
