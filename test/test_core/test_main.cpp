@@ -16,6 +16,30 @@ void test_calibration_converts_raw_to_kg() {
   TEST_ASSERT_FLOAT_WITHIN(1e-4, -1.0f, cal.toKg(500));
 }
 
+void test_compute_counts_per_kg() {
+  float cpk = 0;
+  TEST_ASSERT_TRUE(computeCountsPerKg(1000, 1000 + 20 * 14000, 20.0f, cpk) == CalResult::Ok);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 14000.0f, cpk);
+}
+
+void test_compute_counts_per_kg_swapped_wires_gives_negative_factor() {
+  float cpk = 0;
+  TEST_ASSERT_TRUE(computeCountsPerKg(0, -20 * 14000, 20.0f, cpk) == CalResult::Ok);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, -14000.0f, cpk);
+  Calibration cal;
+  cal.countsPerKg = cpk;
+  TEST_ASSERT_FLOAT_WITHIN(1e-3, 20.0f, cal.toKg(-20 * 14000));
+}
+
+void test_compute_counts_per_kg_rejects_bad_input() {
+  float cpk = 123;
+  TEST_ASSERT_TRUE(computeCountsPerKg(0, 100000, 0.0f, cpk) == CalResult::BadWeight);
+  TEST_ASSERT_TRUE(computeCountsPerKg(0, 100000, -5.0f, cpk) == CalResult::BadWeight);
+  TEST_ASSERT_TRUE(computeCountsPerKg(0, 4999, 10.0f, cpk) == CalResult::TooSmall);
+  TEST_ASSERT_TRUE(computeCountsPerKg(0, -4999, 10.0f, cpk) == CalResult::TooSmall);
+  TEST_ASSERT_EQUAL_FLOAT(123, cpk);  // untouched on failure
+}
+
 void test_averager_averages_target_count() {
   RawAverager avg;
   avg.reset(4);
@@ -86,6 +110,9 @@ void test_ring_buffer_fifo_and_overflow() {
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_calibration_converts_raw_to_kg);
+  RUN_TEST(test_compute_counts_per_kg);
+  RUN_TEST(test_compute_counts_per_kg_swapped_wires_gives_negative_factor);
+  RUN_TEST(test_compute_counts_per_kg_rejects_bad_input);
   RUN_TEST(test_averager_averages_target_count);
   RUN_TEST(test_averager_handles_large_values);
   RUN_TEST(test_averager_idle_after_zero_target);

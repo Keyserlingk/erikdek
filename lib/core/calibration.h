@@ -16,6 +16,23 @@ struct Calibration {
   float toKg(int32_t raw) const { return (float)(raw - offset) / countsPerKg; }
 };
 
+enum class CalResult { Ok, BadWeight, TooSmall };
+
+// Smallest accepted change in raw counts between tare and known load
+// (~0.35 kg with the default factor, well above HX711 noise).
+static constexpr int32_t kMinCalibrationCounts = 5000;
+
+// Computes counts per kg from the tare offset and the averaged raw reading under a known
+// weight. A negative factor is allowed: it means A+/A- are swapped, and kg still come out
+// positive, so swapped wires need no rewiring.
+inline CalResult computeCountsPerKg(int32_t offset, int32_t loadedRaw, float kg, float& out) {
+  if (!(kg > 0.0f)) return CalResult::BadWeight;
+  int32_t delta = loadedRaw - offset;
+  if (delta > -kMinCalibrationCounts && delta < kMinCalibrationCounts) return CalResult::TooSmall;
+  out = (float)delta / kg;
+  return CalResult::Ok;
+}
+
 // Averages a fixed number of raw readings, used for tare and calibration.
 class RawAverager {
  public:

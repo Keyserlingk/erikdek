@@ -10,26 +10,79 @@
 <body>
   <header class="bar">
     <span class="brand">Tindek</span>
-    <span id="mock" class="badge" hidden>MOCK</span>
+    <button id="mock" class="badge" type="button" title="Simulator controls" hidden>MOCK</button>
     <span class="spacer"></span>
     <span id="rate" class="rate" title="Measured sample rate">– Hz</span>
     <span id="conn" class="conn" data-state="closed" title="Connection"></span>
   </header>
 
+  <div id="mockPanel" class="mock-panel" hidden>
+    <span class="label">Simulate</span>
+    <button type="button" data-scenario="workout">Workout</button>
+    <button type="button" data-scenario="idle">No load</button>
+    <button type="button" data-scenario="weight">Hang</button>
+    <input id="mockKg" type="number" value="20" min="1" step="0.5" inputmode="decimal" aria-label="Simulated weight in kg">
+    <span class="label">kg</span>
+  </div>
+
   <main>
     <div id="warning" class="warning" hidden></div>
 
-    <section class="readout">
-      <div class="weight"><span id="kg">–</span><span class="unit">kg</span></div>
-      <button id="peak" class="peak" type="button" title="Tap to reset peak">
-        Peak <strong id="peakKg">0.0</strong> kg
-      </button>
+    <section id="view-live">
+      <div class="card readout">
+        <div class="weight"><span id="kg">–</span><span class="unit">kg</span></div>
+        <button id="peak" class="peak" type="button" title="Tap to reset peak">
+          Peak <strong id="peakKg">0.0</strong> kg
+        </button>
+      </div>
+      <div class="actions">
+        <button id="tare" class="primary" type="button">Tare</button>
+      </div>
     </section>
 
-    <section class="actions">
-      <button id="tare" class="primary" type="button">Tare</button>
+    <section id="view-calibrate" hidden>
+      <h1>Calibrate</h1>
+      <p id="calCurrent" class="muted"></p>
+
+      <div class="card step" data-step="tare">
+        <h2>1. Remove all load</h2>
+        <p>Hang the load cell the way you'll use it, with slings and carabiners attached but nothing pulling on it. Then tare.</p>
+        <button id="calTare" class="primary" type="button">Tare</button>
+      </div>
+
+      <div class="card step" data-step="weight" hidden>
+        <h2>2. Hang a known weight</h2>
+        <p>Use something you know the exact mass of, ideally 10 kg or more (weight plates, a water jug you weighed). Let it stop swinging.</p>
+        <label class="field">
+          <span>Weight</span>
+          <input id="calWeight" type="number" min="0" step="0.1" inputmode="decimal" placeholder="20.0">
+          <span>kg</span>
+        </label>
+        <div class="reading">
+          <span>Reading <strong id="calReading">–</strong> kg</span>
+          <span id="calStability" class="stability" data-stable="false">Settling…</span>
+        </div>
+        <div id="calError" class="error" hidden></div>
+        <button id="calMeasure" class="primary" type="button" disabled>Measure</button>
+      </div>
+
+      <div class="card step" data-step="done" hidden>
+        <h2>3. Done</h2>
+        <p id="calResult"></p>
+        <div class="actions">
+          <button id="calRestart" class="secondary" type="button">Calibrate again</button>
+          <button id="calDone" class="primary" type="button">Done</button>
+        </div>
+      </div>
+
+      <button id="calReset" class="link danger" type="button" hidden>Reset calibration to default</button>
     </section>
   </main>
+
+  <nav class="tabs">
+    <a href="#live">Live</a>
+    <a href="#calibrate">Calibrate</a>
+  </nav>
 
   <script type="module" src="app.js"></script>
 </body>

@@ -6,6 +6,7 @@
 #include <WiFi.h>
 
 #include "sensor.h"
+#include "storage.h"
 
 // Optional: include/wifi_secrets.h with
 //   #define WIFI_SSID "my-hotspot"
@@ -55,6 +56,7 @@ static String statusJson() {
   doc["rate"] = roundf(st.rateHz * 10) / 10;
   doc["tared"] = st.tared;
   doc["calibrated"] = st.calibrated;
+  doc["cpk"] = st.countsPerKg;
   doc["uptime"] = millis();
   doc["dropped"] = st.dropped;
   String out;
@@ -62,12 +64,50 @@ static String statusJson() {
   return out;
 }
 
-static void handleCommand(AsyncWebSocketClient* client, const char* data, size_t len) {
+static void handleCommand(const char* data, size_t len) {
   JsonDocument doc;
   if (deserializeJson(doc, data, len)) return;
   const char* cmd = doc["cmd"] | "";
   if (strcmp(cmd, "tare") == 0) {
     sensorRequestTare();
+  } else if (strcmp(cmd, "calibrate") == 0) {
+    sensorRequestCalibration(doc["kg"] | 0.0f);
+  } else if (strcmp(cmd, "calReset") == 0) {
+    sensorResetCalibration();
+  }
+}
+
+static const char* calResultName(CalResult r) {
+  switch (r) {
+    case CalResult::BadWeight: return "badWeight";
+    case CalResult::TooSmall: return "tooSmall";
+    default: return "ok";
+  }
+}
+
+// Forwards tare/calibration results to the browsers and persists new calibrations.
+static void handleSensorEvents() {
+  SensorEvent ev;
+  while (sensorPollEvent(ev)) {
+    JsonDocument doc;
+    switch (ev.type) {
+      case SensorEvent::Tared:
+        doc["t"] = "tared";
+        break;
+      case SensorEvent::Calibrated:
+        storageSaveCalibration(ev.calibration);
+        doc["t"] = "calibrated";
+        doc["calibrated"] = ev.calibration.calibrated;
+        doc["cpk"] = ev.calibration.countsPerKg;
+        break;
+      case SensorEvent::CalibrationFailed:
+        doc["t"] = "calError";
+        doc["reason"] = calResultName(ev.result);
+        break;
+    }
+    String out;
+    serializeJson(doc, out);
+    ws.textAll(out);
   }
 }
 
@@ -78,7 +118,7 @@ static void onWsEvent(AsyncWebSocket*, AsyncWebSocketClient* client, AwsEventTyp
   } else if (type == WS_EVT_DATA) {
     auto* info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-      handleCommand(client, (const char*)data, len);
+      handleCommand((const char*)data, len);
     }
   }
 }
@@ -96,6 +136,8 @@ void netLoop() {
   static uint32_t lastSamples = 0;
   static uint32_t lastStatus = 0;
   uint32_t now = millis();
+
+  handleSensorEvents();
 
   if (now - lastSamples >= kSamplePushMs) {
     lastSamples = now;

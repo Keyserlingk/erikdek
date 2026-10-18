@@ -21,18 +21,43 @@ WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 SAMPLE_RATE_HZ = 80
 PUSH_RATE_HZ = 20
-NOISE_KG = 0.06
+TARE_SAMPLES = 40  # 0.5 s, same as firmware
+CALIBRATION_SAMPLES = 80  # 1 s, same as firmware
+MIN_CALIBRATION_COUNTS = 5000
+
+# The simulated cell is ~12 % off from the firmware's default factor, so calibration matters.
+DEFAULT_COUNTS_PER_KG = 14300.0
+TRUE_COUNTS_PER_KG = 16000.0
+RAW_ZERO = 52000  # raw reading with no load
+NOISE_COUNTS = 900  # ~0.06 kg
+
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mock_state.json")
 
 
 class SimulatedLoadCell:
-    """Generates a force signal: rest, ramp up, hold with tremor and fatigue, release."""
+    """Generates raw HX711 counts for a selectable scenario.
+
+    workout: rest, ramp up, hold with tremor and fatigue, release (repeats)
+    idle:    nothing hanging
+    weight:  a fixed known weight, swinging a bit after it is hung
+    """
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.offset_kg = 1.4  # untared offset, like a real cell with a sling hanging on it
-        self.drift_kg = 0.0
+        self.drift = 0.0
         self.t = 0.0
+        self.scenario = "workout"
+        self.weight_kg = 20.0
+        self.scenario_start = 0.0
         self._next_phase(start=0.0)
+
+    def set_scenario(self, scenario, kg=None):
+        with self.lock:
+            self.scenario = scenario
+            if kg is not None:
+                self.weight_kg = kg
+            self.scenario_start = self.t
+            self._next_phase(start=self.t)
 
     def _next_phase(self, start):
         self.phase_start = start
@@ -41,7 +66,7 @@ class SimulatedLoadCell:
         self.target_kg = random.uniform(15.0, 40.0)
         self.spike = random.random() < 0.25  # occasional explosive pull
 
-    def _force(self, t):
+    def _workout_force(self, t):
         dt = t - self.phase_start
         if dt < self.rest_s:
             return 0.0
@@ -62,35 +87,92 @@ class SimulatedLoadCell:
         self._next_phase(start=t)
         return 0.0
 
-    def next_sample(self):
-        """Returns the next raw reading in kg (before tare)."""
+    def _force(self, t):
+        if self.scenario == "idle":
+            return 0.0
+        if self.scenario == "weight":
+            dt = t - self.scenario_start
+            swing = 0.25 * self.weight_kg * math.exp(-dt * 1.5) * math.sin(2 * math.pi * 1.8 * dt)
+            return self.weight_kg + swing
+        return self._workout_force(t)
+
+    def next_raw(self):
         with self.lock:
             self.t += 1.0 / SAMPLE_RATE_HZ
-            self.drift_kg += random.gauss(0, 0.0005)
-            return self._force(self.t) + self.offset_kg + self.drift_kg + random.gauss(0, NOISE_KG)
+            self.drift += random.gauss(0, 8)
+            kg = self._force(self.t)
+            return int(RAW_ZERO + self.drift + kg * TRUE_COUNTS_PER_KG + random.gauss(0, NOISE_COUNTS))
+
+
+class RawAverager:
+    def __init__(self):
+        self.target, self.values = 0, []
+
+    def reset(self, target):
+        self.target, self.values = target, []
+
+    def add(self, raw):
+        """Returns True when this sample completes the average."""
+        if len(self.values) >= self.target:
+            return False
+        self.values.append(raw)
+        return len(self.values) == self.target
+
+    def average(self):
+        return int(sum(self.values) / len(self.values))
 
 
 class Device:
-    """Stands in for the firmware's sensor task: tare state and sample distribution."""
+    """Stands in for the firmware's sensor task and network loop."""
 
     def __init__(self):
         self.cell = SimulatedLoadCell()
-        self.tare_kg = 0.0
+        self.offset = 0
+        self.counts_per_kg = DEFAULT_COUNTS_PER_KG
+        self.calibrated = False
+        self.cal_kg = 0.0
         self.tared = False
-        self.tare_pending = []  # samples collected for an ongoing tare
-        self.tare_requested = False
+        self.tare_avg = RawAverager()
+        self.cal_avg = RawAverager()
         self.clients = set()
         self.clients_lock = threading.Lock()
         self.boot = time.monotonic()
         self.rate_hz = 0.0
-        self.request_tare()  # firmware auto-tares on boot
+        self.load_state()
+        self.tare_avg.reset(TARE_SAMPLES)  # firmware auto-tares on boot
+
+    def load_state(self):
+        """Calibration persists across restarts, like NVS on the ESP."""
+        try:
+            with open(STATE_FILE) as f:
+                state = json.load(f)
+            self.counts_per_kg = state["counts_per_kg"]
+            self.calibrated = state["calibrated"]
+        except (OSError, ValueError, KeyError):
+            pass
+
+    def save_state(self):
+        with open(STATE_FILE, "w") as f:
+            json.dump({"counts_per_kg": self.counts_per_kg, "calibrated": self.calibrated}, f)
 
     def millis(self):
         return int((time.monotonic() - self.boot) * 1000)
 
-    def request_tare(self):
-        self.tare_pending = []
-        self.tare_requested = True
+    def to_kg(self, raw):
+        return (raw - self.offset) / self.counts_per_kg
+
+    def finish_calibration(self):
+        if not self.cal_kg > 0:
+            self.broadcast({"t": "calError", "reason": "badWeight"})
+            return
+        delta = self.cal_avg.average() - self.offset
+        if abs(delta) < MIN_CALIBRATION_COUNTS:
+            self.broadcast({"t": "calError", "reason": "tooSmall"})
+            return
+        self.counts_per_kg = delta / self.cal_kg
+        self.calibrated = True
+        self.save_state()
+        self.broadcast({"t": "calibrated", "calibrated": True, "cpk": self.counts_per_kg})
 
     def run(self):
         period = 1.0 / SAMPLE_RATE_HZ
@@ -100,16 +182,17 @@ class Device:
         rate_count, rate_start = 0, time.monotonic()
         last_status = 0.0
         while True:
-            raw = self.cell.next_sample()
-            if self.tare_requested:
-                self.tare_pending.append(raw)
-                if len(self.tare_pending) >= 40:  # 0.5 s average, same as firmware
-                    self.tare_kg = sum(self.tare_pending) / len(self.tare_pending)
-                    self.tared = True
-                    self.tare_requested = False
+            raw = self.cell.next_raw()
+            if self.tare_avg.add(raw):
+                self.offset = self.tare_avg.average()
+                self.tared = True
+                self.broadcast({"t": "tared"})
+            if self.cal_avg.add(raw):
+                self.finish_calibration()
+
             if not batch:
                 batch_ts = self.millis()
-            batch.append(round(raw - self.tare_kg, 3))
+            batch.append(round(self.to_kg(raw), 3))
             if len(batch) >= per_push:
                 self.broadcast({"t": "samples", "ts": batch_ts, "kg": batch})
                 batch = []
@@ -131,9 +214,11 @@ class Device:
             "t": "status",
             "rate": round(self.rate_hz, 1),
             "tared": self.tared,
-            "calibrated": True,
+            "calibrated": self.calibrated,
+            "cpk": self.counts_per_kg,
             "uptime": self.millis(),
             "mock": True,
+            "scenario": self.cell.scenario,
         }
 
     def broadcast(self, msg):
@@ -144,8 +229,20 @@ class Device:
             c.send_text(data)
 
     def handle_command(self, msg):
-        if msg.get("cmd") == "tare":
-            self.request_tare()
+        cmd = msg.get("cmd")
+        if cmd == "tare":
+            self.tare_avg.reset(TARE_SAMPLES)
+        elif cmd == "calibrate":
+            self.cal_kg = float(msg.get("kg") or 0)
+            self.cal_avg.reset(CALIBRATION_SAMPLES)
+        elif cmd == "calReset":
+            self.counts_per_kg = DEFAULT_COUNTS_PER_KG
+            self.calibrated = False
+            self.save_state()
+            self.broadcast({"t": "calibrated", "calibrated": False, "cpk": self.counts_per_kg})
+        elif cmd == "mock":  # simulator only: switch what is hanging on the cell
+            self.cell.set_scenario(msg.get("scenario", "workout"), msg.get("kg"))
+            self.broadcast(self.status())
 
 
 class WebSocketConnection:

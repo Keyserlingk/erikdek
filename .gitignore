@@ -3,3 +3,4 @@
 __pycache__/
 *.pyc
 include/wifi_secrets.h
+tools/.mock_state.json
