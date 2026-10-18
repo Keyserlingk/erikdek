@@ -7,8 +7,8 @@ import { targetStatus } from "./workout.js";
 const SAMPLE_RATE_HZ = 80;
 const SMOOTHING_TAU_S = 0.15; // time constant for the big number; raw data is used for peaks
 const alpha = 1 - Math.exp(-1 / (SAMPLE_RATE_HZ * SMOOTHING_TAU_S));
-const WINDOW_KEY = "tindek.chartWindow";
-const TARGET_KEY = "tindek.liveTarget";
+const WINDOW_KEY = "erkdek.chartWindow";
+const TARGET_KEY = "erkdek.liveTarget";
 const MIN_TARGET_KG = 0.5;
 
 const el = {

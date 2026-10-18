@@ -57,7 +57,7 @@ async function createBackup() {
       grips: grips.custom,
       sessions: full,
     });
-    downloadJson(`tindek-backup-${fileDate()}.json`, backup);
+    downloadJson(`erkdek-backup-${fileDate()}.json`, backup);
     showMessage(`Backup downloaded: ${full.length} sessions, ${routines.custom.length} routines.`);
   } catch (e) {
     showMessage(e.message, true);

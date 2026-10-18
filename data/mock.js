@@ -27,7 +27,7 @@ function render() {
 export function initMock() {
   device.on("status", render);
   device.on("connection", render);
-  window.addEventListener("tindek:phase", (ev) => followPhase(ev.detail.type));
+  window.addEventListener("erkdek:phase", (ev) => followPhase(ev.detail.type));
   el.badge.addEventListener("click", () => {
     el.panel.hidden = !el.panel.hidden;
   });

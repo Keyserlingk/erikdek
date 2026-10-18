@@ -20,8 +20,8 @@
 #include "wifi_secrets.h"
 #endif
 
-static constexpr const char* kApSsid = "Tindek";
-static constexpr const char* kApPassword = "tindek123";  // min 8 chars
+static constexpr const char* kApSsid = "Erkdek";
+static constexpr const char* kApPassword = "erkdek123";  // min 8 chars
 static constexpr uint32_t kStaTimeoutMs = 15000;
 static constexpr uint32_t kSamplePushMs = 50;
 static constexpr uint32_t kStatusPushMs = 1000;
@@ -33,7 +33,7 @@ static Settings settings;
 static void startWifi() {
 #ifdef WIFI_SSID
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname("tindek");
+  WiFi.setHostname("erkdek");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.printf("Joining %s", WIFI_SSID);
   uint32_t start = millis();

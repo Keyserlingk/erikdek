@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mock Tindek ESP32: serves data/ and speaks the same WebSocket protocol as the firmware.
+"""Mock Erkdek ESP32: serves data/ and speaks the same WebSocket protocol as the firmware.
 
 Standard library only. Run:  python3 tools/mock_server.py [--port 8080]
 then open http://localhost:8080 (or http://<laptop-ip>:8080 from the phone).
@@ -543,7 +543,7 @@ def main():
     threading.Thread(target=device.run, daemon=True).start()
     server = ThreadingHTTPServer((args.host, args.port), make_handler(device))
     server.daemon_threads = True
-    print(f"Mock Tindek on http://localhost:{args.port}  (serving {os.path.normpath(DATA_DIR)})")
+    print(f"Mock Erkdek on http://localhost:{args.port}  (serving {os.path.normpath(DATA_DIR)})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

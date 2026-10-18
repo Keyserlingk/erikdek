@@ -282,8 +282,8 @@ export function initHistory() {
   for (const select of [el.kind, el.hold, el.grip, el.routine, el.metric]) select.addEventListener("change", render);
   el.back.addEventListener("click", closeDetail);
   el.remove.addEventListener("click", deleteOpen);
-  el.csv.addEventListener("click", () => downloadCsv(`tindek-history-${fileDate()}.csv`, historyCsv(sessions.index)));
-  const detailName = (s) => `tindek-${s.type}-${fileDate(new Date(s.startedAt))}-${s.id}`;
+  el.csv.addEventListener("click", () => downloadCsv(`erkdek-history-${fileDate()}.csv`, historyCsv(sessions.index)));
+  const detailName = (s) => `erkdek-${s.type}-${fileDate(new Date(s.startedAt))}-${s.id}`;
   el.detailCsv.addEventListener("click", () => {
     if (openSession?.curve) downloadCsv(`${detailName(openSession)}.csv`, storedCurveCsv(openSession.curve));
   });

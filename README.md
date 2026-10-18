@@ -1,4 +1,4 @@
-# Tindek DIY
+# Erkdek DIY
 
 A DIY climbing force gauge built from a load cell, an HX711 and an ESP32. See [PLAN.md](PLAN.md).
 
@@ -27,7 +27,7 @@ pio device monitor        # serial log, shows the IP address
 
 WiFi: copy `include/wifi_secrets.example.h` to `include/wifi_secrets.h` to join your
 phone hotspot. Otherwise, or if the hotspot isn't found within 15 s, the ESP starts its
-own network `Tindek` (password `tindek123`) at http://192.168.4.1.
+own network `Erkdek` (password `erkdek123`) at http://192.168.4.1.
 
 ## Wiring
 

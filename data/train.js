@@ -26,8 +26,8 @@ const TICK_MS = 50;
 // Stored curve: only where force >= 1 kg, at most 1000 points (~6 KB per session).
 const CURVE_MIN_KG = 1;
 const CURVE_MAX_POINTS = 1000;
-const SETUP_KEY = "tindek.testSetup";
-const LIST_KEY = "tindek.routineList";
+const SETUP_KEY = "erkdek.testSetup";
+const LIST_KEY = "erkdek.routineList";
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -420,7 +420,7 @@ function sampleDtS() {
 
 // Lets the simulator follow the workout (see mock.js).
 function announcePhase(type) {
-  window.dispatchEvent(new CustomEvent("tindek:phase", { detail: { type } }));
+  window.dispatchEvent(new CustomEvent("erkdek:phase", { detail: { type } }));
 }
 
 function finishRep() {
@@ -650,10 +650,10 @@ export function initTrain() {
   el.run.stop.addEventListener("click", stopRun);
   el.summary.save.addEventListener("click", saveResult);
   el.summary.rawCsv.addEventListener("click", () =>
-    downloadCsv(`tindek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}-raw.csv`, curveCsv(resultRaw, resultRaw.phases)),
+    downloadCsv(`erkdek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}-raw.csv`, curveCsv(resultRaw, resultRaw.phases)),
   );
   el.summary.json.addEventListener("click", () =>
-    downloadJson(`tindek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}.json`, result),
+    downloadJson(`erkdek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}.json`, result),
   );
   el.summary.discard.addEventListener("click", discardResult);
 

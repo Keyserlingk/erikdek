@@ -6,7 +6,7 @@
 static Preferences prefs;
 
 void storageBegin() {
-  prefs.begin("tindek", false);
+  prefs.begin("erkdek", false);
   if (!LittleFS.begin(true)) {
     Serial.println("LittleFS mount failed");
   }

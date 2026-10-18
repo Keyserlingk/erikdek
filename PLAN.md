@@ -1,4 +1,4 @@
-# Tindek DIY – Plan
+# Erkdek DIY – Plan
 
 A DIY force gauge for climbing training (Tindeq Progressor style). An S-type load cell
 feeds an HX711, which feeds an ESP32. The ESP32 serves a web app that runs in the
@@ -66,15 +66,15 @@ The hard part is finding the ESP's IP: Android randomizes the hotspot subnet, an
 Connection order:
 1. **Station mode:** join the configured hotspot SSID.
 2. **Fallback AP mode:** if no known network is found within about 15 s, the ESP
-   creates its own network `Tindek` at `192.168.4.1`, with a captive-portal DNS
+   creates its own network `Erkdek` at `192.168.4.1`, with a captive-portal DNS
    so Android shows a "Sign in to network" popup.
    This mode is also used to enter hotspot credentials the first time.
 
 Ways to find the ESP in station mode (several, because none of them is perfect alone):
 - **Push notification via ntfy.sh:** the hotspot has internet, so on connect the ESP
-  posts `Tindek at http://<ip>` to a private ntfy topic. With the ntfy Android app,
+  posts `Erkdek at http://<ip>` to a private ntfy topic. With the ntfy Android app,
   the notification is clickable and opens the page. Free, no account needed.
-- **mDNS `http://tindek.local`:** works on some Android/Chrome versions; free to add.
+- **mDNS `http://erkdek.local`:** works on some Android/Chrome versions; free to add.
 - **Remember the last IP:** the web app stores it, and the ESP asks DHCP for the same address.
 
 The web app keeps the transport (WebSocket) behind a small interface so that
@@ -148,7 +148,7 @@ Phone browser ◄── WebSocket / HTTP ──► live view, graph, timer, rout
 ## Project layout
 
 ```
-tindek/
+erkdek/
 ├─ PLAN.md
 ├─ platformio.ini
 ├─ src/
