@@ -15,8 +15,8 @@ export function toCsv(rows) {
 
 const round = (v, digits) => (typeof v === "number" ? Number(v.toFixed(digits)) : v);
 
-// Force curve as CSV. With `phases` (one entry per sample: {type, set, rep}) the
-// rows also say which part of the workout each sample belongs to.
+// Raw force curve ({ hz, kg }) as CSV. With `phases` (one entry per sample:
+// {type, set, rep}) the rows also say which part of the workout each sample belongs to.
 export function curveCsv(curve, phases = null) {
   const head = phases ? ["time_s", "force_kg", "phase", "set", "rep"] : ["time_s", "force_kg"];
   const rows = curve.kg.map((kg, i) => {
@@ -28,6 +28,13 @@ export function curveCsv(curve, phases = null) {
     return row;
   });
   return toCsv([head, ...rows]);
+}
+
+// Stored curve (segments where force was above ~1 kg) as CSV; only stored samples.
+export function storedCurveCsv(curve) {
+  const segments = curve.segments ?? [{ t: 0, kg: curve.kg }];
+  const rows = segments.flatMap((seg) => seg.kg.map((kg, i) => [round(seg.t + i / curve.hz, 4), round(kg, 3)]));
+  return toCsv([["time_s", "force_kg"], ...rows]);
 }
 
 // One row per session with all scalar summary metrics as columns.

@@ -1,6 +1,7 @@
 // Renders one session (title, details, tiles, force curve, rep table). Used for the
 // summary after a workout/test and for a session opened in History.
 
+import { curvePoints } from "./analysis.js";
 import { formatDuration, formatKg } from "./format.js";
 import { HANDS, KINDS } from "./tests.js";
 
@@ -39,7 +40,7 @@ export function sessionTags(s) {
 
 // Builds a static uPlot chart of the session's downsampled curve.
 function curveChart(container, curve) {
-  const x = curve.kg.map((_, i) => i / curve.hz);
+  const { x, y } = curvePoints(curve);
   const width = container.clientWidth || 340;
   return new uPlot(
     {
@@ -60,7 +61,7 @@ function curveChart(container, curve) {
       ],
       series: [{}, { stroke: cssVar("--accent"), width: 1.5, points: { show: false } }],
     },
-    [x, curve.kg],
+    [x, y],
     container,
   );
 }
@@ -95,5 +96,5 @@ export function renderSession(root, s) {
     el("div", { className: "card chart-card" }, [chartBox]),
     ...(rows.length ? [tableCard] : []),
   );
-  return s.curve && s.curve.kg.length > 1 ? curveChart(chartBox, s.curve) : null;
+  return s.curve && curvePoints(s.curve).x.length > 1 ? curveChart(chartBox, s.curve) : null;
 }

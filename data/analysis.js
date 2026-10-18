@@ -87,13 +87,59 @@ export function rfdSummary(attempts, dtS) {
   return { ...best, attemptRfdKgS: results.map((r) => (r ? r.rfdKgS : null)) };
 }
 
-// Shrinks a curve to at most maxPoints by averaging blocks of samples.
-export function decimate(samples, hz, maxPoints) {
-  const factor = Math.max(1, Math.ceil(samples.length / maxPoints));
-  const kg = [];
+// Averages consecutive blocks of `factor` samples (rounded to 10 g).
+function averageBlocks(samples, factor) {
+  const out = [];
   for (let i = 0; i < samples.length; i += factor) {
     const block = samples.slice(i, i + factor);
-    kg.push(Math.round((block.reduce((a, b) => a + b, 0) / block.length) * 100) / 100);
+    out.push(Math.round((block.reduce((a, b) => a + b, 0) / block.length) * 100) / 100);
   }
-  return { hz: hz / factor, kg };
+  return out;
+}
+
+// Curve for storage: only the stretches where force is at least minKg (plus `pad`
+// samples on each side to keep the rise and fall), each downsampled by the same
+// factor so all segments together have at most maxPoints.
+//   { hz, segments: [{ t: start time in s, kg: [...] }] }
+export function compressCurve(samples, hz, { minKg = 1, maxPoints = 1000, pad = 2 } = {}) {
+  const ranges = [];
+  let start = -1;
+  for (let i = 0; i <= samples.length; i++) {
+    const loaded = i < samples.length && samples[i] >= minKg;
+    if (loaded && start < 0) start = i;
+    if (!loaded && start >= 0) {
+      const from = Math.max(0, start - pad);
+      const to = Math.min(samples.length, i + pad);
+      const prev = ranges.at(-1);
+      if (prev && from <= prev[1]) prev[1] = to; // overlapping padding: merge
+      else ranges.push([from, to]);
+      start = -1;
+    }
+  }
+  const total = ranges.reduce((n, [a, b]) => n + (b - a), 0);
+  const factor = Math.max(1, Math.ceil(total / maxPoints));
+  return {
+    hz: hz / factor,
+    segments: ranges.map(([a, b]) => ({ t: Math.round((a / hz) * 1000) / 1000, kg: averageBlocks(samples.slice(a, b), factor) })),
+  };
+}
+
+// Stored curve -> plot points. Gaps between segments are drawn as zero force.
+// Also accepts the older single-array format { hz, kg }.
+export function curvePoints(curve) {
+  const segments = curve.segments ?? [{ t: 0, kg: curve.kg }];
+  const dt = 1 / curve.hz;
+  const x = [];
+  const y = [];
+  for (const seg of segments) {
+    if (x.length && seg.t - x.at(-1) > 2 * dt) {
+      x.push(x.at(-1) + dt, seg.t - dt);
+      y.push(0, 0);
+    }
+    seg.kg.forEach((kg, i) => {
+      x.push(Math.round((seg.t + i * dt) * 1000) / 1000);
+      y.push(kg);
+    });
+  }
+  return { x, y };
 }

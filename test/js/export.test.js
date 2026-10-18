@@ -10,6 +10,7 @@ import {
   historyCsv,
   mergeBy,
   parseBackup,
+  storedCurveCsv,
   toCsv,
 } from "../../data/export.js";
 
@@ -69,4 +70,9 @@ test("mergeBy replaces matching items and keeps the rest", () => {
 
 test("fileDate formats local date", () => {
   assert.equal(fileDate(new Date(2026, 0, 5)), "2026-01-05");
+});
+
+test("storedCurveCsv writes stored samples with their real time", () => {
+  assert.equal(storedCurveCsv({ hz: 10, segments: [{ t: 1, kg: [5, 6] }] }), "time_s,force_kg\n1,5\n1.1,6\n");
+  assert.equal(storedCurveCsv({ hz: 2, kg: [1, 2] }), "time_s,force_kg\n0,1\n0.5,2\n");
 });

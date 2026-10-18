@@ -1,6 +1,6 @@
 import { device } from "./device.js";
 import { downloadCsv, downloadJson } from "./download.js";
-import { curveCsv, fileDate, historyCsv } from "./export.js";
+import { fileDate, historyCsv, storedCurveCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
 import { HANDS, KINDS, TEST_IDS } from "./tests.js";
@@ -285,7 +285,7 @@ export function initHistory() {
   el.csv.addEventListener("click", () => downloadCsv(`tindek-history-${fileDate()}.csv`, historyCsv(sessions.index)));
   const detailName = (s) => `tindek-${s.type}-${fileDate(new Date(s.startedAt))}-${s.id}`;
   el.detailCsv.addEventListener("click", () => {
-    if (openSession?.curve) downloadCsv(`${detailName(openSession)}.csv`, curveCsv(openSession.curve));
+    if (openSession?.curve) downloadCsv(`${detailName(openSession)}.csv`, storedCurveCsv(openSession.curve));
   });
   el.detailJson.addEventListener("click", () => {
     if (openSession) downloadJson(`${detailName(openSession)}.json`, openSession);

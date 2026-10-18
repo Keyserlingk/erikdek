@@ -4,8 +4,9 @@ import { test } from "node:test";
 import {
   CF_LAST_REPS,
   bestWindowMean,
+  compressCurve,
+  curvePoints,
   criticalForceSummary,
-  decimate,
   maxPullSummary,
   rfdOfPull,
   rfdSummary,
@@ -74,8 +75,29 @@ test("rfdSummary picks the best attempt and keeps per-attempt values", () => {
   assert.equal(rfdSummary([Array(200).fill(0)], DT), null);
 });
 
-test("decimate averages blocks and reports the new rate", () => {
-  const d = decimate([1, 3, 5, 7, 9], 80, 3);
-  assert.deepEqual(d, { hz: 40, kg: [2, 6, 9] });
-  assert.deepEqual(decimate([1, 2], 80, 10), { hz: 80, kg: [1, 2] });
+test("compressCurve keeps only loaded stretches with padding and merges close ones", () => {
+  const s = [0, 0, 0, 0, 5, 6, 7, 0, 0, 0, 0, 0, 0, 0, 8, 0, 9, 0, 0, 0];
+  const c = compressCurve(s, 10, { minKg: 1, maxPoints: 1000, pad: 1 });
+  assert.equal(c.hz, 10);
+  assert.deepEqual(c.segments, [
+    { t: 0.3, kg: [0, 5, 6, 7, 0] },
+    { t: 1.3, kg: [0, 8, 0, 9, 0] }, // 8 and 9 merged through overlapping padding
+  ]);
+  assert.deepEqual(compressCurve([0, 0.5, 0.2], 80).segments, []);
+});
+
+test("compressCurve downsamples all segments by one factor to fit maxPoints", () => {
+  const s = [...Array(100).fill(10), ...Array(500).fill(0), ...Array(100).fill(20)];
+  const c = compressCurve(s, 80, { maxPoints: 50, pad: 0 });
+  assert.equal(c.hz, 20); // 200 loaded samples / 50 -> factor 4
+  assert.equal(c.segments.length, 2);
+  assert.equal(c.segments[0].kg.length + c.segments[1].kg.length, 50);
+  assert.equal(c.segments[1].t, 7.5);
+});
+
+test("curvePoints draws gaps as zero and reads the old single-array format", () => {
+  const p = curvePoints({ hz: 10, segments: [{ t: 0, kg: [5, 5] }, { t: 2, kg: [7] }] });
+  assert.deepEqual(p.x, [0, 0.1, 0.2, 1.9, 2]);
+  assert.deepEqual(p.y, [5, 5, 0, 0, 7]);
+  assert.deepEqual(curvePoints({ hz: 2, kg: [1, 2] }), { x: [0, 0.5], y: [1, 2] });
 });

@@ -1,4 +1,4 @@
-import { decimate } from "./analysis.js";
+import { compressCurve } from "./analysis.js";
 import { beep, unlockAudio } from "./audio.js";
 import { downloadCsv, downloadJson } from "./download.js";
 import { curveCsv, fileDate } from "./export.js";
@@ -23,7 +23,9 @@ import {
 } from "./workout.js";
 
 const TICK_MS = 50;
-const CURVE_MAX_POINTS = 2000; // stored curve size (~10 KB per session)
+// Stored curve: only where force >= 1 kg, at most 1000 points (~6 KB per session).
+const CURVE_MIN_KG = 1;
+const CURVE_MAX_POINTS = 1000;
 const SETUP_KEY = "tindek.testSetup";
 
 const $ = (id) => document.getElementById(id);
@@ -361,7 +363,6 @@ async function startRun(kind, routine, hand) {
     curve: [], // every sample while not paused
     curvePhase: [], // phase index of each curve sample
     smoothed: null,
-    lastCountdown: null,
     startedAt: new Date(),
     wakeLock: null,
     timer: null,
@@ -399,7 +400,6 @@ function finishRep() {
 function enterPhase(i) {
   finishRep();
   run.index = i;
-  run.lastCountdown = null;
   if (i >= run.phases.length) {
     announcePhase("done");
     return;
@@ -409,9 +409,6 @@ function enterPhase(i) {
   if (phase.type === PHASE.WORK) {
     run.repSamples = [];
     run.repLoadedSamples = 0;
-    beep.work();
-  } else if (i > 0) {
-    beep.rest();
   }
 }
 
@@ -423,6 +420,8 @@ function tick() {
   const now = performance.now() / 1000;
   const state = run.engine.update(now);
   for (const i of state.entered) enterPhase(i);
+  // One beep per change (hang starts, rest starts, finished); not when starting.
+  if (state.entered.some((i) => i > 0)) beep();
   if (state.done) {
     endRun(false);
     return;
@@ -430,15 +429,6 @@ function tick() {
 
   const { phase, remainingS } = state;
   const next = run.phases[state.index + 1];
-  // 3-2-1 countdown beeps before each hang
-  if (phase.type !== PHASE.WORK && next?.type === PHASE.WORK) {
-    const secs = Math.ceil(remainingS);
-    if (secs <= 3 && secs >= 1 && secs !== run.lastCountdown && !run.engine.paused) {
-      run.lastCountdown = secs;
-      beep.countdown();
-    }
-  }
-
   const r = run.routine;
   el.run.card.dataset.phase = phase.type;
   el.run.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type);
@@ -473,7 +463,7 @@ function buildSession(stopped) {
     targetKg: run.target,
     summary: Object.fromEntries(Object.entries(summary).map(([k, v]) => [k, Array.isArray(v) ? v.map(round2) : round2(v)])),
     reps,
-    curve: decimate(run.curve, 1 / dtS, CURVE_MAX_POINTS),
+    curve: compressCurve(run.curve, 1 / dtS, { minKg: CURVE_MIN_KG, maxPoints: CURVE_MAX_POINTS }),
   };
   if (run.kind === "workout") {
     const { name, holdType, grip, sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;
@@ -511,7 +501,6 @@ function endRun(stopped) {
   clearInterval(run.timer);
   if (run.wakeLock) run.wakeLock.release().catch(() => {});
   if (stopped) finishRep();
-  else beep.finished();
   result = buildSession(stopped);
   resultRaw = { hz: 1 / sampleDtS(), kg: run.curve, phases: run.curvePhase.map((i) => run.phases[i] ?? null) };
   run = null;
