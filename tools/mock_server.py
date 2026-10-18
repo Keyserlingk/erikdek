@@ -6,6 +6,7 @@ then open http://localhost:8080 (or http://<laptop-ip>:8080 from the phone).
 """
 import argparse
 import base64
+import gzip
 import hashlib
 import json
 import math
@@ -41,7 +42,23 @@ SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mock_s
 SESSION_ID = re.compile(r"^[a-z0-9]{1,16}$")
 MAX_SESSION_BYTES = 32768
 FS_TOTAL_BYTES = 1441792  # LittleFS partition on the ESP32
-FS_BASE_USED_BYTES = 160000  # web app + settings files
+FS_BLOCK = 4096  # LittleFS stores every file in whole 4 KB blocks
+FS_OVERHEAD_BLOCKS = 4  # superblock and directories (root, /s, /vendor)
+LIST_FILES = 4  # routines, workouts, holdtypes, grips .json (1 block each)
+
+
+def fs_blocks(size):
+    return max(1, -(-size // FS_BLOCK))
+
+
+def web_app_bytes():
+    """Flash used by the gzipped web app, as tools/gzip_data.py puts it on the ESP."""
+    total = 0
+    for root, _, files in os.walk(DATA_DIR):
+        for name in files:
+            with open(os.path.join(root, name), "rb") as f:
+                total += fs_blocks(len(gzip.compress(f.read(), compresslevel=9, mtime=0))) * FS_BLOCK
+    return total
 
 
 class SessionStore:
@@ -56,9 +73,9 @@ class SessionStore:
         return os.path.join(SESSIONS_DIR, f"{sid}.json")
 
     def used_bytes(self):
-        return FS_BASE_USED_BYTES + sum(
-            os.path.getsize(os.path.join(SESSIONS_DIR, f)) for f in os.listdir(SESSIONS_DIR)
-        )
+        """Estimate of LittleFS usage on the ESP: whole blocks per file."""
+        sessions = sum(fs_blocks(os.path.getsize(os.path.join(SESSIONS_DIR, f))) for f in os.listdir(SESSIONS_DIR))
+        return web_app_bytes() + (FS_OVERHEAD_BLOCKS + LIST_FILES + sessions) * FS_BLOCK
 
     def index(self):
         try:
