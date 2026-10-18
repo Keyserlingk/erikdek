@@ -57,14 +57,15 @@ function summarizeReps(reps, planned, target) {
 // Progress metrics. fromSummary(summary, session) reads the value from a session
 // summary (or from one hand's summary in summary.byHand); value(session) from the
 // whole session. Kinds list them in `metrics`; the first one is the default.
-const metric = (key, label, format, fromSummary) => ({
+const metric = (key, label, format, fromSummary, info) => ({
   key,
   label,
   format,
+  info,
   fromSummary,
   value: (s) => fromSummary(s.summary, s),
 });
-const summaryMetric = (key, label, format) => metric(key, label, format, (summary) => num(summary?.[key]));
+const summaryMetric = (key, label, format, info) => metric(key, label, format, (summary) => num(summary?.[key]), info);
 
 // Points a session contributes to History: one per hand for alternating sessions,
 // otherwise one for the session's hand.
@@ -79,13 +80,18 @@ export const KINDS = {
     name: "Workout",
     workLabel: "Hang",
     metrics: [
-      summaryMetric("holdPct", "Hold %", pct),
-      summaryMetric("retentionPct", "Force retention", pct),
-      summaryMetric("workPct", "Work vs target", pct),
-      summaryMetric("tutS", "Time under tension", seconds),
-      summaryMetric("avgKg", "Average force", kg),
-      summaryMetric("peakKg", "Peak force", kg),
-      metric("targetKg", "Target load", kg, (summary, s) => num(s.targetKg)),
+      summaryMetric("holdPct", "Hold %", pct, `${INFO.hold} Rising toward 100 % means you stay on longer.`),
+      summaryMetric("retentionPct", "Force retention", pct, `${INFO.retention} Higher means less fading.`),
+      summaryMetric(
+        "workPct",
+        "Work vs target",
+        pct,
+        `${INFO.work} Only sessions with a target are shown. Near 100 % means you can raise the target.`,
+      ),
+      summaryMetric("tutS", "Time under tension", seconds, INFO.tut),
+      summaryMetric("avgKg", "Average force", kg, INFO.avgForce),
+      summaryMetric("peakKg", "Peak force", kg, "Highest force in the session."),
+      metric("targetKg", "Target load", kg, (summary, s) => num(s.targetKg), "The target load the routine used, in kg (a % of bodyweight target is converted with the bodyweight at the time)."),
     ],
     // Alternating sessions also get the same summary per hand in byHand.
     analyze({ reps, routine, target }) {
@@ -157,7 +163,7 @@ export const KINDS = {
     description: "3 all-out pulls of 5 s with 90 s rest. Measures your strongest pull.",
     workLabel: "Pull",
     routine: { sets: 3, reps: 1, workS: 5, restS: 0, setRestS: 90, prepS: 5 },
-    metrics: [summaryMetric("peakKg", "Peak force", kg)],
+    metrics: [summaryMetric("peakKg", "Peak force", kg, `${INFO.peakForce} Your strongest pull in each test.`)],
     analyze: ({ attempts, dtS }) => maxPullSummary(attempts, dtS),
     tiles: (s) => [
       [kg(s.summary.peakKg), `peak force${pctBw(s.summary.peakKg, s.bodyweightKg)}`, INFO.peakForce],
@@ -174,7 +180,7 @@ export const KINDS = {
     description: `24 all-out pulls of 7 s with 3 s rest. Critical force is the average of the last ${CF_LAST_REPS} reps: the load you can sustain.`,
     workLabel: "Pull",
     routine: { sets: 1, reps: 24, workS: 7, restS: 3, setRestS: 0, prepS: 5 },
-    metrics: [summaryMetric("cfKg", "Critical force", kg)],
+    metrics: [summaryMetric("cfKg", "Critical force", kg, INFO.cf)],
     analyze({ reps, routine }) {
       const cf = criticalForceSummary(
         reps.map((r) => r.meanKg),
@@ -201,7 +207,7 @@ export const KINDS = {
     description: "3 explosive pulls of 3 s with 30 s rest. Pull as fast and hard as you can from a relaxed hang.",
     workLabel: "Pull",
     routine: { sets: 3, reps: 1, workS: 3, restS: 0, setRestS: 30, prepS: 5 },
-    metrics: [summaryMetric("rfdKgS", "RFD 0–200 ms", kgPerS)],
+    metrics: [summaryMetric("rfdKgS", "RFD 0–200 ms", kgPerS, INFO.rfd)],
     analyze: ({ attempts, dtS }) =>
       rfdSummary(attempts, dtS) ?? { rfdKgS: null, peakRfdKgS: null, timeToPeakS: null, peakKg: null, attemptRfdKgS: [] },
     tiles: (s) => [

@@ -26,6 +26,8 @@ const el = {
   metric: $("histMetric"),
   bests: $("histBests"),
   progressTitle: $("histProgressTitle"),
+  metricInfo: $("histMetricInfo"),
+  metricInfoText: $("histMetricInfoText"),
   legend: $("histLegend"),
   chart: $("histChart"),
   chartEmpty: $("histChartEmpty"),
@@ -140,6 +142,8 @@ function renderProgress(list, metric) {
     progressChart = null;
   }
   el.progressTitle.textContent = `Progress: ${metric.label}`;
+  el.metricInfoText.textContent = metric.info || "";
+  el.metricInfo.hidden = !metric.info;
   const points = list.filter((s) => pointsOf(s).length).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   const hands = HAND_ORDER.filter((h) => points.some((s) => pointsOf(s).some((p) => p.hand === h)));
   el.chartEmpty.hidden = points.length >= 2;
@@ -292,6 +296,10 @@ export function initHistory() {
   );
   for (const select of [el.kind, el.hold, el.grip, el.routine, el.metric]) select.addEventListener("change", render);
   el.back.addEventListener("click", closeDetail);
+  el.metricInfo.addEventListener("click", () => {
+    el.metricInfoText.hidden = !el.metricInfoText.hidden;
+    el.metricInfo.setAttribute("aria-expanded", String(!el.metricInfoText.hidden));
+  });
   el.remove.addEventListener("click", deleteOpen);
   el.csv.addEventListener("click", () => downloadCsv(`erkdek-history-${fileDate()}.csv`, historyCsv(sessions.index)));
   const detailName = (s) => `erkdek-${s.type}-${fileDate(new Date(s.startedAt))}-${s.id}`;

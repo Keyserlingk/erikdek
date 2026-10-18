@@ -86,3 +86,9 @@ test("each test has its summary metric and treats missing values as null", () =>
   assert.equal(KINDS.criticalForce.metrics[0].value({ summary: { cfKg: null } }), null);
   assert.equal(KINDS.rfd.metrics[0].value({}), null);
 });
+
+test("every History metric has an explanation", () => {
+  for (const [kind, def] of Object.entries(KINDS)) {
+    for (const m of def.metrics) assert.ok(m.info && m.info.length > 20, `${kind}.${m.key} has no info`);
+  }
+});

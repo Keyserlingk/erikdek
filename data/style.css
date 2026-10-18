@@ -375,6 +375,10 @@ table.reps th:first-child, table.reps td:first-child { text-align: left; }
   cursor: pointer;
 }
 .info-button[aria-expanded="true"] { color: var(--accent); }
+.section-head { display: flex; align-items: center; gap: 4px; }
+.section-head h2.section { margin-bottom: 10px; }
+.section-head .info-button { margin-top: 10px; }
+.metric-info { margin: -4px 0 10px; font-size: 13px; }
 .info-text, .tile .info-text { margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--text); }
 
 h2.section { margin: 20px 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
