@@ -32,7 +32,22 @@ const INFO = {
   rfd: "How fast you build force: the increase over the first 200 ms after you start pulling, per second.",
   peakRfd: "Steepest rise in force over any 50 ms.",
   timeToPeak: "Time from starting to pull until peak force.",
+  perHand: "Average force and hold % of the reps done with this hand, to compare left and right.",
 };
+
+const handInitial = (hand) => (hand === "left" ? " L" : hand === "right" ? " R" : "");
+
+// Alternating sessions: average force and hold % per hand (null otherwise).
+function perHand(reps) {
+  const result = {};
+  for (const hand of ["left", "right"]) {
+    const own = reps.filter((r) => r.hand === hand);
+    if (!own.length) continue;
+    const avg = (key) => own.reduce((s, r) => s + r[key], 0) / own.length;
+    result[hand] = { avgKg: avg("meanKg"), holdPct: avg("holdPct") };
+  }
+  return Object.keys(result).length === 2 ? result : null;
+}
 
 // Progress metrics: value(session) reads it from a saved session (index entry is enough).
 // Kinds list them in `metrics`; the first one is the default.
@@ -69,6 +84,7 @@ export const KINDS = {
         holdPct: sum("holdPct") / totalReps,
         workPct: target ? sum("workPct") / totalReps : null,
         retentionPct: forceRetention(reps.map((r) => r.meanKg)),
+        byHand: perHand(reps),
         peakKg: reps.reduce((m, r) => Math.max(m, r.peakKg), 0),
         avgKg: reps.length ? sum("meanKg") / reps.length : null,
         tutS: sum("tutS"),
@@ -77,6 +93,9 @@ export const KINDS = {
     tiles: (s) => [
       [pct(KINDS.workout.metrics[0].value(s)), `hold · ${s.summary.completed}/${s.summary.totalReps} full reps`, INFO.hold],
       [pct(s.summary.retentionPct), "force retention", INFO.retention],
+      ...["left", "right"]
+        .filter((h) => s.summary.byHand?.[h])
+        .map((h) => [kg(s.summary.byHand[h].avgKg), `${h} hand avg · hold ${pct(s.summary.byHand[h].holdPct)}`, INFO.perHand]),
       ...(s.targetKg ? [[pct(s.summary.workPct), "work vs target", INFO.work]] : []),
       [kg(s.summary.avgKg), "avg force", INFO.avgForce],
       [kg(s.summary.peakKg), "best peak", INFO.bestPeak],
@@ -90,7 +109,7 @@ export const KINDS = {
         rows: s.reps.map((r) => {
           const hold = r.holdPct ?? (100 * r.tutS) / s.routine.workS;
           return [
-            `${r.set}.${r.rep}`,
+            `${r.set}.${r.rep}${handInitial(r.hand)}`,
             formatKg(r.meanKg),
             pct(hold),
             ...(hasWork ? [pct(r.workPct)] : []),
@@ -106,14 +125,14 @@ export const KINDS = {
         {
           label: "Hold per rep",
           info: INFO.holdPerRep,
-          values: s.reps.map((r) => ({ set: r.set, pct: r.holdPct ?? (100 * r.tutS) / s.routine.workS })),
+          values: s.reps.map((r) => ({ set: r.set, hand: r.hand, pct: r.holdPct ?? (100 * r.tutS) / s.routine.workS })),
         },
       ];
       if (first > 0) {
         strips.push({
           label: "Force vs rep 1",
           info: INFO.forceVsRep1,
-          values: s.reps.map((r) => ({ set: r.set, pct: (100 * r.meanKg) / first })),
+          values: s.reps.map((r) => ({ set: r.set, hand: r.hand, pct: (100 * r.meanKg) / first })),
         });
       }
       return strips;
@@ -187,4 +206,4 @@ export const KINDS = {
 
 export const TEST_IDS = ["maxPull", "criticalForce", "rfd"];
 
-export const HANDS = { both: "Both hands", left: "Left hand", right: "Right hand" };
+export const HANDS = { both: "Both hands", left: "Left hand", right: "Right hand", alternate: "Alternating hands" };

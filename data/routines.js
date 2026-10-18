@@ -1,4 +1,5 @@
 import { MAX_TAG_LENGTH } from "./tags.js";
+import { HAND_OPTIONS } from "./workout.js";
 
 // Built-in routines ship with the web app; custom ones are stored on the device.
 
@@ -9,6 +10,7 @@ export const BUILTIN_ROUTINES = [
     builtin: true,
     holdType: "",
     grip: "",
+    hands: "both",
     sets: 4,
     reps: 6,
     workS: 7,
@@ -23,6 +25,7 @@ export const BUILTIN_ROUTINES = [
     builtin: true,
     holdType: "",
     grip: "",
+    hands: "both",
     sets: 5,
     reps: 1,
     workS: 10,
@@ -37,6 +40,7 @@ export const BUILTIN_ROUTINES = [
     builtin: true,
     holdType: "",
     grip: "",
+    hands: "both",
     sets: 3,
     reps: 6,
     workS: 10,
@@ -61,6 +65,7 @@ const TARGET_LIMITS = { kg: [1, 300], bw: [5, 200] };
 export function validateRoutine(r) {
   if (!r.name || !r.name.trim()) return "Give the routine a name.";
   if (r.name.length > 40) return "Name is too long (max 40 characters).";
+  if (!HAND_OPTIONS.includes(r.hands)) return "Choose which hands to use.";
   for (const key of ["holdType", "grip"]) {
     if (typeof r[key] !== "string" || r[key].length > MAX_TAG_LENGTH) return `Invalid ${key === "grip" ? "grip" : "hold"}.`;
   }
@@ -147,7 +152,7 @@ export function newRoutineId() {
 // Routine file: { format, version, routines: [...] } for sharing routines.
 export const ROUTINE_FORMAT = "erkdek-routines";
 export const ROUTINE_VERSION = 1;
-const ROUTINE_FIELDS = ["name", "holdType", "grip", "sets", "reps", "workS", "restS", "setRestS", "prepS", "target"];
+const ROUTINE_FIELDS = ["name", "holdType", "grip", "hands", "sets", "reps", "workS", "restS", "setRestS", "prepS", "target"];
 
 function pickRoutine(r) {
   return Object.fromEntries(ROUTINE_FIELDS.map((k) => [k, r[k]]));

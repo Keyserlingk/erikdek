@@ -8,7 +8,7 @@ const mine = { ...BUILTIN_ROUTINES[0], id: "r1", builtin: false, name: "My repea
 test("buildRoutineFile keeps only routine fields", () => {
   const file = buildRoutineFile([mine]);
   assert.equal(file.format, ROUTINE_FORMAT);
-  assert.deepEqual(Object.keys(file.routines[0]).sort(), ["grip", "holdType", "name", "prepS", "reps", "restS", "setRestS", "sets", "target", "workS"]);
+  assert.deepEqual(Object.keys(file.routines[0]).sort(), ["grip", "hands", "holdType", "name", "prepS", "reps", "restS", "setRestS", "sets", "target", "workS"]);
   assert.equal(file.routines[0].id, undefined);
 });
 

@@ -84,14 +84,17 @@ function renderStrip(strip) {
   const sets = [];
   for (const v of strip.values) {
     if (!sets.length || sets.at(-1).set !== v.set) sets.push({ set: v.set, values: [] });
-    sets.at(-1).values.push(v.pct);
+    sets.at(-1).values.push(v);
   }
   return el("div", { className: "strip-block" }, [
     withInfo(el("span", { className: "strip-label", textContent: strip.label }), strip.info),
     ...sets.map((set) =>
       el("div", { className: "strip-row" }, [
         el("span", { className: "strip-set", textContent: sets.length > 1 ? `Set ${set.set}` : "Reps" }),
-        ...set.values.map((p) => el("span", { className: "strip-value", textContent: `${Math.round(p)} %` })),
+        ...set.values.map((v) => {
+          const hand = v.hand === "left" ? "L " : v.hand === "right" ? "R " : "";
+          return el("span", { className: "strip-value", textContent: `${hand}${Math.round(v.pct)} %` });
+        }),
       ]),
     ),
   ]);

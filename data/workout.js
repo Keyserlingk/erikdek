@@ -7,16 +7,26 @@ export const COMPLETE_SHARE = 0.9;
 // Target band around the target load.
 export const TARGET_TOLERANCE = 0.05;
 
-// Expands a routine into the timed phases it consists of.
+export const HAND_OPTIONS = ["both", "left", "right", "alternate"];
+
+// Hand for a rep: "alternate" goes left, right, left… within each set.
+export function repHand(hands, rep) {
+  if (hands === "alternate") return rep % 2 === 1 ? "left" : "right";
+  return hands === "left" || hands === "right" ? hands : "both";
+}
+
+// Expands a routine into the timed phases it consists of. Rests and get-ready carry
+// the set/rep/hand of the hang that follows.
 export function buildPhases(r) {
   const phases = [];
-  if (r.prepS > 0) phases.push({ type: PHASE.PREP, durS: r.prepS, set: 1, rep: 1 });
+  const hand = (rep) => repHand(r.hands, rep);
+  if (r.prepS > 0) phases.push({ type: PHASE.PREP, durS: r.prepS, set: 1, rep: 1, hand: hand(1) });
   for (let set = 1; set <= r.sets; set++) {
     for (let rep = 1; rep <= r.reps; rep++) {
-      phases.push({ type: PHASE.WORK, durS: r.workS, set, rep });
-      if (rep < r.reps && r.restS > 0) phases.push({ type: PHASE.REST, durS: r.restS, set, rep: rep + 1 });
+      phases.push({ type: PHASE.WORK, durS: r.workS, set, rep, hand: hand(rep) });
+      if (rep < r.reps && r.restS > 0) phases.push({ type: PHASE.REST, durS: r.restS, set, rep: rep + 1, hand: hand(rep + 1) });
     }
-    if (set < r.sets && r.setRestS > 0) phases.push({ type: PHASE.SET_REST, durS: r.setRestS, set: set + 1, rep: 1 });
+    if (set < r.sets && r.setRestS > 0) phases.push({ type: PHASE.SET_REST, durS: r.setRestS, set: set + 1, rep: 1, hand: hand(1) });
   }
   return phases;
 }

@@ -14,6 +14,7 @@
   --rest: #2563eb;
   --series-left: #9333ea;
   --series-right: #0d9488;
+  --series-alt: #c2410c;
   --tabs-h: 60px;
 }
 
@@ -34,6 +35,7 @@
     --rest: #3b82f6;
     --series-left: #c084fc;
     --series-right: #2dd4bf;
+    --series-alt: #fb923c;
   }
 }
 
@@ -360,7 +362,7 @@ table.reps th:first-child, table.reps td:first-child { text-align: left; }
 .strip-block .with-info { margin-bottom: 6px; }
 .strip-row { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
 .strip-set { width: 44px; font-size: 13px; color: var(--muted); }
-.strip-value { min-width: 40px; text-align: right; }
+.strip-value { min-width: 40px; text-align: right; white-space: nowrap; }
 
 .with-info { display: flex; flex-direction: column; }
 .info-row { display: flex; align-items: center; gap: 4px; }

@@ -69,6 +69,7 @@ const el = {
     restS: $("editRest"),
     setRestS: $("editSetRest"),
     prepS: $("editPrep"),
+    hands: $("editHands"),
     targetType: $("editTargetType"),
     targetValue: $("editTargetValue"),
     targetUnit: $("editTargetUnit"),
@@ -160,7 +161,7 @@ function describe(r) {
   if (r.sets > 1) parts.push(`${formatDuration(r.setRestS)} between sets`);
   if (r.target.type === "kg") parts.push(`target ${r.target.value} kg`);
   if (r.target.type === "bw") parts.push(`target ${r.target.value} % BW`);
-  const tags = [r.holdType, r.grip].filter(Boolean);
+  const tags = [r.holdType, r.grip, r.hands && r.hands !== "both" ? HANDS[r.hands] : ""].filter(Boolean);
   return [...tags, ...parts].join(" · ");
 }
 
@@ -225,7 +226,7 @@ function renderList() {
         create("p", { className: "muted", textContent: describe(r) }),
         create("div", { className: "actions" }, [
           button("secondary", r.builtin ? "Copy & edit" : "Edit", () => openEditor(r)),
-          button("primary", "Start", () => startRun("workout", r, "both")),
+          button("primary", "Start", () => startRun("workout", r, r.hands || "both")),
         ]),
       ]),
     ),
@@ -267,6 +268,7 @@ function openEditor(r) {
   e.name.value = editing.name;
   selects.editHold.value = editing.holdType || "";
   selects.editGrip.value = editing.grip || "";
+  e.hands.value = editing.hands || "both";
   for (const key of ["sets", "reps", "workS", "restS", "setRestS", "prepS"]) e[key].value = editing[key];
   e.targetType.value = editing.target.type;
   e.targetValue.value = editing.target.type === "none" ? "" : editing.target.value;
@@ -286,6 +288,7 @@ function readEditor() {
     name: e.name.value.trim(),
     holdType: selects.editHold.value,
     grip: selects.editGrip.value,
+    hands: e.hands.value,
     sets: int(e.sets),
     reps: int(e.reps),
     workS: int(e.workS),
@@ -476,7 +479,7 @@ function finishRep() {
   if (!run.repSamples) return;
   const phase = run.phases[run.index];
   run.attempts.push(run.repSamples);
-  run.reps.push({ set: phase.set, rep: phase.rep, ...repStats(run.repSamples, sampleDtS(), run.threshold, phase.durS, run.target) });
+  run.reps.push({ set: phase.set, rep: phase.rep, hand: phase.hand, ...repStats(run.repSamples, sampleDtS(), run.threshold, phase.durS, run.target) });
   run.repSamples = null;
 }
 
@@ -514,10 +517,11 @@ function tick() {
   const next = run.phases[state.index + 1];
   const r = run.routine;
   el.run.card.dataset.phase = phase.type;
-  el.run.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type);
+  const handLabel = (p) => (p.hand && p.hand !== "both" ? ` · ${p.hand}` : "");
+  el.run.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type) + (phase.type === PHASE.WORK ? handLabel(phase) : "");
   el.run.countdown.textContent = Math.ceil(remainingS);
   el.run.progress.textContent = r.reps > 1 ? `Set ${phase.set}/${r.sets} · Rep ${phase.rep}/${r.reps}` : `Attempt ${phase.set}/${r.sets}`;
-  el.run.next.textContent = next ? `Next: ${phaseName(next.type)} ${formatDuration(next.durS)}` : "Last one!";
+  el.run.next.textContent = next ? `Next: ${phaseName(next.type)} ${formatDuration(next.durS)}${handLabel(next)}` : "Last one!";
 
   const kg = run.smoothed ?? 0;
   el.run.kg.textContent = device.connected ? formatKg(kg) : "–";
@@ -549,8 +553,8 @@ function buildSession(stopped) {
     curve: compressCurve(run.curve, 1 / dtS, { minKg: CURVE_MIN_KG, maxPoints: CURVE_MAX_POINTS }),
   };
   if (run.kind === "workout") {
-    const { name, holdType, grip, sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;
-    session.routine = { id: r.id, name, holdType, grip, sets, reps: repCount, workS, restS, setRestS, prepS, target };
+    const { name, holdType, grip, hands, sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;
+    session.routine = { id: r.id, name, holdType, grip, hands, sets, reps: repCount, workS, restS, setRestS, prepS, target };
   }
   if (stopped) session.stopped = true;
   return session;

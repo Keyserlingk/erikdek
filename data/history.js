@@ -6,8 +6,8 @@ import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } 
 import { HANDS, KINDS, TEST_IDS } from "./tests.js";
 
 const KIND_ORDER = [...TEST_IDS, "workout"];
-const HAND_ORDER = ["both", "left", "right"];
-const HAND_COLOR = { both: "--accent", left: "--series-left", right: "--series-right" };
+const HAND_ORDER = ["both", "left", "right", "alternate"];
+const HAND_COLOR = { both: "--accent", left: "--series-left", right: "--series-right", alternate: "--series-alt" };
 const ALL = "";
 
 const $ = (id) => document.getElementById(id);

@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   PHASE,
+  repHand,
   WorkoutEngine,
   buildPhases,
   loadThresholdKg,
@@ -20,9 +21,25 @@ test("buildPhases expands sets, reps and rests", () => {
     phases.map((p) => p.type),
     ["prep", "work", "rest", "work", "rest", "work", "setRest", "work", "rest", "work", "rest", "work"],
   );
-  assert.deepEqual(phases[7], { type: PHASE.WORK, durS: 7, set: 2, rep: 1 });
+  assert.deepEqual(phases[7], { type: PHASE.WORK, durS: 7, set: 2, rep: 1, hand: "both" });
   // rest phases announce the rep that follows
   assert.equal(phases[2].rep, 2);
+});
+
+test("alternating hands switch every hang and restart each set with left", () => {
+  assert.equal(repHand("alternate", 1), "left");
+  assert.equal(repHand("alternate", 2), "right");
+  assert.equal(repHand("left", 2), "left");
+  assert.equal(repHand(undefined, 1), "both");
+  const phases = buildPhases({ ...repeaters, hands: "alternate" });
+  assert.deepEqual(
+    phases.filter((p) => p.type === "work").map((p) => p.hand),
+    ["left", "right", "left", "left", "right", "left"],
+  );
+  // rests and get-ready announce the hand of the next hang
+  assert.equal(phases[0].hand, "left");
+  assert.equal(phases[2].type, "rest");
+  assert.equal(phases[2].hand, "right");
 });
 
 test("buildPhases skips zero-length rests and prep", () => {
