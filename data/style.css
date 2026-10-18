@@ -136,19 +136,20 @@ main {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 32px 16px;
+  padding: 20px 16px;
 }
+.bw { margin-top: 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .weight {
   display: flex;
   align-items: baseline;
   gap: 8px;
   font-variant-numeric: tabular-nums;
 }
-#kg { font-size: clamp(64px, 24vw, 120px); font-weight: 700; line-height: 1; }
+#kg { font-size: clamp(60px, 22vw, 112px); font-weight: 700; line-height: 1; }
 .unit { font-size: 24px; color: var(--muted); }
 
 .peak {
-  margin-top: 16px;
+  margin-top: 12px;
   padding: 8px 16px;
   font: inherit;
   font-size: 18px;
@@ -162,6 +163,29 @@ main {
 .peak strong { color: var(--text); }
 
 .actions { display: flex; gap: 12px; }
+
+.chart-card { padding: 10px 6px 4px 0; }
+.chart { height: 220px; }
+.segmented {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 6px 6px;
+}
+.segmented button {
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.segmented button.active { color: var(--accent); border-color: var(--accent); }
+
+.message { margin: 12px 0 0; font-size: 14px; color: var(--ok); min-height: 1.4em; }
+.message.error-text { color: var(--bad); }
 
 button.primary, button.secondary {
   flex: 1;

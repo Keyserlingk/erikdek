@@ -23,3 +23,11 @@ void storageSaveCalibration(const Calibration& cal) {
   prefs.putFloat("cal_cpk", cal.countsPerKg);
   prefs.putBool("cal_ok", cal.calibrated);
 }
+
+Settings storageLoadSettings() {
+  Settings s;
+  s.bodyweightKg = prefs.getFloat("bodyweight", 0);
+  return s;
+}
+
+void storageSaveSettings(const Settings& s) { prefs.putFloat("bodyweight", s.bodyweightKg); }

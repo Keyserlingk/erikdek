@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111418">
   <title>Tindek</title>
+  <link rel="stylesheet" href="vendor/uPlot.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -31,9 +32,18 @@
     <section id="view-live">
       <div class="card readout">
         <div class="weight"><span id="kg">–</span><span class="unit">kg</span></div>
+        <div id="bw" class="bw" hidden></div>
         <button id="peak" class="peak" type="button" title="Tap to reset peak">
-          Peak <strong id="peakKg">0.0</strong> kg
+          Peak <strong id="peakKg">0.0</strong> kg <span id="peakBw"></span>
         </button>
+      </div>
+      <div class="card chart-card">
+        <div id="chartWindow" class="segmented" role="group" aria-label="Chart time window">
+          <button type="button" data-s="10">10 s</button>
+          <button type="button" data-s="30">30 s</button>
+          <button type="button" data-s="60">60 s</button>
+        </div>
+        <div id="chart" class="chart"></div>
       </div>
       <div class="actions">
         <button id="tare" class="primary" type="button">Tare</button>
@@ -77,13 +87,30 @@
 
       <button id="calReset" class="link danger" type="button" hidden>Reset calibration to default</button>
     </section>
+
+    <section id="view-settings" hidden>
+      <h1>Settings</h1>
+      <div class="card">
+        <h2>Bodyweight</h2>
+        <p class="muted">Used to show force as % of bodyweight. Leave empty to hide.</p>
+        <label class="field">
+          <span>Bodyweight</span>
+          <input id="setBodyweight" type="number" min="20" max="250" step="0.1" inputmode="decimal" placeholder="70.0">
+          <span>kg</span>
+        </label>
+        <button id="setSave" class="primary" type="button">Save</button>
+        <p id="setMessage" class="message" aria-live="polite"></p>
+      </div>
+    </section>
   </main>
 
   <nav class="tabs">
     <a href="#live">Live</a>
     <a href="#calibrate">Calibrate</a>
+    <a href="#settings">Settings</a>
   </nav>
 
+  <script src="vendor/uPlot.iife.min.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

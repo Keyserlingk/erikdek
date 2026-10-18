@@ -6,3 +6,13 @@
 void storageBegin();
 Calibration storageLoadCalibration();
 void storageSaveCalibration(const Calibration& cal);
+
+struct Settings {
+  float bodyweightKg = 0;  // 0 = not set
+};
+
+static constexpr float kMinBodyweightKg = 20;
+static constexpr float kMaxBodyweightKg = 250;
+
+Settings storageLoadSettings();
+void storageSaveSettings(const Settings& settings);

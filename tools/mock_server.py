@@ -24,6 +24,7 @@ PUSH_RATE_HZ = 20
 TARE_SAMPLES = 40  # 0.5 s, same as firmware
 CALIBRATION_SAMPLES = 80  # 1 s, same as firmware
 MIN_CALIBRATION_COUNTS = 5000
+MIN_BODYWEIGHT_KG, MAX_BODYWEIGHT_KG = 20, 250
 
 # The simulated cell is ~12 % off from the firmware's default factor, so calibration matters.
 DEFAULT_COUNTS_PER_KG = 14300.0
@@ -130,6 +131,7 @@ class Device:
         self.offset = 0
         self.counts_per_kg = DEFAULT_COUNTS_PER_KG
         self.calibrated = False
+        self.settings = {"bodyweightKg": 0}
         self.cal_kg = 0.0
         self.tared = False
         self.tare_avg = RawAverager()
@@ -148,12 +150,26 @@ class Device:
                 state = json.load(f)
             self.counts_per_kg = state["counts_per_kg"]
             self.calibrated = state["calibrated"]
+            self.settings.update(state.get("settings", {}))
         except (OSError, ValueError, KeyError):
             pass
 
     def save_state(self):
         with open(STATE_FILE, "w") as f:
-            json.dump({"counts_per_kg": self.counts_per_kg, "calibrated": self.calibrated}, f)
+            json.dump(
+                {"counts_per_kg": self.counts_per_kg, "calibrated": self.calibrated, "settings": self.settings},
+                f,
+            )
+
+    def update_settings(self, body):
+        """Same rules as the firmware's PUT /api/settings. Returns an error string or None."""
+        if "bodyweightKg" in body:
+            bw = body["bodyweightKg"]
+            if not isinstance(bw, (int, float)) or (bw != 0 and not MIN_BODYWEIGHT_KG <= bw <= MAX_BODYWEIGHT_KG):
+                return "bodyweightKg out of range"
+            self.settings["bodyweightKg"] = bw
+        self.save_state()
+        return None
 
     def millis(self):
         return int((time.monotonic() - self.boot) * 1000)
@@ -177,7 +193,7 @@ class Device:
     def run(self):
         period = 1.0 / SAMPLE_RATE_HZ
         per_push = SAMPLE_RATE_HZ // PUSH_RATE_HZ
-        batch, batch_ts = [], 0
+        batch, batch_ts, batch_te = [], 0, 0
         next_t = time.monotonic()
         rate_count, rate_start = 0, time.monotonic()
         last_status = 0.0
@@ -190,11 +206,12 @@ class Device:
             if self.cal_avg.add(raw):
                 self.finish_calibration()
 
+            batch_te = self.millis()
             if not batch:
-                batch_ts = self.millis()
+                batch_ts = batch_te
             batch.append(round(self.to_kg(raw), 3))
             if len(batch) >= per_push:
-                self.broadcast({"t": "samples", "ts": batch_ts, "kg": batch})
+                self.broadcast({"t": "samples", "ts": batch_ts, "te": batch_te, "kg": batch})
                 batch = []
 
             rate_count += 1
@@ -301,7 +318,29 @@ def make_handler(device):
         def do_GET(self):
             if self.path == "/ws" and self.headers.get("Upgrade", "").lower() == "websocket":
                 return self.serve_websocket()
+            if self.path == "/api/settings":
+                return self.send_json(200, device.settings)
             return super().do_GET()
+
+        def do_PUT(self):
+            if self.path != "/api/settings":
+                return self.send_json(404, {"error": "not found"})
+            try:
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            except ValueError:
+                return self.send_json(400, {"error": "invalid JSON"})
+            error = device.update_settings(body) if isinstance(body, dict) else "expected an object"
+            if error:
+                return self.send_json(400, {"error": error})
+            return self.send_json(200, device.settings)
+
+        def send_json(self, code, obj):
+            data = json.dumps(obj).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
 
         def serve_websocket(self):
             key = self.headers["Sec-WebSocket-Key"]

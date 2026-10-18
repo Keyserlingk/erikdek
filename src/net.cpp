@@ -1,6 +1,7 @@
 #include "net.h"
 
 #include <ArduinoJson.h>
+#include <AsyncJson.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <WiFi.h>
@@ -25,6 +26,7 @@ static constexpr uint32_t kStatusPushMs = 1000;
 
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
+static Settings settings;
 
 static void startWifi() {
 #ifdef WIFI_SSID
@@ -123,10 +125,40 @@ static void onWsEvent(AsyncWebSocket*, AsyncWebSocketClient* client, AwsEventTyp
   }
 }
 
+static void settingsToJson(JsonObject obj) { obj["bodyweightKg"] = settings.bodyweightKg; }
+
+static void handleGetSettings(AsyncWebServerRequest* req) {
+  auto* res = new AsyncJsonResponse();
+  settingsToJson(res->getRoot().to<JsonObject>());
+  res->setLength();
+  req->send(res);
+}
+
+// PUT /api/settings with any subset of the fields; responds with the full settings.
+static void handlePutSettings(AsyncWebServerRequest* req, JsonVariant& body) {
+  Settings next = settings;
+  if (body["bodyweightKg"].is<float>()) {
+    float bw = body["bodyweightKg"];
+    if (bw != 0 && (bw < kMinBodyweightKg || bw > kMaxBodyweightKg)) {
+      req->send(400, "application/json", "{\"error\":\"bodyweightKg out of range\"}");
+      return;
+    }
+    next.bodyweightKg = bw;
+  }
+  settings = next;
+  storageSaveSettings(settings);
+  handleGetSettings(req);
+}
+
 void netBegin() {
+  settings = storageLoadSettings();
   startWifi();
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
+  server.on("/api/settings", HTTP_GET, handleGetSettings);
+  auto* putSettings = new AsyncCallbackJsonWebHandler("/api/settings", handlePutSettings);
+  putSettings->setMethod(HTTP_PUT);
+  server.addHandler(putSettings);
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
   server.onNotFound([](AsyncWebServerRequest* req) { req->send(404, "text/plain", "Not found"); });
   server.begin();
@@ -144,11 +176,14 @@ void netLoop() {
     Sample buf[32];
     size_t n = sensorDrain(buf, 32);
     if (n > 0 && ws.count() > 0 && ws.availableForWriteAll()) {
-      // {"t":"samples","ts":123,"kg":[1.234,...]}  built by hand, it runs 20x per second
+      // {"t":"samples","ts":123,"te":160,"kg":[1.234,...]}  built by hand, it runs 20x per second.
+      // ts/te: millis() of the first/last sample; the browser spaces the samples in between.
       String out;
       out.reserve(40 + n * 9);
       out += "{\"t\":\"samples\",\"ts\":";
       out += buf[0].ms;
+      out += ",\"te\":";
+      out += buf[n - 1].ms;
       out += ",\"kg\":[";
       for (size_t i = 0; i < n; i++) {
         if (i) out += ',';
