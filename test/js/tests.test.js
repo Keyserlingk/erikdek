@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { KINDS } from "../../data/tests.js";
+import { KINDS, metricPoints } from "../../data/tests.js";
 
 const metric = (kind, key) => KINDS[kind].metrics.find((m) => m.key === key);
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
 
-test("workout metrics: hold % (default) with fallback for older sessions, and the others", () => {
+test("workout metrics: hold % (default) and the others", () => {
   assert.equal(KINDS.workout.metrics[0].key, "holdPct");
   const s = { targetKg: 22, summary: { holdPct: 91, retentionPct: 80, workPct: 85, tutS: 150, avgKg: 21.2, peakKg: 25 } };
   assert.equal(metric("workout", "holdPct").value(s), 91);
@@ -14,8 +14,6 @@ test("workout metrics: hold % (default) with fallback for older sessions, and th
   assert.equal(metric("workout", "workPct").value(s), 85);
   assert.equal(metric("workout", "targetKg").value(s), 22);
   assert.equal(metric("workout", "workPct").value({ summary: { workPct: null } }), null);
-  // saved before hold % existed: 126 s loaded of 24 × 7 s planned
-  close(metric("workout", "holdPct").value({ routine: { workS: 7 }, summary: { tutS: 126, totalReps: 24 } }), 75);
   assert.equal(metric("workout", "holdPct").format(75.4), "75 %");
 });
 
@@ -63,13 +61,24 @@ test("alternating sessions get per-hand values and L/R rep labels", () => {
   const summary = KINDS.workout.analyze({ reps, routine: { sets: 1, reps: 2, workS: 7, hands: "alternate" }, target: null });
   assert.equal(summary.totalReps, 4);
   assert.equal(summary.holdPct, (100 + 80 + 90) / 4);
-  assert.deepEqual(summary.byHand, { left: { avgKg: 19, holdPct: 95 }, right: { avgKg: 16, holdPct: 80 } });
+  // per hand: 2 planned hangs each
+  assert.equal(summary.byHand.left.avgKg, 19);
+  assert.equal(summary.byHand.left.holdPct, 95);
+  assert.equal(summary.byHand.right.holdPct, 40); // 1 of 2 right hangs done, at 80 %
+  assert.equal(summary.byHand.right.peakKg, 17);
   const s = { targetKg: null, routine: { workS: 7 }, reps, summary };
   const labels = KINDS.workout.tiles(s).map((t) => t[1]);
-  assert.ok(labels.includes("left hand avg · hold 95 %") && labels.includes("right hand avg · hold 80 %"));
+  assert.ok(labels.includes("left hand avg · hold 95 %") && labels.includes("right hand avg · hold 40 %"));
   assert.deepEqual(KINDS.workout.table(s).rows.map((r) => r[0]), ["1.1 L", "1.2 R", "1.3 L"]);
-  // one hand only: no per-hand tiles
-  assert.equal(KINDS.workout.analyze({ reps: [reps[0]], routine: { sets: 1, reps: 1, workS: 7 }, target: null }).byHand, null);
+  // one hand only: no per-hand summary
+  assert.equal(KINDS.workout.analyze({ reps: [reps[0]], routine: { sets: 1, reps: 1, workS: 7, hands: "left" }, target: null }).byHand, null);
+
+  // History points: one per hand for alternating sessions, the session's hand otherwise
+  const session = { hand: "alternate", targetKg: 20, summary };
+  assert.deepEqual(metricPoints(metric("workout", "avgKg"), session), [{ hand: "left", value: 19 }, { hand: "right", value: 16 }]);
+  assert.deepEqual(metricPoints(metric("workout", "targetKg"), session).map((p) => p.value), [20, 20]);
+  assert.deepEqual(metricPoints(metric("workout", "avgKg"), { hand: "left", summary: { avgKg: 21 } }), [{ hand: "left", value: 21 }]);
+  assert.deepEqual(metricPoints(KINDS.maxPull.metrics[0], { summary: { peakKg: 40 } }), [{ hand: "both", value: 40 }]);
 });
 
 test("each test has its summary metric and treats missing values as null", () => {

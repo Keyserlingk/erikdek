@@ -38,58 +38,66 @@ const INFO = {
 
 const handInitial = (hand) => (hand === "left" ? " L" : hand === "right" ? " R" : "");
 
-// Alternating sessions: average force and hold % per hand (null otherwise).
-function perHand(reps) {
-  const result = {};
-  for (const hand of ["left", "right"]) {
-    const own = reps.filter((r) => r.hand === hand);
-    if (!own.length) continue;
-    const avg = (key) => own.reduce((s, r) => s + r[key], 0) / own.length;
-    result[hand] = { avgKg: avg("meanKg"), holdPct: avg("holdPct") };
-  }
-  return Object.keys(result).length === 2 ? result : null;
+// Workout summary of `reps` against `planned` hangs: per-rep values are averaged over
+// all planned hangs, so skipped ones count as 0.
+function summarizeReps(reps, planned, target) {
+  const sum = (key) => reps.reduce((s, r) => s + (r[key] ?? 0), 0);
+  return {
+    completed: reps.filter((r) => r.completed).length,
+    totalReps: planned,
+    holdPct: sum("holdPct") / planned,
+    workPct: target ? sum("workPct") / planned : null,
+    retentionPct: forceRetention(reps.map((r) => r.meanKg)),
+    peakKg: reps.reduce((m, r) => Math.max(m, r.peakKg), 0),
+    avgKg: reps.length ? sum("meanKg") / reps.length : null,
+    tutS: sum("tutS"),
+  };
 }
 
-// Progress metrics: value(session) reads it from a saved session (index entry is enough).
-// Kinds list them in `metrics`; the first one is the default.
-const summaryMetric = (key, label, format) => ({ key, label, format, value: (s) => num(s.summary?.[key]) });
+// Progress metrics. fromSummary(summary, session) reads the value from a session
+// summary (or from one hand's summary in summary.byHand); value(session) from the
+// whole session. Kinds list them in `metrics`; the first one is the default.
+const metric = (key, label, format, fromSummary) => ({
+  key,
+  label,
+  format,
+  fromSummary,
+  value: (s) => fromSummary(s.summary, s),
+});
+const summaryMetric = (key, label, format) => metric(key, label, format, (summary) => num(summary?.[key]));
+
+// Points a session contributes to History: one per hand for alternating sessions,
+// otherwise one for the session's hand.
+export function metricPoints(m, s) {
+  const byHand = s.summary?.byHand;
+  if (byHand) return ["left", "right"].map((hand) => ({ hand, value: m.fromSummary(byHand[hand], s) }));
+  return [{ hand: s.hand || "both", value: m.value(s) }];
+}
 
 export const KINDS = {
   workout: {
     name: "Workout",
     workLabel: "Hang",
     metrics: [
-      {
-        key: "holdPct",
-        label: "Hold %",
-        format: pct,
-        // Sessions saved before hold % existed: derive it from time under tension.
-        value: (s) =>
-          num(s.summary?.holdPct) ??
-          (s.summary?.totalReps && s.routine?.workS ? (100 * s.summary.tutS) / (s.summary.totalReps * s.routine.workS) : null),
-      },
+      summaryMetric("holdPct", "Hold %", pct),
       summaryMetric("retentionPct", "Force retention", pct),
       summaryMetric("workPct", "Work vs target", pct),
       summaryMetric("tutS", "Time under tension", seconds),
       summaryMetric("avgKg", "Average force", kg),
       summaryMetric("peakKg", "Peak force", kg),
-      { key: "targetKg", label: "Target load", format: kg, value: (s) => num(s.targetKg) },
+      metric("targetKg", "Target load", kg, (summary, s) => num(s.targetKg)),
     ],
-    // Per-rep values are averaged over all planned reps, so skipped reps count as 0.
+    // Alternating sessions also get the same summary per hand in byHand.
     analyze({ reps, routine, target }) {
-      const totalReps = routine.sets * routine.reps * hangsPerRep(routine); // planned hangs
-      const sum = (key) => reps.reduce((s, r) => s + (r[key] ?? 0), 0);
-      return {
-        completed: reps.filter((r) => r.completed).length,
-        totalReps,
-        holdPct: sum("holdPct") / totalReps,
-        workPct: target ? sum("workPct") / totalReps : null,
-        retentionPct: forceRetention(reps.map((r) => r.meanKg)),
-        byHand: perHand(reps),
-        peakKg: reps.reduce((m, r) => Math.max(m, r.peakKg), 0),
-        avgKg: reps.length ? sum("meanKg") / reps.length : null,
-        tutS: sum("tutS"),
-      };
+      const planned = routine.sets * routine.reps * hangsPerRep(routine);
+      const summary = summarizeReps(reps, planned, target);
+      summary.byHand =
+        routine.hands === "alternate"
+          ? Object.fromEntries(
+              ["left", "right"].map((h) => [h, summarizeReps(reps.filter((r) => r.hand === h), planned / 2, target)]),
+            )
+          : null;
+      return summary;
     },
     tiles: (s) => [
       [

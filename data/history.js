@@ -3,11 +3,12 @@ import { downloadCsv, downloadJson } from "./download.js";
 import { fileDate, historyCsv, storedCurveCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
-import { HANDS, KINDS, TEST_IDS } from "./tests.js";
+import { HANDS, KINDS, TEST_IDS, metricPoints } from "./tests.js";
 
 const KIND_ORDER = [...TEST_IDS, "workout"];
-const HAND_ORDER = ["both", "left", "right", "alternate"];
-const HAND_COLOR = { both: "--accent", left: "--series-left", right: "--series-right", alternate: "--series-alt" };
+// Series in History; alternating sessions contribute to left and right.
+const HAND_ORDER = ["both", "left", "right"];
+const HAND_COLOR = { both: "--accent", left: "--series-left", right: "--series-right" };
 const ALL = "";
 
 const $ = (id) => document.getElementById(id);
@@ -92,8 +93,9 @@ function currentMetric() {
   return metrics.find((m) => m.key === el.metric.value) || metrics[0];
 }
 
-function metricOf(s) {
-  return currentMetric().value(s);
+// The session's points for the current metric: one per hand for alternating sessions.
+function pointsOf(s) {
+  return metricPoints(currentMetric(), s).filter((p) => p.value !== null);
 }
 
 // ---------------------------------------------------------------- main view
@@ -120,12 +122,13 @@ function renderBests(list, metric) {
   for (const hand of HAND_ORDER) {
     let best = null;
     for (const s of list) {
-      const v = metricOf(s);
-      if ((s.hand || "both") === hand && v !== null && (!best || v > metricOf(best))) best = s;
+      for (const p of pointsOf(s)) {
+        if (p.hand === hand && (!best || p.value > best.value)) best = { value: p.value, date: s.startedAt };
+      }
     }
     if (!best) continue;
-    const label = `${hand === "both" ? "best" : `best ${HANDS[hand].toLowerCase()}`} · ${formatDate(best.startedAt)}`;
-    tiles.push(create("div", { className: "tile" }, [create("strong", { textContent: metric.format(metricOf(best)) }), create("span", { textContent: label })]));
+    const label = `${hand === "both" ? "best" : `best ${HANDS[hand].toLowerCase()}`} · ${formatDate(best.date)}`;
+    tiles.push(create("div", { className: "tile" }, [create("strong", { textContent: metric.format(best.value) }), create("span", { textContent: label })]));
   }
   tiles.push(create("div", { className: "tile" }, [create("strong", { textContent: String(list.length) }), create("span", { textContent: list.length === 1 ? "session" : "sessions" })]));
   el.bests.replaceChildren(...tiles);
@@ -137,8 +140,8 @@ function renderProgress(list, metric) {
     progressChart = null;
   }
   el.progressTitle.textContent = `Progress: ${metric.label}`;
-  const points = list.filter((s) => metricOf(s) !== null).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  const hands = HAND_ORDER.filter((h) => points.some((s) => (s.hand || "both") === h));
+  const points = list.filter((s) => pointsOf(s).length).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  const hands = HAND_ORDER.filter((h) => points.some((s) => pointsOf(s).some((p) => p.hand === h)));
   el.chartEmpty.hidden = points.length >= 2;
   el.chart.hidden = points.length < 2;
   el.legend.replaceChildren(
@@ -151,7 +154,7 @@ function renderProgress(list, metric) {
 
   // One x value per session; each hand is its own series with gaps elsewhere.
   const x = points.map((s) => new Date(s.startedAt).getTime() / 1000);
-  const series = hands.map((h) => points.map((s) => ((s.hand || "both") === h ? metricOf(s) : null)));
+  const series = hands.map((h) => points.map((s) => pointsOf(s).find((p) => p.hand === h)?.value ?? null));
   const text = cssVar("--muted");
   const grid = cssVar("--border");
   progressChart = new uPlot(
@@ -188,6 +191,14 @@ function renderProgress(list, metric) {
   );
 }
 
+// "21.0 kg", or "L 21.0 kg · R 15.7 kg" for an alternating session.
+function formatPoints(s, metric) {
+  const points = pointsOf(s);
+  if (!points.length) return "–";
+  if (points.length === 1) return metric.format(points[0].value);
+  return points.map((p) => `${p.hand[0].toUpperCase()} ${metric.format(p.value)}`).join(" · ");
+}
+
 function renderList(list, metric) {
   const sorted = [...list].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   if (!sorted.length) {
@@ -206,7 +217,7 @@ function renderList(list, metric) {
               .join(" · "),
           }),
         ]),
-        create("span", { className: "session-metric", textContent: metric.format(metricOf(s)) }),
+        create("span", { className: "session-metric", textContent: formatPoints(s, metric) }),
       ]);
       row.addEventListener("click", () => openDetail(s.id));
       return row;
