@@ -45,6 +45,7 @@ test("backup round trip and validation", () => {
     settings: { bodyweightKg: 70 },
     calibration: { cpk: 16000, calibrated: true },
     routines: [{ id: "r1" }],
+    workouts: [{ id: "w1", name: "W", routineIds: ["r1"] }],
     holdTypes: ["18 mm edge"],
     grips: [],
     sessions: [{ id: "s1", type: "maxPull" }],
@@ -54,6 +55,7 @@ test("backup round trip and validation", () => {
   const parsed = parseBackup(JSON.stringify(backup));
   assert.equal(parsed.exportedAt, "2026-10-18T12:00:00.000Z");
   assert.deepEqual(parsed.routines, [{ id: "r1" }]);
+  assert.equal(parsed.workouts[0].id, "w1");
   assert.equal(parsed.calibration.cpk, 16000);
   assert.equal(parsed.sessions.length, 1);
 

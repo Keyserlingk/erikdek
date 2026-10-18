@@ -19,6 +19,14 @@ import { settings } from "./settings.js";
 import { TagSelect, grips, holdTypes } from "./tags.js";
 import { HANDS, KINDS, TEST_IDS } from "./tests.js";
 import {
+  moveItem,
+  newWorkoutId,
+  resolveRoutines,
+  validateWorkout,
+  workoutDurationS,
+  workouts,
+} from "./workouts.js";
+import {
   PHASE,
   WorkoutEngine,
   buildPhases,
@@ -45,6 +53,9 @@ const el = {
     list: $("trainList"),
     tests: $("testsMain"),
     edit: $("trainEdit"),
+    workoutEdit: $("trainWorkoutEdit"),
+    between: $("trainBetween"),
+    workoutSummary: $("trainWorkoutSummary"),
     setup: $("trainSetup"),
     run: $("trainRun"),
     summary: $("trainSummary"),
@@ -58,6 +69,37 @@ const el = {
   routinesDownload: $("routinesDownload"),
   routinesImport: $("routinesImport"),
   routineFileMessage: $("routineFileMessage"),
+  workoutsNote: $("workoutsNote"),
+  workoutList: $("workoutList"),
+  workoutNew: $("workoutNew"),
+  wEdit: {
+    title: $("wEditTitle"),
+    name: $("wEditName"),
+    items: $("wEditItems"),
+    add: $("wEditAdd"),
+    addButton: $("wEditAddButton"),
+    duration: $("wEditDuration"),
+    error: $("wEditError"),
+    cancel: $("wEditCancel"),
+    save: $("wEditSave"),
+    remove: $("wEditDelete"),
+  },
+  between: {
+    workout: $("betweenWorkout"),
+    title: $("betweenTitle"),
+    result: $("betweenResult"),
+    next: $("betweenNext"),
+    end: $("betweenEnd"),
+    start: $("betweenStart"),
+  },
+  wSum: {
+    title: $("wSumTitle"),
+    meta: $("wSumMeta"),
+    list: $("wSumList"),
+    error: $("wSumError"),
+    discard: $("wSumDiscard"),
+    save: $("wSumSave"),
+  },
   listTabs: document.querySelectorAll("#routineTabs button"),
   routineEmpty: $("routineEmpty"),
   templatesNote: $("templatesNote"),
@@ -125,9 +167,11 @@ let resultRaw = null; // its full-rate curve and per-sample phase (not stored on
 let chart = null;
 let summaryChart = null;
 let selects = null; // TagSelects: editHold, editGrip, setupHold, setupGrip
+let editingWorkout = null; // { id, name, routineIds, isNew }
+let workoutRun = null; // running workout: { workout, routines, index, sessions }
 
 // Screens per tab; run and summary belong to the tab they are mounted in (runHost).
-const GROUPS = { train: ["list", "edit"], tests: ["tests", "setup"] };
+const GROUPS = { train: ["list", "edit", "workoutEdit", "between", "workoutSummary"], tests: ["tests", "setup"] };
 const HOME = { train: "list", tests: "tests" };
 let runHost = "train";
 
@@ -214,7 +258,13 @@ function renderList() {
     b.classList.toggle("active", active);
     b.setAttribute("aria-selected", String(active));
   }
-  const list = view === "mine" ? routines.custom : BUILTIN_ROUTINES;
+  const isWorkouts = view === "workouts";
+  el.workoutsNote.hidden = !isWorkouts;
+  el.workoutNew.hidden = !isWorkouts;
+  el.workoutList.hidden = !isWorkouts;
+  el.list.hidden = isWorkouts;
+  if (isWorkouts) renderWorkouts();
+  const list = view === "mine" ? routines.custom : view === "templates" ? BUILTIN_ROUTINES : [];
   el.routineEmpty.hidden = view !== "mine" || list.length > 0;
   el.templatesNote.hidden = view !== "templates";
   el.newRoutine.hidden = view !== "mine";
@@ -330,6 +380,210 @@ async function saveEditor() {
     el.edit.error.textContent = err.message;
     el.edit.error.hidden = false;
   }
+}
+
+// ---------------------------------------------------------------- workouts
+
+function renderWorkouts() {
+  if (!workouts.list.length) {
+    el.workoutList.replaceChildren(create("p", { className: "muted empty-note", textContent: "No workouts yet." }));
+    return;
+  }
+  el.workoutList.replaceChildren(
+    ...workouts.list.map((w) => {
+      const items = resolveRoutines(w, routines.all);
+      const names = items.map((r) => (r ? r.name : "(deleted routine)")).join(" → ");
+      return create("div", { className: "card routine" }, [
+        create("div", { className: "routine-head" }, [
+          create("h2", { textContent: w.name }),
+          create("span", { className: "muted", textContent: formatDuration(workoutDurationS(w, routines.all)) }),
+        ]),
+        create("p", { className: "muted", textContent: `${items.length} routine${items.length === 1 ? "" : "s"}: ${names}` }),
+        create("div", { className: "actions" }, [
+          button("secondary", "Edit", () => openWorkoutEditor(w)),
+          button("primary", "Start", () => startWorkout(w)),
+        ]),
+      ]);
+    }),
+  );
+}
+
+function openWorkoutEditor(w) {
+  editingWorkout = w ? { ...structuredClone(w), isNew: false } : { id: newWorkoutId(), name: "", routineIds: [], isNew: true };
+  el.wEdit.title.textContent = editingWorkout.isNew ? "New workout" : "Edit workout";
+  el.wEdit.name.value = editingWorkout.name;
+  el.wEdit.remove.hidden = editingWorkout.isNew;
+  el.wEdit.error.hidden = true;
+  renderWorkoutAddOptions();
+  renderWorkoutItems();
+  show("workoutEdit");
+}
+
+function renderWorkoutAddOptions() {
+  const group = (label, list) =>
+    create("optgroup", { label }, list.map((r) => create("option", { value: r.id, textContent: r.name })));
+  const groups = [];
+  if (routines.custom.length) groups.push(group("My routines", routines.custom));
+  groups.push(group("Templates", BUILTIN_ROUTINES));
+  el.wEdit.add.replaceChildren(...groups);
+}
+
+function renderWorkoutItems() {
+  const ids = editingWorkout.routineIds;
+  const items = resolveRoutines(editingWorkout, routines.all);
+  const iconButton = (text, label, disabled, onClick) => {
+    const b = create("button", { type: "button", className: "icon-button", textContent: text, disabled });
+    b.setAttribute("aria-label", label);
+    b.addEventListener("click", onClick);
+    return b;
+  };
+  const update = (routineIds) => {
+    editingWorkout.routineIds = routineIds;
+    renderWorkoutItems();
+  };
+  el.wEdit.items.replaceChildren(
+    ...items.map((r, i) =>
+      create("li", {}, [
+        create("span", { className: `item-name${r ? "" : " missing"}` }, [
+          `${i + 1}. ${r ? r.name : "Deleted routine (will be skipped)"}`,
+          ...(r ? [create("small", { textContent: `${formatDuration(totalDurationS(r))} · ${describe(r)}` })] : []),
+        ]),
+        iconButton("↑", "Move up", i === 0, () => update(moveItem(ids, i, -1))),
+        iconButton("↓", "Move down", i === ids.length - 1, () => update(moveItem(ids, i, 1))),
+        iconButton("✕", "Remove", false, () => update(ids.filter((_, j) => j !== i))),
+      ]),
+    ),
+  );
+  if (!ids.length) el.wEdit.items.replaceChildren(create("li", { className: "muted", textContent: "No routines yet. Add one below." }));
+  el.wEdit.duration.textContent = ids.length ? `Total time ${formatDuration(workoutDurationS(editingWorkout, routines.all))}` : "";
+}
+
+async function saveWorkoutEditor() {
+  const w = { id: editingWorkout.id, name: el.wEdit.name.value.trim(), routineIds: editingWorkout.routineIds };
+  const error = validateWorkout(w);
+  el.wEdit.error.textContent = error || "";
+  el.wEdit.error.hidden = !error;
+  if (error) return;
+  try {
+    await workouts.save(w);
+    show("list");
+  } catch (err) {
+    el.wEdit.error.textContent = err.message;
+    el.wEdit.error.hidden = false;
+  }
+}
+
+async function deleteWorkout() {
+  if (!confirm(`Delete the workout "${editingWorkout.name}"? Its routines are kept.`)) return;
+  try {
+    await workouts.remove(editingWorkout.id);
+    show("list");
+  } catch (err) {
+    el.wEdit.error.textContent = err.message;
+    el.wEdit.error.hidden = false;
+  }
+}
+
+// Running: each routine is a normal run; endRun() hands the session over to
+// workoutRoutineDone() instead of showing the routine summary.
+function startWorkout(w) {
+  const items = resolveRoutines(w, routines.all).filter(Boolean);
+  if (!items.length) {
+    alert("This workout has no routines left. Edit it to add some.");
+    return;
+  }
+  workoutRun = { workout: w, routines: items, index: 0, sessions: [] };
+  startWorkoutRoutine();
+}
+
+function startWorkoutRoutine() {
+  const r = workoutRun.routines[workoutRun.index];
+  startRun("workout", r, r.hands || "both");
+  run.inWorkout = true; // set synchronously by startRun before its first await
+}
+
+function shortResult(s) {
+  const parts = [];
+  if (s.summary.holdPct !== null && s.summary.holdPct !== undefined) parts.push(`hold ${Math.round(s.summary.holdPct)} %`);
+  if (s.summary.avgKg !== null && s.summary.avgKg !== undefined) parts.push(`avg ${formatKg(s.summary.avgKg)} kg`);
+  return parts.join(" · ") || "–";
+}
+
+function workoutRoutineDone(session, stopped) {
+  workoutRun.sessions.push(session);
+  const { routines: items, index, workout } = workoutRun;
+  if (stopped || index + 1 >= items.length) {
+    showWorkoutSummary();
+    return;
+  }
+  el.between.workout.textContent = workout.name;
+  el.between.title.textContent = `Routine ${index + 1} of ${items.length} done`;
+  el.between.result.replaceChildren(
+    create("div", { className: "result-line" }, [create("span", { textContent: session.name }), create("span", { textContent: shortResult(session) })]),
+  );
+  const next = items[index + 1];
+  el.between.next.replaceChildren(
+    create("div", { className: "routine-head" }, [
+      create("h2", { textContent: next.name }),
+      create("span", { className: "muted", textContent: formatDuration(totalDurationS(next)) }),
+    ]),
+    create("p", { className: "muted", textContent: describe(next) }),
+  );
+  show("between");
+}
+
+function startNextWorkoutRoutine() {
+  workoutRun.index++;
+  startWorkoutRoutine();
+}
+
+function showWorkoutSummary() {
+  const { workout, sessions: done, routines: items } = workoutRun;
+  el.wSum.title.textContent = workout.name;
+  const totalS = done.reduce((sum, s) => sum + s.durationS, 0);
+  el.wSum.meta.textContent = `${done.length} of ${items.length} routines · ${formatDuration(totalS)}`;
+  el.wSum.list.replaceChildren(
+    ...done.map((s, i) =>
+      create("div", { className: "card" }, [
+        create("div", { className: "result-line" }, [
+          create("span", { textContent: `${i + 1}. ${s.name}${s.stopped ? " (stopped)" : ""}` }),
+          create("span", { textContent: shortResult(s) }),
+        ]),
+      ]),
+    ),
+  );
+  el.wSum.error.hidden = true;
+  el.wSum.save.disabled = false;
+  show("workoutSummary");
+}
+
+async function saveWorkout() {
+  el.wSum.save.disabled = true;
+  try {
+    // Saved one by one; already saved sessions are dropped so a retry doesn't duplicate.
+    while (workoutRun.sessions.length) {
+      await sessions.save(workoutRun.sessions[0]);
+      workoutRun.sessions.shift();
+    }
+    workoutRun = null;
+    show("list");
+    showNotice("list", "Workout saved to history.");
+  } catch (err) {
+    el.wSum.error.textContent = err.message;
+    el.wSum.error.hidden = false;
+    el.wSum.save.disabled = false;
+  }
+}
+
+function discardWorkout() {
+  if (!confirm("Discard this workout? None of its routines will be saved.")) return;
+  workoutRun = null;
+  show("list");
+}
+
+function endWorkoutEarly() {
+  if (!confirm("End the workout now? You can still save the routines you've done.")) return;
+  showWorkoutSummary();
 }
 
 // ---------------------------------------------------------------- routine files
@@ -568,6 +822,9 @@ function buildSession(stopped) {
     session.routine = { id: r.id, name, holdType, grip, hands, sets, reps: repCount, workS, restS, setRestS, prepS, target };
   }
   if (stopped) session.stopped = true;
+  if (run.inWorkout) {
+    session.workout = { id: workoutRun.workout.id, name: workoutRun.workout.name, index: workoutRun.index + 1, count: workoutRun.routines.length };
+  }
   return session;
 }
 
@@ -598,14 +855,24 @@ function endRun(stopped) {
   clearInterval(run.timer);
   if (run.wakeLock) run.wakeLock.release().catch(() => {});
   if (stopped) finishRep();
-  result = buildSession(stopped);
-  resultRaw = { hz: 1 / sampleDtS(), kg: run.curve, phases: run.curvePhase.map((i) => run.phases[i] ?? null) };
+  const session = buildSession(stopped);
+  const raw = { hz: 1 / sampleDtS(), kg: run.curve, phases: run.curvePhase.map((i) => run.phases[i] ?? null) };
+  const inWorkout = run.inWorkout;
   run = null;
+  if (inWorkout) {
+    workoutRoutineDone(session, stopped);
+    return;
+  }
+  result = session;
+  resultRaw = raw;
   showSummary();
 }
 
 function stopRun() {
-  if (!confirm("Stop now? You can still save what you've done so far.")) return;
+  const message = run.inWorkout
+    ? "Stop this routine and end the workout? You can still save what you've done."
+    : "Stop now? You can still save what you've done so far.";
+  if (!confirm(message)) return;
   endRun(true);
 }
 
@@ -656,7 +923,7 @@ function discardResult() {
 // Tab tapped again: back to that tab's main screen, unless a run or an unsaved
 // summary is showing there (those are only left via Stop / Save / Discard).
 export function goHome(group) {
-  const busy = group === runHost && (run !== null || result !== null);
+  const busy = group === runHost && (run !== null || result !== null || (group === "train" && workoutRun !== null));
   if (!busy) show(HOME[group]);
   window.scrollTo(0, 0);
 }
@@ -672,11 +939,13 @@ export function initTrain() {
   };
 
   routines.addEventListener("change", renderList);
+  workouts.addEventListener("change", renderList);
   device.on("connection", (state) => {
     if (state !== "open") return;
     routines.load().then(() => showListError(""), (e) => showListError(e.message));
     holdTypes.load().catch((e) => showListError(e.message));
     grips.load().catch((e) => showListError(e.message));
+    workouts.load().catch((e) => showListError(e.message));
   });
   device.on("samples", (msg) => {
     if (!run) return;
@@ -696,6 +965,19 @@ export function initTrain() {
   window.addEventListener("hashchange", () => showNotice(null, ""));
 
   el.newRoutine.addEventListener("click", () => openEditor(null));
+  el.workoutNew.addEventListener("click", () => openWorkoutEditor(null));
+  el.wEdit.addButton.addEventListener("click", () => {
+    if (!el.wEdit.add.value) return;
+    editingWorkout.routineIds = [...editingWorkout.routineIds, el.wEdit.add.value];
+    renderWorkoutItems();
+  });
+  el.wEdit.cancel.addEventListener("click", () => show("list"));
+  el.wEdit.save.addEventListener("click", saveWorkoutEditor);
+  el.wEdit.remove.addEventListener("click", deleteWorkout);
+  el.between.start.addEventListener("click", startNextWorkoutRoutine);
+  el.between.end.addEventListener("click", endWorkoutEarly);
+  el.wSum.save.addEventListener("click", saveWorkout);
+  el.wSum.discard.addEventListener("click", discardWorkout);
   for (const b of el.listTabs) b.addEventListener("click", () => setListView(b.dataset.list));
   el.edit.cancel.addEventListener("click", () => show("list"));
   el.edit.save.addEventListener("click", saveEditor);

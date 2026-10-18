@@ -393,6 +393,33 @@ h2.section { margin: 20px 0 10px; font-size: 15px; text-transform: uppercase; le
 .segmented.wide { justify-content: stretch; margin-left: 0; }
 .segmented.wide button { flex: 1; padding: 10px; font-size: 15px; }
 .list-tabs { margin-bottom: 14px; }
+.workout-items { margin: 0; padding: 0; list-style: none; }
+.workout-items li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.workout-items li:last-child { border-bottom: none; }
+.workout-items .item-name { flex: 1; min-width: 0; }
+.workout-items .item-name small { display: block; color: var(--muted); font-size: 12px; }
+.workout-items .missing { color: var(--bad); }
+.icon-button {
+  font: inherit;
+  font-size: 15px;
+  width: 34px;
+  height: 34px;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.icon-button:disabled { opacity: 0.3; }
+.result-line { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
+.result-line span:last-child { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#wEditAdd { flex: 1; min-width: 0; }
 .edit-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 label.pill-button { display: inline-flex; align-items: center; cursor: pointer; }
 .empty-note { font-size: 14px; }

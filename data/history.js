@@ -292,7 +292,7 @@ async function deleteOpen() {
 
 export function initHistory() {
   el.kind.replaceChildren(
-    ...KIND_ORDER.map((k) => create("option", { value: k, textContent: k === "workout" ? "Workouts" : KINDS[k].name })),
+    ...KIND_ORDER.map((k) => create("option", { value: k, textContent: k === "workout" ? "Routines" : KINDS[k].name })),
   );
   for (const select of [el.kind, el.hold, el.grip, el.routine, el.metric]) select.addEventListener("change", render);
   el.back.addEventListener("click", closeDetail);

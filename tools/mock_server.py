@@ -28,7 +28,7 @@ MIN_CALIBRATION_COUNTS = 5000
 MIN_BODYWEIGHT_KG, MAX_BODYWEIGHT_KG = 20, 250
 MIN_REP_THRESHOLD_KG, MAX_REP_THRESHOLD_KG = 0.5, 50
 # User lists stored as JSON array files on the device: name -> (max items, max bytes)
-JSON_LISTS = {"routines": (50, 16384), "holdtypes": (50, 4096), "grips": (50, 4096)}
+JSON_LISTS = {"routines": (50, 16384), "holdtypes": (50, 4096), "grips": (50, 4096), "workouts": (30, 8192)}
 
 # The simulated cell is ~12 % off from the firmware's default factor, so calibration matters.
 DEFAULT_COUNTS_PER_KG = 14300.0

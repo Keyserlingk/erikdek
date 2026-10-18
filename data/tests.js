@@ -77,7 +77,7 @@ export function metricPoints(m, s) {
 
 export const KINDS = {
   workout: {
-    name: "Workout",
+    name: "Routine", // sessions of type "workout" are routine runs
     workLabel: "Hang",
     metrics: [
       summaryMetric("holdPct", "Hold %", pct, `${INFO.hold} Rising toward 100 % means you stay on longer.`),

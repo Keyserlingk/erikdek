@@ -67,7 +67,11 @@
         <div id="routineTabs" class="segmented wide list-tabs" role="tablist" aria-label="Routines">
           <button type="button" data-list="mine" role="tab">My routines</button>
           <button type="button" data-list="templates" role="tab">Templates</button>
+          <button type="button" data-list="workouts" role="tab">Workouts</button>
         </div>
+        <p id="workoutsNote" class="muted empty-note" hidden>A workout runs several routines in a row. After each routine you confirm before the next one starts.</p>
+        <div id="workoutList"></div>
+        <button id="workoutNew" class="secondary" type="button" hidden>New workout</button>
         <p id="routineEmpty" class="muted empty-note" hidden>No routines of your own yet. Create one, or open Templates and use "Copy &amp; edit" to start from a template.</p>
         <p id="templatesNote" class="muted empty-note" hidden>Ready-made routines. Start one as is, or "Copy &amp; edit" to make your own version under My routines.</p>
         <div id="routineList"></div>
@@ -127,6 +131,54 @@
         <div class="edit-footer">
           <button id="editDownload" class="pill-button" type="button" hidden>Download routine</button>
           <button id="editDelete" class="link danger" type="button" hidden>Delete routine</button>
+        </div>
+      </div>
+
+      <div id="trainWorkoutEdit" hidden>
+        <h1 id="wEditTitle">New workout</h1>
+        <div class="card">
+          <label class="field stacked">
+            <span>Name</span>
+            <input id="wEditName" type="text" maxlength="40" placeholder="Tuesday fingers">
+          </label>
+          <div class="field stacked">
+            <span>Routines, in order</span>
+            <ol id="wEditItems" class="workout-items"></ol>
+          </div>
+          <div class="field">
+            <select id="wEditAdd" aria-label="Routine to add"></select>
+            <button id="wEditAddButton" class="secondary compact" type="button">Add</button>
+          </div>
+          <p id="wEditDuration" class="muted"></p>
+          <div id="wEditError" class="error" hidden></div>
+          <div class="actions">
+            <button id="wEditCancel" class="secondary" type="button">Cancel</button>
+            <button id="wEditSave" class="primary" type="button">Save</button>
+          </div>
+        </div>
+        <button id="wEditDelete" class="link danger" type="button" hidden>Delete workout</button>
+      </div>
+
+      <div id="trainBetween" hidden>
+        <p id="betweenWorkout" class="muted"></p>
+        <h1 id="betweenTitle">Routine done</h1>
+        <div id="betweenResult" class="card"></div>
+        <h2 class="section">Next</h2>
+        <div id="betweenNext" class="card routine"></div>
+        <div class="actions">
+          <button id="betweenEnd" class="secondary" type="button">End workout</button>
+          <button id="betweenStart" class="primary" type="button">Start next routine</button>
+        </div>
+      </div>
+
+      <div id="trainWorkoutSummary" hidden>
+        <h1 id="wSumTitle">Workout done</h1>
+        <p id="wSumMeta" class="muted"></p>
+        <div id="wSumList"></div>
+        <div id="wSumError" class="error" hidden></div>
+        <div class="actions">
+          <button id="wSumDiscard" class="secondary" type="button">Discard</button>
+          <button id="wSumSave" class="primary" type="button">Save all to history</button>
         </div>
       </div>
 
@@ -312,7 +364,7 @@
       <div id="manageGrips" class="card"></div>
       <div class="card">
         <h2>Backup</h2>
-        <p class="muted">Download everything (settings, calibration, routines, holds, grips and all sessions) as one file, or restore from one. Keep a backup before reflashing the device.</p>
+        <p class="muted">Download everything (settings, calibration, routines, workouts, holds, grips and all sessions) as one file, or restore from one. Keep a backup before reflashing the device.</p>
         <div class="actions">
           <button id="backupDownload" class="secondary" type="button">Download backup</button>
           <label class="button-link secondary file-button">Restore…<input id="backupFile" type="file" accept=".json,application/json" hidden></label>
@@ -320,7 +372,7 @@
         <div id="restorePreview" class="restore" hidden>
           <p id="restoreSummary"></p>
           <label class="check"><input id="restoreSettings" type="checkbox"> Settings (bodyweight, rep threshold)</label>
-          <label class="check"><input id="restoreRoutines" type="checkbox"> Routines, holds and grips</label>
+          <label class="check"><input id="restoreRoutines" type="checkbox"> Routines, workouts, holds and grips</label>
           <label class="check"><input id="restoreSessions" type="checkbox"> Sessions (adds missing ones)</label>
           <label class="check"><input id="restoreCalibration" type="checkbox"> Calibration (only if it's the same load cell)</label>
           <div class="actions">

@@ -114,6 +114,7 @@ Phone browser ◄── WebSocket / HTTP ──► live view, graph, timer, rout
   - Browser → ESP: `{"cmd":"tare"}`, `{"cmd":"calibrate","kg":20.0}`
 - `GET/PUT /api/settings`
 - `GET/PUT /api/routines` (custom routines as one JSON array; built-ins live in the web app)
+- `GET/PUT /api/workouts` (workouts: named, ordered lists of routine ids)
 - `GET/PUT /api/holdtypes`, `GET/PUT /api/grips` (the user's own holds/grips as JSON arrays; standard ones live in the web app)
 - `GET /api/sessions` (index as NDJSON, one summary per line), `POST /api/sessions`,
   `GET/DELETE /api/sessions/<id>`, `GET /api/storage`

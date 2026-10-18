@@ -35,6 +35,7 @@ export function sessionTags(s) {
   if (s.holdType) tags.push(s.holdType);
   if (s.grip) tags.push(s.grip);
   if (s.hand && s.hand !== "both") tags.push(HANDS[s.hand]);
+  if (s.workout) tags.push(`${s.workout.name} ${s.workout.index}/${s.workout.count}`);
   return tags;
 }
 

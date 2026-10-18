@@ -59,7 +59,7 @@ export function historyCsv(index) {
   return toCsv([head, ...rows]);
 }
 
-export function buildBackup({ settings, calibration, routines, holdTypes, grips, sessions, exportedAt = new Date() }) {
+export function buildBackup({ settings, calibration, routines, workouts, holdTypes, grips, sessions, exportedAt = new Date() }) {
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -67,6 +67,7 @@ export function buildBackup({ settings, calibration, routines, holdTypes, grips,
     settings,
     calibration,
     routines,
+    workouts,
     holdTypes,
     grips,
     sessions,
@@ -83,7 +84,7 @@ export function parseBackup(text) {
   }
   if (!data || data.format !== BACKUP_FORMAT) throw new Error("This is not an Erkdek backup file.");
   if (data.version > BACKUP_VERSION) throw new Error("This backup was made by a newer version of the app.");
-  const arrays = ["routines", "holdTypes", "grips", "sessions"];
+  const arrays = ["routines", "workouts", "holdTypes", "grips", "sessions"];
   for (const key of arrays) {
     if (data[key] !== undefined && !Array.isArray(data[key])) throw new Error(`Backup is damaged (${key}).`);
   }
@@ -92,6 +93,7 @@ export function parseBackup(text) {
     settings: data.settings && typeof data.settings === "object" ? data.settings : null,
     calibration: data.calibration && typeof data.calibration.cpk === "number" ? data.calibration : null,
     routines: data.routines || [],
+    workouts: (data.workouts || []).filter((w) => w && typeof w.id === "string"),
     holdTypes: (data.holdTypes || []).filter((h) => typeof h === "string"),
     grips: (data.grips || []).filter((g) => typeof g === "string"),
     sessions: (data.sessions || []).filter((s) => s && typeof s.id === "string"),

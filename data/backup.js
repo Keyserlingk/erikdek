@@ -8,6 +8,7 @@ import { sessions } from "./sessions.js";
 import { settings } from "./settings.js";
 import { formatDateTime } from "./sessionview.js";
 import { grips, holdTypes } from "./tags.js";
+import { workouts } from "./workouts.js";
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -53,6 +54,7 @@ async function createBackup() {
       settings: settings.values,
       calibration: st?.calibrated ? { cpk: st.cpk, calibrated: true } : null,
       routines: routines.custom,
+      workouts: workouts.list,
       holdTypes: holdTypes.custom,
       grips: grips.custom,
       sessions: full,
@@ -82,7 +84,7 @@ async function openFile() {
   const tags = b.holdTypes.length + b.grips.length;
   el.summary.textContent =
     `Backup from ${b.exportedAt ? formatDateTime(b.exportedAt) : "unknown date"}: ` +
-    `${b.sessions.length} sessions, ${b.routines.length} routines, ${tags} own holds/grips` +
+    `${b.sessions.length} sessions, ${b.routines.length} routines, ${b.workouts.length} workouts, ${tags} own holds/grips` +
     `${b.calibration ? ", calibration" : ""}.`;
   el.options.settings.checked = !!b.settings;
   el.options.settings.disabled = !b.settings;
@@ -107,9 +109,10 @@ async function restore() {
     }
     if (o.routines.checked) {
       await routines.replaceAll(mergeBy(routines.custom, b.routines, (r) => r.id));
+      await workouts.replaceAll(mergeBy(workouts.list, b.workouts, (w) => w.id));
       await holdTypes.replaceAll(mergeBy(holdTypes.custom, b.holdTypes, (h) => h.toLowerCase()));
       await grips.replaceAll(mergeBy(grips.custom, b.grips, (g) => g.toLowerCase()));
-      done.push(`${b.routines.length} routines`);
+      done.push(`${b.routines.length} routines, ${b.workouts.length} workouts`);
     }
     if (o.sessions.checked) {
       await sessions.load();

@@ -178,6 +178,7 @@ static constexpr JsonListFile kJsonLists[] = {
     {"/api/routines", "/routines.json", 50, 16384},
     {"/api/holdtypes", "/holdtypes.json", 50, 4096},
     {"/api/grips", "/grips.json", 50, 4096},
+    {"/api/workouts", "/workouts.json", 30, 8192},
 };
 
 static void registerJsonList(const JsonListFile& list) {
