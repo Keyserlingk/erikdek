@@ -33,7 +33,7 @@ test("workout analyze averages hold and work over all planned reps", () => {
   assert.equal(KINDS.workout.analyze({ reps, routine, target: null }).workPct, null);
 });
 
-test("workout table and strips per rep", () => {
+test("workout table and per-rep percentages", () => {
   const s = {
     targetKg: null,
     routine: { workS: 7 },
@@ -44,11 +44,13 @@ test("workout table and strips per rep", () => {
   };
   const t = KINDS.workout.table(s);
   assert.deepEqual(t.head, ["Rep", "Avg", "Hold", "vs 1st"]);
-  assert.deepEqual(t.rows[1], ["2.1", "15.0", { text: "40 %", cls: "bad" }, "75 %"]);
-  assert.deepEqual(t.rows[0][2], { text: "100 % ✓", cls: "ok" });
+  assert.deepEqual(t.rows[1], ["2.1", "15.0", "40 %", "75 %"]);
+  assert.equal(t.rows[0][2], "100 %");
   const [hold, force] = KINDS.workout.strips(s);
-  assert.deepEqual(hold.bars.map((b) => [b.set, b.pct, b.cls]), [[1, 100, "ok"], [2, 40, "bad"]]);
-  assert.deepEqual(force.bars.map((b) => b.pct), [100, 75]);
+  assert.deepEqual(hold.values, [{ set: 1, pct: 100 }, { set: 2, pct: 40 }]);
+  assert.deepEqual(force.values.map((v) => v.pct), [100, 75]);
+  assert.ok(hold.info && force.info);
+  assert.ok(KINDS.workout.tiles({ ...s, summary: { completed: 1, totalReps: 2, holdPct: 70, tutS: 10 } }).every((t) => t[2]));
 });
 
 test("each test has its summary metric and treats missing values as null", () => {

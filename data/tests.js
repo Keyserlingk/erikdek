@@ -11,7 +11,28 @@ const pctBw = (v, bw) => (v && bw > 0 ? ` · ${Math.round((v / bw) * 100)} % BW`
 const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)} %`);
 const seconds = (v) => (v === null || v === undefined ? "–" : formatDuration(Math.round(v)));
 const num = (v) => (typeof v === "number" ? v : null);
-const holdClass = (hold) => (hold >= 90 ? "ok" : hold >= 50 ? "warn" : "bad");
+
+// One-line explanations shown behind the ⓘ buttons.
+const INFO = {
+  hold:
+    "Share of each hang you were loading the hold (above 80 % of the target, or the rep threshold in Settings without a target), averaged over all reps. A rep counts as full from 90 %.",
+  retention: "Average force of your last 3 reps as a percentage of your first 3. Lower means you faded more during the session.",
+  work: "Force × time compared with target × hang time. Force above the target doesn't count extra, so this drops if you let go early or hang under the target.",
+  avgForce: "Average force during the hangs.",
+  bestPeak: "Highest force in any rep.",
+  tut: "Total time you were loading the hold during the hangs.",
+  holdPerRep: "Hold % of each rep, in order, grouped by set: how much of each hang you stayed on.",
+  forceVsRep1: "Average force of each rep as a percentage of rep 1. Shows how much you faded during the session.",
+  peakForce: "Highest force in any of the pulls.",
+  best1s: "Highest average force over any 1 second. Less affected by a short spike than the peak.",
+  cf: "Average force of the last 6 reps of the all-out test: roughly the load you can keep up for a long time.",
+  cfShare: "Critical force as a percentage of your peak force. Higher means more endurance relative to your strength.",
+  cfPeak: "Highest force in the test, usually in the first reps.",
+  wPrime: "Work done above critical force (kg·s): your reserve for efforts harder than critical force.",
+  rfd: "How fast you build force: the increase over the first 200 ms after you start pulling, per second.",
+  peakRfd: "Steepest rise in force over any 50 ms.",
+  timeToPeak: "Time from starting to pull until peak force.",
+};
 
 // Progress metrics: value(session) reads it from a saved session (index entry is enough).
 // Kinds list them in `metrics`; the first one is the default.
@@ -54,12 +75,12 @@ export const KINDS = {
       };
     },
     tiles: (s) => [
-      [pct(KINDS.workout.metrics[0].value(s)), `hold · ${s.summary.completed}/${s.summary.totalReps} full reps`],
-      [pct(s.summary.retentionPct), "force retention (last vs first reps)"],
-      ...(s.targetKg ? [[pct(s.summary.workPct), "work vs target"]] : []),
-      [kg(s.summary.avgKg), "avg force"],
-      [kg(s.summary.peakKg), "best peak"],
-      [formatDuration(Math.round(s.summary.tutS)), "time under tension"],
+      [pct(KINDS.workout.metrics[0].value(s)), `hold · ${s.summary.completed}/${s.summary.totalReps} full reps`, INFO.hold],
+      [pct(s.summary.retentionPct), "force retention", INFO.retention],
+      ...(s.targetKg ? [[pct(s.summary.workPct), "work vs target", INFO.work]] : []),
+      [kg(s.summary.avgKg), "avg force", INFO.avgForce],
+      [kg(s.summary.peakKg), "best peak", INFO.bestPeak],
+      [formatDuration(Math.round(s.summary.tutS)), "time under tension", INFO.tut],
     ],
     table: (s) => {
       const first = s.reps[0]?.meanKg;
@@ -71,32 +92,28 @@ export const KINDS = {
           return [
             `${r.set}.${r.rep}`,
             formatKg(r.meanKg),
-            { text: `${Math.round(hold)} %${r.completed ? " ✓" : ""}`, cls: holdClass(hold) },
+            pct(hold),
             ...(hasWork ? [pct(r.workPct)] : []),
             first > 0 ? pct((100 * r.meanKg) / first) : "–",
           ];
         }),
       };
     },
-    // Bar strips per rep: hold % and force relative to rep 1.
+    // Per-rep percentages, grouped by set: hold % and force relative to rep 1.
     strips: (s) => {
       const first = s.reps[0]?.meanKg;
       const strips = [
         {
           label: "Hold per rep",
-          bars: s.reps.map((r) => {
-            const hold = r.holdPct ?? (100 * r.tutS) / s.routine.workS;
-            return { set: r.set, pct: hold, cls: holdClass(hold), title: `${r.set}.${r.rep}: ${Math.round(hold)} %` };
-          }),
+          info: INFO.holdPerRep,
+          values: s.reps.map((r) => ({ set: r.set, pct: r.holdPct ?? (100 * r.tutS) / s.routine.workS })),
         },
       ];
       if (first > 0) {
         strips.push({
           label: "Force vs rep 1",
-          bars: s.reps.map((r) => {
-            const rel = (100 * r.meanKg) / first;
-            return { set: r.set, pct: Math.min(rel, 100), cls: "neutral", title: `${r.set}.${r.rep}: ${Math.round(rel)} %` };
-          }),
+          info: INFO.forceVsRep1,
+          values: s.reps.map((r) => ({ set: r.set, pct: (100 * r.meanKg) / first })),
         });
       }
       return strips;
@@ -107,12 +124,12 @@ export const KINDS = {
     name: "Max pull",
     description: "3 all-out pulls of 5 s with 90 s rest. Measures your strongest pull.",
     workLabel: "Pull",
-    routine: { sets: 3, reps: 1, workS: 5, restS: 0, setRestS: 90, prepS: 10 },
+    routine: { sets: 3, reps: 1, workS: 5, restS: 0, setRestS: 90, prepS: 5 },
     metrics: [summaryMetric("peakKg", "Peak force", kg)],
     analyze: ({ attempts, dtS }) => maxPullSummary(attempts, dtS),
     tiles: (s) => [
-      [kg(s.summary.peakKg), `peak force${pctBw(s.summary.peakKg, s.bodyweightKg)}`],
-      [kg(s.summary.best1sKg), "best 1 s average"],
+      [kg(s.summary.peakKg), `peak force${pctBw(s.summary.peakKg, s.bodyweightKg)}`, INFO.peakForce],
+      [kg(s.summary.best1sKg), "best 1 s average", INFO.best1s],
     ],
     table: (s) => ({
       head: ["Attempt", "Peak", "Avg"],
@@ -124,7 +141,7 @@ export const KINDS = {
     name: "Critical force",
     description: `24 all-out pulls of 7 s with 3 s rest. Critical force is the average of the last ${CF_LAST_REPS} reps: the load you can sustain.`,
     workLabel: "Pull",
-    routine: { sets: 1, reps: 24, workS: 7, restS: 3, setRestS: 0, prepS: 10 },
+    routine: { sets: 1, reps: 24, workS: 7, restS: 3, setRestS: 0, prepS: 5 },
     metrics: [summaryMetric("cfKg", "Critical force", kg)],
     analyze({ reps, routine }) {
       const cf = criticalForceSummary(
@@ -135,10 +152,10 @@ export const KINDS = {
       return cf ?? { cfKg: null, peakKg: Math.max(0, ...reps.map((r) => r.peakKg)), cfShareOfPeak: null, wPrimeKgS: null };
     },
     tiles: (s) => [
-      [kg(s.summary.cfKg), `critical force${pctBw(s.summary.cfKg, s.bodyweightKg)}`],
-      [s.summary.cfShareOfPeak ? `${Math.round(s.summary.cfShareOfPeak * 100)} %` : "–", "of peak force"],
-      [kg(s.summary.peakKg), "peak force"],
-      [s.summary.wPrimeKgS !== null ? `${Math.round(s.summary.wPrimeKgS)} kg·s` : "–", "W′ (work above CF)"],
+      [kg(s.summary.cfKg), `critical force${pctBw(s.summary.cfKg, s.bodyweightKg)}`, INFO.cf],
+      [s.summary.cfShareOfPeak ? `${Math.round(s.summary.cfShareOfPeak * 100)} %` : "–", "of peak force", INFO.cfShare],
+      [kg(s.summary.peakKg), "peak force", INFO.cfPeak],
+      [s.summary.wPrimeKgS !== null ? `${Math.round(s.summary.wPrimeKgS)} kg·s` : "–", "W′ (work above CF)", INFO.wPrime],
     ],
     table: (s) => ({
       head: ["Rep", "Peak", "Avg"],
@@ -151,15 +168,15 @@ export const KINDS = {
     shortName: "RFD",
     description: "3 explosive pulls of 3 s with 30 s rest. Pull as fast and hard as you can from a relaxed hang.",
     workLabel: "Pull",
-    routine: { sets: 3, reps: 1, workS: 3, restS: 0, setRestS: 30, prepS: 10 },
+    routine: { sets: 3, reps: 1, workS: 3, restS: 0, setRestS: 30, prepS: 5 },
     metrics: [summaryMetric("rfdKgS", "RFD 0–200 ms", kgPerS)],
     analyze: ({ attempts, dtS }) =>
       rfdSummary(attempts, dtS) ?? { rfdKgS: null, peakRfdKgS: null, timeToPeakS: null, peakKg: null, attemptRfdKgS: [] },
     tiles: (s) => [
-      [kgPerS(s.summary.rfdKgS), "RFD 0–200 ms"],
-      [kgPerS(s.summary.peakRfdKgS), "peak RFD"],
-      [s.summary.timeToPeakS !== null ? `${Math.round(s.summary.timeToPeakS * 1000)} ms` : "–", "time to peak"],
-      [kg(s.summary.peakKg), "peak force"],
+      [kgPerS(s.summary.rfdKgS), "RFD 0–200 ms", INFO.rfd],
+      [kgPerS(s.summary.peakRfdKgS), "peak RFD", INFO.peakRfd],
+      [s.summary.timeToPeakS !== null ? `${Math.round(s.summary.timeToPeakS * 1000)} ms` : "–", "time to peak", INFO.timeToPeak],
+      [kg(s.summary.peakKg), "peak force", INFO.peakForce],
     ],
     table: (s) => ({
       head: ["Attempt", "Peak", "RFD 0–200 ms"],

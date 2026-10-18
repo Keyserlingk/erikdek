@@ -66,15 +66,35 @@ function curveChart(container, curve) {
   );
 }
 
-// Row of bars, one per rep, with a gap between sets. Bar height is pct (0–100).
+// Adds an ⓘ button after `label` that shows/hides `info` below it.
+function withInfo(label, info) {
+  if (!info) return label;
+  const text = el("span", { className: "info-text", textContent: info, hidden: true });
+  const button = el("button", { type: "button", className: "info-button", textContent: "ⓘ" });
+  button.setAttribute("aria-label", "Explain");
+  button.addEventListener("click", () => {
+    text.hidden = !text.hidden;
+    button.setAttribute("aria-expanded", String(!text.hidden));
+  });
+  return el("span", { className: "with-info" }, [el("span", { className: "info-row" }, [label, button]), text]);
+}
+
+// Per-rep percentages, one line per set.
 function renderStrip(strip) {
-  const bars = strip.bars.map((b, i) =>
-    el("div", { className: `strip-bar${i > 0 && b.set !== strip.bars[i - 1].set ? " new-set" : ""}`, title: b.title }, [
-      el("div", { className: `strip-fill ${b.cls}` }),
-    ]),
-  );
-  strip.bars.forEach((b, i) => (bars[i].firstChild.style.height = `${Math.max(2, b.pct)}%`));
-  return el("div", { className: "strip-block" }, [el("div", { className: "strip-label", textContent: strip.label }), el("div", { className: "strip" }, bars)]);
+  const sets = [];
+  for (const v of strip.values) {
+    if (!sets.length || sets.at(-1).set !== v.set) sets.push({ set: v.set, values: [] });
+    sets.at(-1).values.push(v.pct);
+  }
+  return el("div", { className: "strip-block" }, [
+    withInfo(el("span", { className: "strip-label", textContent: strip.label }), strip.info),
+    ...sets.map((set) =>
+      el("div", { className: "strip-row" }, [
+        el("span", { className: "strip-set", textContent: sets.length > 1 ? `Set ${set.set}` : "Reps" }),
+        ...set.values.map((p) => el("span", { className: "strip-value", textContent: `${Math.round(p)} %` })),
+      ]),
+    ),
+  ]);
 }
 
 // Fills `root` with the session view. Returns the chart (or null) so callers can destroy it.
@@ -86,16 +106,15 @@ export function renderSession(root, s) {
   const tiles = el(
     "div",
     { className: "tiles" },
-    kind.tiles(s).map(([value, label]) => el("div", { className: "tile" }, [el("strong", { textContent: value }), el("span", { textContent: label })])),
+    kind.tiles(s).map(([value, label, info]) =>
+      el("div", { className: "tile" }, [el("strong", { textContent: value }), withInfo(el("span", { textContent: label }), info)]),
+    ),
   );
 
   const chartBox = el("div", { className: "session-chart" });
   const table = kind.table(s);
-  // A cell is text, or { text, cls } for a colored cell.
-  const rows = table.rows.map((cells) =>
-    el("tr", {}, cells.map((c) => (typeof c === "object" ? el("td", { textContent: c.text, className: c.cls }) : el("td", { textContent: c })))),
-  );
-  const strips = (kind.strips?.(s) ?? []).filter((strip) => strip.bars.length > 1);
+  const rows = table.rows.map((cells) => el("tr", {}, cells.map((c) => el("td", { textContent: c }))));
+  const strips = (kind.strips?.(s) ?? []).filter((strip) => strip.values.length > 1);
   const tableCard = el("div", { className: "card" }, [
     el("table", { className: "reps" }, [
       el("thead", {}, [el("tr", {}, table.head.map((h) => el("th", { textContent: h })))]),

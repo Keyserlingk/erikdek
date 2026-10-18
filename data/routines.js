@@ -14,7 +14,7 @@ export const BUILTIN_ROUTINES = [
     workS: 7,
     restS: 3,
     setRestS: 180,
-    prepS: 10,
+    prepS: 5,
     target: { type: "none", value: 0 },
   },
   {
@@ -28,7 +28,7 @@ export const BUILTIN_ROUTINES = [
     workS: 10,
     restS: 0,
     setRestS: 180,
-    prepS: 10,
+    prepS: 5,
     target: { type: "none", value: 0 },
   },
   {
@@ -42,7 +42,7 @@ export const BUILTIN_ROUTINES = [
     workS: 10,
     restS: 5,
     setRestS: 120,
-    prepS: 10,
+    prepS: 5,
     target: { type: "none", value: 0 },
   },
 ];
