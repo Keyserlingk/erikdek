@@ -1,8 +1,9 @@
 # Erkdek DIY – Plan
 
 A DIY force gauge for climbing training (Tindeq Progressor style). An S-type load cell
-feeds an HX711, which feeds an ESP32. The ESP32 serves a web app that runs in the
-phone's browser and shows live force, graphs, timers, workout routines and progress history.
+feeds an HX711, which feeds an ESP32. The ESP32 streams force over **Bluetooth Low
+Energy** to an **Android app** (the web app packaged with Capacitor), which shows live
+force, graphs, timers, routines, workouts, tests and progress history.
 
 ## Objective
 
@@ -11,16 +12,29 @@ pulling training. It should:
 
 - **Measure force accurately:** 80 Hz sampling, calibrated with known weights, good
   enough to capture peak force and rate of force development.
-- **Work from the phone with no extra app:** the ESP32 joins the phone's hotspot
-  (with its own network as a fallback) and serves a web app to the phone's browser.
+- **Work as an Android app over Bluetooth:** no WiFi, hotspot or IP addresses; the
+  phone keeps its normal internet. The ESP32 is a sensor; the app does the rest.
 - **Support structured training:** live force and graph, work/rest timer, custom
-  workout routines and standard tests (max pull, critical force, RFD).
-- **Track progress over time:** results and personal bests stored on the device,
-  with progress charts.
+  routines, workouts (routines in a row) and standard tests (max pull, critical force, RFD).
+- **Track progress over time:** results and personal bests stored in the app, with
+  progress charts.
 - **Keep the data accessible:** export sessions or everything as CSV/JSON, and
   restore from a backup.
-- **Be developable without hardware:** a mock ESP server for the web app and
-  PC-run unit tests for the logic.
+- **Be developable without hardware:** a simulated device in the app for development
+  on the computer, and PC-run unit tests for the logic.
+
+## Decisions (2026-10-19)
+
+- **Capacitor** wraps the existing HTML/JS app into an Android app (APK), installed
+  directly on the phone (no Play Store).
+- **Bluetooth Low Energy only.** The ESP's WiFi, web server and LittleFS storage go
+  away; the firmware keeps the sensor task, calibration (NVS) and a BLE service.
+- **Data lives on the phone** (IndexedDB inside the app): settings, routines,
+  workouts, holds/grips and sessions. Calibration stays on the ESP.
+- **The computer is only for development:** the web app runs in a desktop browser
+  with a simulated device. No Web Bluetooth on desktop.
+- **No iPhone for now:** Capacitor supports iOS, but building needs a Mac and Apple's
+  signing (see Future options).
 
 ## Hardware
 
@@ -28,7 +42,7 @@ pulling training. It should:
 |---|---|
 | S-type load cell, 300 kg | Has eyes for slings and carabiners; 4-wire full bridge |
 | HX711 breakout | **Bridge RATE to VCC for 80 Hz** (most boards default to 10 Hz) |
-| ESP32 NodeMCU WROOM-32 (USB-C, CH340) | 4 MB flash |
+| ESP32 NodeMCU WROOM-32 (USB-C, CH340) | 4 MB flash, Bluetooth LE |
 | Power | USB power bank or 18650 + charger/protection board |
 
 ### Wiring
@@ -40,8 +54,8 @@ pulling training. It should:
 | DT / DOUT | GPIO 16 |
 | SCK | GPIO 17 |
 
-Load cell → HX711: red → E+, black → E−, white → A−, green → A+.
-If force reads negative under load, swap white and green.
+Load cell → HX711: red → E+, black → E−, white → A−, green → A+. Swapped A+/A−
+wires are handled by calibration (negative scale factor).
 
 ### Safety
 Every shackle, sling and carabiner in the chain must be rated well above the
@@ -52,169 +66,176 @@ expected load. One-arm and dynamic pulls produce much higher peaks than a static
 - Peak force in a hard pull lasts about 100–200 ms; 10 Hz misses it.
 - Rate of force development (RFD) needs high sample rates.
 - At 300 kg range, 80 Hz noise is roughly ±50–100 g, which doesn't matter here.
-- The ESP samples at 80 Hz and sends samples to the browser in batches at about 20 Hz.
-  The big number on screen is smoothed; graphs and peak detection use raw data.
+- The ESP samples at 80 Hz and sends them in batches at about 20 Hz. The big number
+  on screen is smoothed; graphs, peaks and analysis use every sample.
 - On boot, the firmware measures the actual sample rate and reports it, which
   confirms whether the RATE mod worked.
 
-## Networking
+## Bluetooth
 
-Goal: the ESP joins the **phone's hotspot**, so the phone keeps mobile internet.
-The hard part is finding the ESP's IP: Android randomizes the hotspot subnet, and
-`.local` (mDNS) names are unreliable on Android.
+80 samples/s as 2-byte values is 160 B/s, a few percent of what BLE handles even with
+default settings. Notifications every ~50 ms with ~4 samples give the same 20 Hz
+screen updates as before, with ~20–60 ms latency. BLE retransmits lost packets while
+connected; sequence numbers detect gaps after a reconnect. Range ~10 m indoors.
 
-Connection order:
-1. **Station mode:** join the configured hotspot SSID.
-2. **Fallback AP mode:** if no known network is found within about 15 s, the ESP
-   creates its own network `Erkdek` at `192.168.4.1`, with a captive-portal DNS
-   so Android shows a "Sign in to network" popup.
-   This mode is also used to enter hotspot credentials the first time.
+### GATT service (draft)
 
-Ways to find the ESP in station mode (several, because none of them is perfect alone):
-- **Push notification via ntfy.sh:** the hotspot has internet, so on connect the ESP
-  posts `Erkdek at http://<ip>` to a private ntfy topic. With the ntfy Android app,
-  the notification is clickable and opens the page. Free, no account needed.
-- **mDNS `http://erkdek.local`:** works on some Android/Chrome versions; free to add.
-- **Remember the last IP:** the web app stores it, and the ESP asks DHCP for the same address.
+One custom service `Erkdek` with:
 
-The web app keeps the transport (WebSocket) behind a small interface so that
-Bluetooth can be added later (see Future options).
+| Characteristic | Properties | Content |
+|---|---|---|
+| Samples | notify | `seq` u16, `t0` u32 (ms of first sample), `dt` u16 (µs per sample), then n × i16 force in 10 g units (±327 kg) |
+| Status | read, notify (1 Hz and on change) | sample rate, tared, calibrated, counts per kg, firmware version |
+| Command | write | opcode + payload: tare, calibrate(kg f32), reset calibration, set calibration(counts per kg f32) |
+| Event | notify | tared, calibrated(cpk), calibration failed(reason) |
+
+- Advertises as `Erkdek` so the app finds it; the app remembers the device and
+  reconnects automatically.
+- Encoding/decoding lives in hardware-independent code with unit tests on both
+  sides (C++ in `lib/core`, JS in the app).
 
 ## Architecture
 
 ```
 Load cell ─► HX711 (80 Hz) ─► ESP32
                                 ├─ Sensor task (core 1): read, tare/scale, ring buffer
-                                ├─ Web server + WebSocket (core 0)
-                                ├─ NVS: calibration, settings, WiFi credentials
-                                └─ LittleFS: web app, routines, session history
-Phone browser ◄── WebSocket / HTTP ──► live view, graph, timer, routines, history
+                                ├─ BLE service (NimBLE): samples, status, commands, events
+                                └─ NVS: calibration
+Android app (Capacitor) ◄── BLE ──► live view, graph, timer, routines, workouts,
+                                     tests, history, settings
+                                     └─ IndexedDB: settings, routines, workouts,
+                                        holds/grips, sessions
 ```
+
+### App
+- The existing web app (plain HTML/JS/CSS, no build step) is the app's UI. Capacitor
+  packages it; only the connection and storage layers change.
+- **Transport** (`transport.js`): one interface, three implementations:
+  - Capacitor BLE (`@capacitor-community/bluetooth-le`) in the app,
+  - simulated device (JS port of the current mock) for development in a browser,
+  - WebSocket to `tools/mock_server.py` until the simulated device replaces it.
+- **Storage:** the stores the screens already use (settings, routines, workouts,
+  holds/grips, sessions) keep their interfaces but read/write IndexedDB instead of
+  the ESP's HTTP API. Backup/restore and routine files keep working unchanged.
+- Charting: uPlot (local copy). Beeps via Web Audio. Screen kept on during runs with
+  a keep-awake plugin.
 
 ### Firmware stack
 - PlatformIO + Arduino framework
-- HX711 read in a dedicated FreeRTOS task (interrupt/poll on DOUT ready)
-- ESPAsyncWebServer + AsyncWebSocket, ArduinoJson, ESPmDNS, DNSServer
-- Pure logic (filtering, rep detection, stats) in hardware-independent C++,
-  unit tested with PlatformIO's `native` environment
-
-### Web app
-- Plain HTML/JS/CSS, no build step. Every asset served from the ESP (gzipped),
-  no CDN, because AP mode has no internet.
-- Charting: uPlot (about 40 KB), local copy.
-- Audio cues via Web Audio (works over plain HTTP).
-- Screen wake lock needs HTTPS; workaround is a hidden looping video (NoSleep-style),
-  or turning up the phone's screen timeout.
-
-### Protocol (initial draft)
-- `GET /` → web app
-- `WS /ws`
-  - ESP → browser: `{"t":"samples","ts":<ms>,"kg":[..]}` at about 20 Hz,
-    `{"t":"status","rate":80.1,"tared":true,...}`
-  - Browser → ESP: `{"cmd":"tare"}`, `{"cmd":"calibrate","kg":20.0}`
-- `GET/PUT /api/settings`
-- `GET/PUT /api/routines` (custom routines as one JSON array; built-ins live in the web app)
-- `GET/PUT /api/workouts` (workouts: named, ordered lists of routine ids)
-- `GET/PUT /api/holdtypes`, `GET/PUT /api/grips` (the user's own holds/grips as JSON arrays; standard ones live in the web app)
-- `GET /api/sessions` (index as NDJSON, one summary per line), `POST /api/sessions`,
-  `GET/DELETE /api/sessions/<id>`, `GET /api/storage`
-- Export/import is done in the browser from the APIs above (no firmware code or RAM
-  needed): raw 80 Hz CSV right after a run, per-session CSV/JSON, all-sessions CSV,
-  a full JSON backup restored item by item, and routine files (`erkdek-routines`,
-  one or all routines) for sharing, imported as new routines. WebSocket `{"cmd":"setCalibration","cpk":..}`
-  restores the scale factor.
+- HX711 read in a dedicated FreeRTOS task
+- NimBLE-Arduino for the BLE service; Preferences (NVS) for calibration
+- Pure logic (calibration, rate meter, ring buffer, BLE packet encoding) in
+  hardware-independent C++, unit tested with PlatformIO's `native` environment
 
 ## Storage
 
+**In the app (phone)**
+- IndexedDB: settings (bodyweight, rep threshold), routines, workouts, own holds and
+  grips, sessions (summary, per-rep stats, compressed force curve).
+- Kept until the app is uninstalled or its data is cleared, so **backups matter**:
+  Settings → Backup downloads everything as one JSON file.
+
 **On the ESP**
-- NVS: calibration (offset and scale), settings (bodyweight, units, smoothing,
-  rep threshold), WiFi credentials, ntfy topic.
-- LittleFS (about 1.5 MB): routines, personal bests, session summaries with
-  downsampled force curves.
+- NVS: calibration (counts per kg). Tare happens on boot and on request.
 
-**Downloads from the phone**
-- Per session: CSV (raw 80 Hz data from the session just recorded) or JSON.
-- Full backup: JSON with everything above. It can be re-imported after
-  reflashing or onto a new board.
+**Downloads from the app**
+- Per session: CSV (raw 80 Hz data right after a run) or JSON; all sessions as CSV.
+- Routine files for sharing; full backup and restore.
 
-## Developing without hardware
+## Development
 
-- **Mock ESP server** (`tools/mock_server.py`): serves `data/` and implements the
-  same HTTP API and WebSocket protocol, generating simulated force curves
-  (hangs, pulls, noise, an occasional spike). The web app is identical against the
-  mock and the real ESP.
-- **Firmware:** written now and compiled with PlatformIO (no board needed to
-  compile). Logic is unit tested on the PC (`pio test -e native`).
-- **When the ESP arrives:** flash it, run the RATE check, calibrate, done.
+- **On the computer:** run the web app in a desktop browser against the simulated
+  device (and, until it exists, `tools/mock_server.py`). No hardware needed.
+- **Tests:** `npm test` (app logic), `pio test -e native` (firmware logic).
+- **Firmware:** compiled with PlatformIO (no board needed to compile).
+- **Android app:** built from the terminal with the Android command-line tools and
+  installed with `adb` over USB.
+
+### Toolchain
+| Tool | Version | Notes |
+|---|---|---|
+| Node.js | ≥ 22 (via nvm) | Capacitor 8 requires it; system Node 18 stays untouched |
+| Capacitor | 8.5.x | `@capacitor/core`, `@capacitor/cli`, `@capacitor/android` |
+| BLE plugin | `@capacitor-community/bluetooth-le` 8.x | |
+| JDK | 21 | already installed |
+| Android SDK | command-line tools, platform-tools, platform 36, build-tools 36 | in `~/Android/Sdk`; compileSdk/targetSdk 36, minSdk 24 (Android 7) |
+| PlatformIO | | firmware, `pipx install platformio` |
+
+Phone: enable Developer options and USB debugging, then `adb install`.
 
 ## Project layout
 
 ```
 erkdek/
 ├─ PLAN.md
-├─ platformio.ini
-├─ src/
-│  ├─ main.cpp        setup, tasks
-│  ├─ sensor.*        HX711 task, tare/calibration, ring buffer
-│  ├─ net.*           STA/AP, captive DNS, mDNS, ntfy, web server, WebSocket
-│  └─ storage.*       NVS + LittleFS
-├─ lib/core/          hardware-independent logic (filters, rep detection, stats)
-├─ test/              native unit tests
-├─ data/              web app (index.html, app.js, style.css, uplot.min.js)
-└─ tools/
-   └─ mock_server.py  ESP simulator for web development
+├─ platformio.ini        firmware build
+├─ src/                  firmware: sensor task, BLE service, NVS
+├─ lib/core/             hardware-independent firmware logic
+├─ test/                 native firmware tests, test/js app tests
+├─ data/                 the app UI (HTML/JS/CSS), Capacitor's web dir
+├─ android/              Capacitor Android project (generated, then committed)
+├─ capacitor.config.json
+├─ package.json
+└─ tools/                mock server (until the simulated device), build scripts
 ```
 
-## Features
+## Features (built, tested against the mock)
 
-- **Live view:** large weight readout, rolling graph, peak hold, % of bodyweight, tare button.
-- **Calibration wizard:** tare, hang a known weight, enter its mass, save. Optional multi-point. Auto-tare on boot.
-- **Timer:** work/rest countdown with beeps and a set/rep counter.
-- **Routines:** sets × reps × work/rest, optional target load band shown on the graph,
-  user presets plus built-ins (7/3 repeaters, max hang, critical force).
-- **Tests:** max pull (per hand), critical force (24 × 7/3, averaging the final reps), RFD.
-- **History:** saved sessions, progress charts per test type, personal bests.
-- **Settings:** WiFi/hotspot credentials, ntfy topic, bodyweight, units, smoothing, rep threshold.
-- **Export/import:** CSV/JSON per session, full JSON backup and restore.
+- **Live view:** large weight readout, rolling graph, peak hold and reset, % of
+  bodyweight, tap-to-set target, tare.
+- **Calibration wizard:** tare, hang a known weight, enter its mass, save. Auto-tare on boot.
+- **Routines:** sets × reps × hang/rest, get-ready, target (kg or % bodyweight), hold,
+  grip, hands (both, left, right, alternating with change-hand rests), templates,
+  editor, download/import.
+- **Workouts:** routines in a row with a confirmation before each next routine.
+- **Run screen:** countdown, one beep per phase change, live hold %, target band.
+- **Tests:** max pull, critical force (24 × 7:3), RFD; per hand, hold and grip.
+- **Summary and history:** hold %, work vs target, force retention, per-rep values,
+  ⓘ explanations, progress charts per hand, personal bests, session details.
+- **Settings:** bodyweight, rep threshold, own holds/grips, calibration, backup, About.
+- **Export/import:** CSV/JSON per session, all sessions as CSV, routine files, backup.
 
 ## Future options (not in planned work)
 
 ### OLED display
-A 0.96" SSD1306 OLED (I²C, SDA → GPIO 21, SCL → GPIO 22) showing the IP address,
-WiFi mode and live weight. Makes finding the device in hotspot mode trivial and gives
-a readout without the phone.
+A 0.96" SSD1306 OLED (I²C, SDA → GPIO 21, SCL → GPIO 22) showing live weight and
+connection state, as a readout without the phone.
 
-### Bluetooth instead of WiFi (Web Bluetooth)
-Chrome on Android can talk to BLE devices directly from a web page, so no Android app is needed.
-- The web app must be served over HTTPS, so it would be hosted, for example on GitHub
-  Pages, and installed as an offline-capable PWA. The ESP then only does BLE: no web
-  server, no WiFi.
-- Pros: no IP discovery, phone keeps its internet, proper screen wake lock,
-  app updates without reflashing, lower power use.
-- Cons: Chrome-based browsers only (no iPhone/Firefox), needs hosting, the user taps
-  "Connect" and picks the device each session, and history would naturally move to the
-  phone (IndexedDB) with calibration staying on the ESP.
-- 80 Hz is easy over BLE: notifications at about 20 Hz with 4 samples each.
-- Bonus idea: Tindeq has published the Progressor BLE protocol. Copying it might
-  make the device usable from the official Tindeq app (unverified).
+### iPhone
+Capacitor and the BLE plugin support iOS, but building needs a Mac with Xcode, and
+installing needs an Apple ID (free: re-install every 7 days) or the Apple Developer
+Program (~$99/year).
+
+### WiFi web page as a fallback
+Keep the ESP's web server so any browser (iPhone, computer) can use it without the
+app. Costs firmware space (likely a partition change) and splits data between the
+phone and the ESP. The WiFi version of the firmware is in git history (up to the
+switch to BLE).
+
+### Tindeq protocol
+Tindeq has published the Progressor BLE protocol. Copying it might make the device
+usable from the official Tindeq app (unverified).
 
 ## Milestones
 
-1. **Live weight:** mock server and web page showing live kg, a tare button and the
-   sample rate; firmware skeleton with HX711 task and WebSocket.
-2. **Calibration:** wizard in the UI, persisted in NVS.
-3. **Live graph:** uPlot chart, peak hold, % bodyweight.
-4. **Networking:** STA to hotspot with AP fallback, captive portal, mDNS, ntfy notification, WiFi settings page.
-5. **Timer and routines:** beeps, rep detection, routine editor, built-in presets.
-6. **Tests and history:** max/CF/RFD protocols, session storage, progress charts.
-7. **Export/import:** CSV/JSON downloads, backup restore.
-8. **Hardware bring-up:** flash, RATE check, calibrate, real-world tuning. Also:
-   - **Web app size:** 219 KB raw / 76 KB gzipped (28 files). Done: the filesystem
-     image is built from a gzipped copy of `data/` (`tools/gzip_data.py`), about 5 %
-     of the 1.38 MB LittleFS partition; verified with the mock (`--gzip`).
-     Still to do on the device: confirm the ESP serves the `.gz` files, measure first
-     load time, and consider cache headers (with versioned file names, so updates
-     aren't hidden by the cache).
-   - **Program space:** firmware is at ~68 % of the 1.25 MB app partition. If
-     networking (HTTPS client for ntfy) makes it tight, switch to a partition
-     table without the second OTA slot.
+Done (web app and WiFi firmware, tested against the mock server):
+1. Live weight · 2. Calibration · 3. Live graph · 5. Timer and routines ·
+6. Tests and history · 7. Export/import · plus workouts, hands, holds/grips,
+granular rep metrics, gzip bundle and About.
+(4. WiFi networking was dropped in favour of Bluetooth.)
+
+Next:
+- **A. App storage:** move settings, routines, workouts, holds/grips and sessions from
+  the ESP's HTTP API to IndexedDB behind the existing store interfaces. Backup,
+  restore and exports keep working. Storage info under Settings → About reflects the
+  phone.
+- **B. Simulated device in JS:** port the mock's force simulation (including "pull
+  during each hang") into a transport, so the app runs in a desktop browser with no
+  server. Retire `tools/mock_server.py`.
+- **C. BLE protocol and firmware:** packet encoding in `lib/core` with tests, NimBLE
+  service on the ESP, remove WiFi/web server/LittleFS. Compile-tested.
+- **D. Android app:** Capacitor project, BLE transport with scan/connect/auto-reconnect
+  and permissions, keep-awake during runs, app name/icon. Build the APK and install it
+  on the phone (with the simulated device until the hardware arrives).
+- **E. Hardware bring-up:** flash, RATE check, calibrate, BLE range and latency test,
+  real-world tuning.
