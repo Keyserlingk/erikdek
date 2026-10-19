@@ -89,3 +89,13 @@ test("routine files carry the new fields", () => {
   assert.equal(routines[0].type, "selfpaced");
   assert.deepEqual(routines[0].setInstructions, ["1-3-5", "1-4-7", "1-5-9"]);
 });
+
+test("all templates are valid and belong to a category", async () => {
+  const { TEMPLATE_CATEGORIES } = await import("../../data/routines.js");
+  for (const r of BUILTIN_ROUTINES) {
+    assert.equal(validateRoutine(r), null, `${r.name}: ${validateRoutine(r)}`);
+    assert.ok(TEMPLATE_CATEGORIES.includes(r.category), r.name);
+  }
+  assert.equal(new Set(BUILTIN_ROUTINES.map((r) => r.id)).size, BUILTIN_ROUTINES.length);
+  for (const c of TEMPLATE_CATEGORIES) assert.ok(BUILTIN_ROUTINES.some((r) => r.category === c), c);
+});

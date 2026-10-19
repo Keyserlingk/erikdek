@@ -9,6 +9,7 @@ import { formatClock, formatDuration, formatKg } from "./format.js";
 import {
   BUILTIN_ROUTINES,
   ROUTINE_TYPES,
+  TEMPLATE_CATEGORIES,
   buildRoutineFile,
   instructionFor,
   newRoutineId,
@@ -319,22 +320,32 @@ function renderList() {
   el.routineFileActions.hidden = view !== "mine";
   el.routinesDownload.hidden = !routines.custom.length;
   if (view !== "mine") showRoutineFileMessage("");
-  el.list.replaceChildren(
-    ...list.map((r) =>
-      create("div", { className: "card routine" }, [
-        create("div", { className: "routine-head" }, [
-          create("h2", { textContent: r.name }),
-          create("span", { className: "muted", textContent: routineDuration(r) }),
-        ]),
-        create("p", { className: "muted", textContent: describe(r) }),
-        ...(r.instruction ? [create("p", { className: "muted instruction", textContent: r.instruction })] : []),
-        create("div", { className: "actions" }, [
-          button("secondary", r.builtin ? "Copy & edit" : "Edit", () => openEditor(r)),
-          button("primary", "Start", () => startRun("workout", r, r.hands || "both")),
-        ]),
+  if (view === "templates") {
+    // Templates under their category headings.
+    el.list.replaceChildren(
+      ...TEMPLATE_CATEGORIES.flatMap((category) => [
+        create("h2", { className: "section", textContent: category }),
+        ...BUILTIN_ROUTINES.filter((r) => r.category === category).map(routineCard),
       ]),
-    ),
-  );
+    );
+  } else {
+    el.list.replaceChildren(...list.map(routineCard));
+  }
+}
+
+function routineCard(r) {
+  return create("div", { className: "card routine" }, [
+    create("div", { className: "routine-head" }, [
+      create("h2", { textContent: r.name }),
+      create("span", { className: "muted", textContent: routineDuration(r) }),
+    ]),
+    create("p", { className: "muted", textContent: describe(r) }),
+    ...(r.instruction ? [create("p", { className: "muted instruction", textContent: r.instruction })] : []),
+    create("div", { className: "actions" }, [
+      button("secondary", r.builtin ? "Copy & edit" : "Edit", () => openEditor(r)),
+      button("primary", "Start", () => startRun("workout", r, r.hands || "both")),
+    ]),
+  ]);
 }
 
 function showListError(text) {
@@ -523,7 +534,9 @@ function renderWorkoutAddOptions() {
     create("optgroup", { label }, list.map((r) => create("option", { value: r.id, textContent: r.name })));
   const groups = [];
   if (routines.custom.length) groups.push(group("My routines", routines.custom));
-  groups.push(group("Templates", BUILTIN_ROUTINES));
+  for (const category of TEMPLATE_CATEGORIES) {
+    groups.push(group(`Templates · ${category}`, BUILTIN_ROUTINES.filter((r) => r.category === category)));
+  }
   el.wEdit.add.replaceChildren(...groups);
 }
 

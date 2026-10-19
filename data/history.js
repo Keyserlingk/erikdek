@@ -3,7 +3,7 @@ import { formatBytes } from "./format.js";
 import { fileDate, historyCsv, storedCurveCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
-import { HANDS, KINDS, TEST_IDS, metricPoints } from "./tests.js";
+import { HANDS, KINDS, TEST_IDS, metricPoints, metricsFor } from "./tests.js";
 
 const KIND_ORDER = [...TEST_IDS, "workout"];
 // Series in History; alternating sessions contribute to left and right.
@@ -46,6 +46,7 @@ let detailChart = null;
 let openId = null;
 let openSession = null;
 let metricKind = null; // kind the metric picker was filled for
+let metricKeys = null; // and the metrics it offered
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -95,6 +96,33 @@ function currentMetric() {
   return metrics.find((m) => m.key === el.metric.value) || metrics[0];
 }
 
+// The metric picker offers what fits the sessions shown (with or without the sensor);
+// it keeps the current choice when it still fits, else starts at one that has data.
+function renderMetricPicker() {
+  const list = filtered();
+  const metrics = metricsFor(el.kind.value, list);
+  const keys = metrics.map((m) => m.key).join(",");
+  if (keys === metricKeys && el.kind.value === metricKind) return;
+  metricKind = el.kind.value;
+  metricKeys = keys;
+  const current = el.metric.value;
+  const option = (m) => create("option", { value: m.key, textContent: m.label });
+  const sensorGroup = metrics.filter((m) => m.sensor === true);
+  const otherGroup = metrics.filter((m) => m.sensor === false);
+  el.metric.replaceChildren(
+    ...(sensorGroup.length && otherGroup.length
+      ? [
+          create("optgroup", { label: "With the sensor" }, sensorGroup.map(option)),
+          create("optgroup", { label: "Without the sensor" }, otherGroup.map(option)),
+        ]
+      : metrics.map(option)),
+  );
+  const hasData = (m) => list.some((s) => metricPoints(m, s).some((p) => p.value !== null));
+  const keep = metrics.find((m) => m.key === current);
+  el.metric.value = (keep ?? metrics.find(hasData) ?? metrics[0]).key;
+  el.metricRow.hidden = metrics.length < 2;
+}
+
 // The session's points for the current metric: one per hand for alternating sessions.
 function pointsOf(s) {
   return metricPoints(currentMetric(), s).filter((p) => p.value !== null);
@@ -109,27 +137,24 @@ function renderFilters() {
   fillSelect(el.routine, "All routines", distinct(ofKind, "name"));
   el.routineRow.hidden = el.kind.value !== "workout";
 
-  // New kind: refill the metric picker and start at its default (first) metric.
-  if (metricKind !== el.kind.value) {
-    metricKind = el.kind.value;
-    const metrics = KINDS[metricKind].metrics;
-    el.metric.replaceChildren(...metrics.map((m) => create("option", { value: m.key, textContent: m.label })));
-    el.metric.value = metrics[0].key;
-    el.metricRow.hidden = metrics.length < 2;
-  }
+  if (metricKind !== el.kind.value) el.metric.value = ""; // new kind: start fresh
+  renderMetricPicker();
 }
 
 function renderBests(list, metric) {
   const tiles = [];
-  for (const hand of HAND_ORDER) {
+  // Metrics where neither direction is better (e.g. work time) get no best.
+  const better = (a, b) => (metric.better === "lower" ? a < b : a > b);
+  for (const hand of metric.better ? HAND_ORDER : []) {
     let best = null;
     for (const s of list) {
       for (const p of pointsOf(s)) {
-        if (p.hand === hand && (!best || p.value > best.value)) best = { value: p.value, date: s.startedAt };
+        if (p.hand === hand && (!best || better(p.value, best.value))) best = { value: p.value, date: s.startedAt };
       }
     }
     if (!best) continue;
-    const label = `${hand === "both" ? "best" : `best ${HANDS[hand].toLowerCase()}`} · ${formatDate(best.date)}`;
+    const word = metric.better === "lower" ? "lowest" : "best";
+    const label = `${hand === "both" ? word : `${word} ${HANDS[hand].toLowerCase()}`} · ${formatDate(best.date)}`;
     tiles.push(create("div", { className: "tile" }, [create("strong", { textContent: metric.format(best.value) }), create("span", { textContent: label })]));
   }
   tiles.push(create("div", { className: "tile" }, [create("strong", { textContent: String(list.length) }), create("span", { textContent: list.length === 1 ? "session" : "sessions" })]));

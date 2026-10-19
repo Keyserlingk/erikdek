@@ -81,15 +81,31 @@ export function summarizeTraining(reps, sets, routine) {
 // Progress metrics. fromSummary(summary, session) reads the value from a session
 // summary (or from one hand's summary in summary.byHand); value(session) from the
 // whole session. Kinds list them in `metrics`; the first one is the default.
-const metric = (key, label, format, fromSummary, info) => ({
+// Options: sensor (true = routines with the sensor, false = without; unset = any)
+// and better ("higher", "lower" or null when neither is better; picks personal bests).
+const metric = (key, label, format, fromSummary, info, { sensor, better = "higher" } = {}) => ({
   key,
   label,
   format,
   info,
+  sensor,
+  better,
   fromSummary,
   value: (s) => fromSummary(s.summary, s),
 });
-const summaryMetric = (key, label, format, info) => metric(key, label, format, (summary) => num(summary?.[key]), info);
+const summaryMetric = (key, label, format, info, options) =>
+  metric(key, label, format, (summary) => num(summary?.[key]), info, options);
+const SENSOR = { sensor: true };
+
+// The metrics of `kind` that fit `list` (sessions): routine metrics need sessions of
+// their kind (with or without the sensor); with no sessions, all are offered.
+export function metricsFor(kind, list) {
+  const all = KINDS[kind].metrics;
+  if (kind !== "workout" || !list.length) return all;
+  const withSensor = list.some((s) => !isTraining(s));
+  const without = list.some((s) => isTraining(s));
+  return all.filter((m) => m.sensor === undefined || (m.sensor ? withSensor : without));
+}
 
 // Points a session contributes to History: one per hand for alternating sessions,
 // otherwise one for the session's hand.
@@ -204,18 +220,40 @@ export const KINDS = {
     name: "Routine", // sessions of type "workout" are routine runs
     workLabel: "Hang",
     metrics: [
-      summaryMetric("holdPct", "Hold %", pct, `${INFO.hold} Rising toward 100 % means you stay on longer.`),
-      summaryMetric("retentionPct", "Force retention", pct, `${INFO.retention} Higher means less fading.`),
+      summaryMetric("holdPct", "Hold %", pct, `${INFO.hold} Rising toward 100 % means you stay on longer.`, SENSOR),
+      summaryMetric("retentionPct", "Force retention", pct, `${INFO.retention} Higher means less fading.`, SENSOR),
       summaryMetric(
         "workPct",
         "Work vs target",
         pct,
         `${INFO.work} Only sessions with a target are shown. Near 100 % means you can raise the target.`,
+        SENSOR,
       ),
-      summaryMetric("tutS", "Time under tension", seconds, INFO.tut),
-      summaryMetric("avgKg", "Average force", kg, INFO.avgForce),
-      summaryMetric("peakKg", "Peak force", kg, "Highest force in the session."),
-      metric("targetKg", "Target load", kg, (summary, s) => num(s.targetKg), "The target load the routine used, in kg (a % of bodyweight target is converted with the bodyweight at the time)."),
+      summaryMetric("tutS", "Time under tension", seconds, INFO.tut, SENSOR),
+      summaryMetric("avgKg", "Average force", kg, INFO.avgForce, SENSOR),
+      summaryMetric("peakKg", "Peak force", kg, "Highest force in the session.", SENSOR),
+      metric(
+        "targetKg",
+        "Target load",
+        kg,
+        (summary, s) => num(s.targetKg),
+        "The target load the routine used, in kg (a % of bodyweight target is converted with the bodyweight at the time).",
+        SENSOR,
+      ),
+      // Routines without the sensor
+      summaryMetric("maxAddedWeightKg", "Added weight", signedKg, `${INFO.addedWeight} Rising means you're getting stronger.`, {
+        sensor: false,
+      }),
+      summaryMetric("volumeKg", "Volume (weight × reps)", kg, INFO.volume, { sensor: false }),
+      summaryMetric(
+        "avgRpe",
+        "Effort",
+        rpe,
+        `${INFO.effort} For the same routine, lower effort over time means it's getting easier.`,
+        { sensor: false, better: "lower" },
+      ),
+      summaryMetric("repsDone", "Reps done", (v) => (v === null ? "–" : `${v}`), INFO.repsDone, { sensor: false }),
+      summaryMetric("workTimeS", "Work time", seconds, INFO.workTime, { sensor: false, better: null }),
     ],
     // Alternating sessions also get the same summary per hand in byHand.
     analyze({ reps, routine, target, sets = [] }) {

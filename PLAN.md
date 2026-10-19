@@ -287,7 +287,7 @@ Next:
 - **G. Run screen without the sensor (done):** instruction view, stopwatch + Done for
   self-paced reps, per-set effort (RPE) and added-weight entry, no sensor needed;
   workouts mixing types (connect the sensor only for hangboard parts).
-- **H. Summary, History and templates:** non-sensor summaries and metrics (effort,
+- **H. Summary, History and templates (done):** non-sensor summaries and metrics (effort,
   added weight, volume, time), "Compare by" for them, category headings in Templates,
   campus board and pull-up/lock-off templates.
 - **E. Hardware bring-up:** flash, RATE check, calibrate, BLE range and latency test,
