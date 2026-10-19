@@ -8,6 +8,7 @@ import { device } from "./device.js";
 import { formatDuration, formatKg } from "./format.js";
 import {
   BUILTIN_ROUTINES,
+  ROUTINE_TYPES,
   buildRoutineFile,
   newRoutineId,
   parseRoutineFile,
@@ -32,6 +33,7 @@ import {
   WorkoutEngine,
   buildPhases,
   hangsPerRep,
+  isOpenEnded,
   loadThresholdKg,
   repStats,
   targetKg,
@@ -114,6 +116,18 @@ const el = {
     setRestS: $("editSetRest"),
     prepS: $("editPrep"),
     hands: $("editHands"),
+    type: $("editType"),
+    typeHint: $("editTypeHint"),
+    instruction: $("editInstruction"),
+    perSet: $("editPerSet"),
+    setInstructions: $("editSetInstructions"),
+    weightBlock: $("editWeightBlock"),
+    useWeight: $("editUseWeight"),
+    weightRow: $("editWeightRow"),
+    weight: $("editWeight"),
+    workField: $("editWorkField"),
+    workLabel: $("editWorkLabel"),
+    targetBlock: $("editTargetBlock"),
     repsLabel: $("editRepsLabel"),
     restLabel: $("editRestLabel"),
     targetType: $("editTargetType"),
@@ -203,15 +217,34 @@ function button(className, text, onClick) {
   return b;
 }
 
+// "12 min", or "8 min + reps" when self-paced reps add an unknown time.
+function routineDuration(r) {
+  return formatDuration(totalDurationS(r)) + (isOpenEnded(r) ? " + reps" : "");
+}
+
+function workoutDuration(w) {
+  const open = w.routineIds.some((id) => {
+    const r = routines.find(id);
+    return r && isOpenEnded(r);
+  });
+  return formatDuration(workoutDurationS(w, routines.all)) + (open ? " + reps" : "");
+}
+
 function describe(r) {
   const alternate = r.hands === "alternate";
-  const parts = [`${r.sets} × ${r.reps}${alternate ? " per hand" : ""}`, `${r.workS} s on`];
+  const type = r.type || "hangboard";
+  const parts = [`${r.sets} × ${r.reps}${alternate ? " per hand" : ""}`];
+  if (type !== "selfpaced") parts.push(`${r.workS} s on`);
   if (alternate) parts.push(`${r.restS} s hand change`);
   else if (r.reps > 1) parts.push(`${r.restS} s off`);
   if (r.sets > 1) parts.push(`${formatDuration(r.setRestS)} between sets`);
   if (r.target.type === "kg") parts.push(`target ${r.target.value} kg`);
   if (r.target.type === "bw") parts.push(`target ${r.target.value} % BW`);
-  const tags = [r.holdType, r.grip, r.hands && r.hands !== "both" ? HANDS[r.hands] : ""].filter(Boolean);
+  if (r.addedWeightKg !== null && r.addedWeightKg !== undefined) {
+    parts.push(`${r.addedWeightKg >= 0 ? "+" : "−"}${formatKg(Math.abs(r.addedWeightKg))} kg`);
+  }
+  const typeLabel = type === "hangboard" ? "" : ROUTINE_TYPES[type].label;
+  const tags = [typeLabel, r.holdType, r.grip, r.hands && r.hands !== "both" ? HANDS[r.hands] : ""].filter(Boolean);
   return [...tags, ...parts].join(" · ");
 }
 
@@ -277,12 +310,13 @@ function renderList() {
       create("div", { className: "card routine" }, [
         create("div", { className: "routine-head" }, [
           create("h2", { textContent: r.name }),
-          create("span", { className: "muted", textContent: formatDuration(totalDurationS(r)) }),
+          create("span", { className: "muted", textContent: routineDuration(r) }),
         ]),
         create("p", { className: "muted", textContent: describe(r) }),
+        ...(r.instruction ? [create("p", { className: "muted instruction", textContent: r.instruction })] : []),
         create("div", { className: "actions" }, [
           button("secondary", r.builtin ? "Copy & edit" : "Edit", () => openEditor(r)),
-          button("primary", "Start", () => startRun("workout", r, r.hands || "both")),
+          button("primary", "Start", () => canRunYet([r]) && startRun("workout", r, r.hands || "both")),
         ]),
       ]),
     ),
@@ -325,7 +359,14 @@ function openEditor(r) {
   selects.editHold.value = editing.holdType || "";
   selects.editGrip.value = editing.grip || "";
   e.hands.value = editing.hands || "both";
+  e.type.value = editing.type || "hangboard";
+  e.instruction.value = editing.instruction || "";
+  editSetTexts = [...(editing.setInstructions || [])];
+  e.perSet.checked = editSetTexts.length > 0;
+  e.useWeight.checked = editing.addedWeightKg !== null && editing.addedWeightKg !== undefined;
+  e.weight.value = e.useWeight.checked ? editing.addedWeightKg : "";
   for (const key of ["sets", "reps", "workS", "restS", "setRestS", "prepS"]) e[key].value = editing[key];
+  renderSetInstructions();
   e.targetType.value = editing.target.type;
   e.targetValue.value = editing.target.type === "none" ? "" : editing.target.value;
   e.remove.hidden = isNew;
@@ -338,16 +379,23 @@ function openEditor(r) {
 function readEditor() {
   const e = el.edit;
   const int = (input) => (input.value.trim() === "" ? NaN : Number(input.value));
-  const type = e.targetType.value;
+  const routineType = e.type.value;
+  const sensor = ROUTINE_TYPES[routineType].sensor;
+  const type = sensor ? e.targetType.value : "none";
+  const sets = int(e.sets);
   return {
     id: editing.id,
     name: e.name.value.trim(),
+    type: routineType,
+    instruction: e.instruction.value.trim(),
+    setInstructions: e.perSet.checked ? editSetTexts.slice(0, sets).map((t) => (t || "").trim()) : [],
+    addedWeightKg: !sensor && e.useWeight.checked ? parseFloat(e.weight.value) : null,
     holdType: selects.editHold.value,
     grip: selects.editGrip.value,
     hands: e.hands.value,
-    sets: int(e.sets),
+    sets,
     reps: int(e.reps),
-    workS: int(e.workS),
+    workS: routineType === "selfpaced" ? 0 : int(e.workS),
     restS: int(e.restS),
     setRestS: int(e.setRestS),
     prepS: int(e.prepS),
@@ -355,16 +403,52 @@ function readEditor() {
   };
 }
 
+// One text field per set when "Different instruction per set" is on; texts are kept
+// while the number of sets changes.
+let editSetTexts = [];
+
+function renderSetInstructions() {
+  const e = el.edit;
+  const sets = Math.max(0, Math.min(20, Number(e.sets.value) || 0));
+  e.setInstructions.hidden = !e.perSet.checked;
+  if (!e.perSet.checked) return;
+  e.setInstructions.replaceChildren(
+    ...Array.from({ length: sets }, (_, i) => {
+      const input = create("input", { type: "text", maxLength: 100, value: editSetTexts[i] || "", placeholder: e.instruction.value || "e.g. 1-4-7" });
+      input.setAttribute("aria-label", `Instruction for set ${i + 1}`);
+      input.addEventListener("input", () => {
+        editSetTexts[i] = input.value;
+        updateEditorDerived();
+      });
+      return create("label", { className: "field" }, [create("span", { textContent: `Set ${i + 1}` }), input]);
+    }),
+  );
+}
+
+const TYPE_HINTS = {
+  hangboard: "Measures force with the sensor: hold %, target load and the force graph.",
+  timed: "Work and rest by the clock. No sensor needed.",
+  selfpaced: "Each rep lasts until you tap Done (e.g. a campus ladder), then the rest counts down. No sensor needed.",
+};
+
 function updateEditorDerived() {
   const e = el.edit;
-  const type = e.targetType.value;
+  const routineType = e.type.value;
+  const sensor = ROUTINE_TYPES[routineType].sensor;
+  e.typeHint.textContent = TYPE_HINTS[routineType];
+  e.targetBlock.hidden = !sensor;
+  e.workField.hidden = routineType === "selfpaced";
+  e.workLabel.textContent = sensor ? "Hang (s)" : "Work (s)";
+  e.weightBlock.hidden = sensor;
+  e.weightRow.hidden = !e.useWeight.checked;
+  const type = sensor ? e.targetType.value : "none";
   e.targetRow.hidden = type === "none";
   const alternate = e.hands.value === "alternate";
   e.repsLabel.textContent = alternate ? "Reps per set (per hand)" : "Reps per set";
   e.restLabel.textContent = alternate ? "Change hand (s)" : "Rest (s)";
   e.targetUnit.textContent = type === "bw" ? "% BW" : "kg";
   const r = readEditor();
-  e.duration.textContent = validateRoutine(r) ? "" : `Total time ${formatDuration(totalDurationS(r))}`;
+  e.duration.textContent = validateRoutine(r) ? "" : `Total time ${routineDuration(r)}`;
 }
 
 async function saveEditor() {
@@ -397,7 +481,7 @@ function renderWorkouts() {
       return create("div", { className: "card routine" }, [
         create("div", { className: "routine-head" }, [
           create("h2", { textContent: w.name }),
-          create("span", { className: "muted", textContent: formatDuration(workoutDurationS(w, routines.all)) }),
+          create("span", { className: "muted", textContent: workoutDuration(w) }),
         ]),
         create("p", { className: "muted", textContent: `${items.length} routine${items.length === 1 ? "" : "s"}: ${names}` }),
         create("div", { className: "actions" }, [
@@ -447,7 +531,7 @@ function renderWorkoutItems() {
       create("li", {}, [
         create("span", { className: `item-name${r ? "" : " missing"}` }, [
           `${i + 1}. ${r ? r.name : "Deleted routine (will be skipped)"}`,
-          ...(r ? [create("small", { textContent: `${formatDuration(totalDurationS(r))} · ${describe(r)}` })] : []),
+          ...(r ? [create("small", { textContent: `${routineDuration(r)} · ${describe(r)}` })] : []),
         ]),
         iconButton("↑", "Move up", i === 0, () => update(moveItem(ids, i, -1))),
         iconButton("↓", "Move down", i === ids.length - 1, () => update(moveItem(ids, i, 1))),
@@ -456,7 +540,7 @@ function renderWorkoutItems() {
     ),
   );
   if (!ids.length) el.wEdit.items.replaceChildren(create("li", { className: "muted", textContent: "No routines yet. Add one below." }));
-  el.wEdit.duration.textContent = ids.length ? `Total time ${formatDuration(workoutDurationS(editingWorkout, routines.all))}` : "";
+  el.wEdit.duration.textContent = ids.length ? `Total time ${workoutDuration(editingWorkout)}` : "";
 }
 
 async function saveWorkoutEditor() {
@@ -487,8 +571,16 @@ async function deleteWorkout() {
 
 // Running: each routine is a normal run; endRun() hands the session over to
 // workoutRoutineDone() instead of showing the routine summary.
+// Self-paced reps need the new run screen (milestone G); until then they can't start.
+function canRunYet(list) {
+  if (!list.some((r) => isOpenEnded(r))) return true;
+  alert("Running self-paced routines comes in the next update.");
+  return false;
+}
+
 function startWorkout(w) {
   const items = resolveRoutines(w, routines.all).filter(Boolean);
+  if (!canRunYet(items)) return;
   if (!items.length) {
     alert("This workout has no routines left. Edit it to add some.");
     return;
@@ -526,7 +618,7 @@ function workoutRoutineDone(session, stopped) {
   el.between.next.replaceChildren(
     create("div", { className: "routine-head" }, [
       create("h2", { textContent: next.name }),
-      create("span", { className: "muted", textContent: formatDuration(totalDurationS(next)) }),
+      create("span", { className: "muted", textContent: routineDuration(next) }),
     ]),
     create("p", { className: "muted", textContent: describe(next) }),
   );
@@ -952,6 +1044,12 @@ export function initTrain() {
   window.addEventListener("hashchange", () => showNotice(null, ""));
 
   el.newRoutine.addEventListener("click", () => openEditor(null));
+  el.edit.perSet.addEventListener("change", () => {
+    renderSetInstructions();
+    updateEditorDerived();
+  });
+  el.edit.sets.addEventListener("input", renderSetInstructions);
+  el.edit.instruction.addEventListener("input", renderSetInstructions);
   el.workoutNew.addEventListener("click", () => openWorkoutEditor(null));
   el.wEdit.addButton.addEventListener("click", () => {
     if (!el.wEdit.add.value) return;
@@ -983,7 +1081,7 @@ export function initTrain() {
     downloadJson(`erkdek-routines-${fileDate()}.json`, buildRoutineFile(routines.custom)),
   );
   el.routinesImport.addEventListener("change", importRoutines);
-  for (const input of el.screens.edit.querySelectorAll("input, select")) {
+  for (const input of el.screens.edit.querySelectorAll("input, select, textarea")) {
     input.addEventListener("input", updateEditorDerived);
   }
   for (const b of el.setup.hands) b.addEventListener("click", () => setHand(b.dataset.hand));

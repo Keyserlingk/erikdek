@@ -17,6 +17,8 @@ export function hangsPerRep(r) {
 // Expands a routine into the timed phases it consists of. Rests and get-ready carry
 // the set/rep/hand of the hang that follows. With alternating hands every rep is
 // left then right, and the rest between hangs is the time to change hand.
+// Self-paced routines have work phases without a duration (durS null): the climber
+// ends each one.
 export function buildPhases(r) {
   const hands = r.hands === "alternate" ? ["left", "right"] : [r.hands === "left" || r.hands === "right" ? r.hands : "both"];
   const hangs = []; // per set: { rep, hand }
@@ -26,7 +28,7 @@ export function buildPhases(r) {
   if (r.prepS > 0) phases.push({ type: PHASE.PREP, durS: r.prepS, set: 1, ...hangs[0] });
   for (let set = 1; set <= r.sets; set++) {
     hangs.forEach((hang, i) => {
-      phases.push({ type: PHASE.WORK, durS: r.workS, set, ...hang });
+      phases.push({ type: PHASE.WORK, durS: r.type === "selfpaced" ? null : r.workS, set, ...hang });
       const next = hangs[i + 1];
       if (next && r.restS > 0) phases.push({ type: PHASE.REST, durS: r.restS, set, ...next });
     });
@@ -35,8 +37,14 @@ export function buildPhases(r) {
   return phases;
 }
 
+// Planned time; self-paced work phases count as 0 (see isOpenEnded).
 export function totalDurationS(r) {
-  return buildPhases(r).reduce((sum, p) => sum + p.durS, 0);
+  return buildPhases(r).reduce((sum, p) => sum + (p.durS ?? 0), 0);
+}
+
+// True when the routine's length depends on the climber (self-paced reps).
+export function isOpenEnded(r) {
+  return r.type === "selfpaced";
 }
 
 // Target load in kg, or null when the routine has none (or %BW without a bodyweight).

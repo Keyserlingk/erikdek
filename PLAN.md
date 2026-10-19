@@ -280,7 +280,7 @@ Next:
 - **D. Android app (done; debug and signed release builds installed on the phone):** Capacitor project, BLE transport with scan/connect/auto-reconnect
   and permissions, keep-awake during runs, app name/icon. Build the APK and install it
   on the phone (with the simulated device until the hardware arrives).
-- **F. Routine types:** type field (hangboard / timed / self-paced), instruction (per
+- **F. Routine types (done):** type field (hangboard / timed / self-paced), instruction (per
   routine and optionally per set), added weight per routine, editor and routine list
   updated, routine files and backups carry the new fields. Existing routines are
   hangboard routines.

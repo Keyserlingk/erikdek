@@ -12,6 +12,10 @@ export const BUILTIN_ROUTINES = [
     holdType: "",
     grip: "",
     hands: "both",
+    type: "hangboard",
+    instruction: "",
+    setInstructions: [],
+    addedWeightKg: null,
     sets: 4,
     reps: 6,
     workS: 7,
@@ -27,6 +31,10 @@ export const BUILTIN_ROUTINES = [
     holdType: "",
     grip: "",
     hands: "both",
+    type: "hangboard",
+    instruction: "",
+    setInstructions: [],
+    addedWeightKg: null,
     sets: 5,
     reps: 1,
     workS: 10,
@@ -42,6 +50,10 @@ export const BUILTIN_ROUTINES = [
     holdType: "",
     grip: "",
     hands: "both",
+    type: "hangboard",
+    instruction: "",
+    setInstructions: [],
+    addedWeightKg: null,
     sets: 3,
     reps: 6,
     workS: 10,
@@ -51,6 +63,26 @@ export const BUILTIN_ROUTINES = [
     target: { type: "none", value: 0 },
   },
 ];
+
+// Routine types. Only hangboard routines use the sensor; the others are timed by the
+// clock (timed) or by the climber tapping Done (self-paced).
+export const ROUTINE_TYPES = {
+  hangboard: { label: "Hangboard", sensor: true },
+  timed: { label: "Timed", sensor: false },
+  selfpaced: { label: "Self-paced", sensor: false },
+};
+export const MAX_INSTRUCTION_LENGTH = 200;
+export const MAX_SET_INSTRUCTION_LENGTH = 100;
+export const ADDED_WEIGHT_LIMITS = [-100, 300]; // negative = assistance (band, pulley)
+
+export function usesSensor(r) {
+  return ROUTINE_TYPES[r.type]?.sensor ?? false;
+}
+
+// Instruction for a set (1-based): its own when set instructions are given.
+export function instructionFor(r, set) {
+  return (r.setInstructions?.length ? r.setInstructions[set - 1] : "") || r.instruction || "";
+}
 
 export const LIMITS = {
   sets: [1, 20],
@@ -66,11 +98,26 @@ const TARGET_LIMITS = { kg: [1, 300], bw: [5, 200] };
 export function validateRoutine(r) {
   if (!r.name || !r.name.trim()) return "Give the routine a name.";
   if (r.name.length > 40) return "Name is too long (max 40 characters).";
+  if (!ROUTINE_TYPES[r.type]) return "Choose a routine type.";
   if (!HAND_OPTIONS.includes(r.hands)) return "Choose which hands to use.";
+  if (typeof r.instruction !== "string" || r.instruction.length > MAX_INSTRUCTION_LENGTH) {
+    return `Instruction is too long (max ${MAX_INSTRUCTION_LENGTH} characters).`;
+  }
+  if (!Array.isArray(r.setInstructions)) return "Invalid set instructions.";
+  if (r.setInstructions.length && r.setInstructions.length !== r.sets) return "Give an instruction for every set.";
+  if (r.setInstructions.some((t) => typeof t !== "string" || t.length > MAX_SET_INSTRUCTION_LENGTH)) {
+    return `Set instructions can be at most ${MAX_SET_INSTRUCTION_LENGTH} characters.`;
+  }
+  const [minW, maxW] = ADDED_WEIGHT_LIMITS;
+  if (r.addedWeightKg !== null && !(r.addedWeightKg >= minW && r.addedWeightKg <= maxW)) {
+    return `Added weight must be from ${minW} to ${maxW} kg.`;
+  }
+  if (!usesSensor(r) && r.target.type !== "none") return "A target load needs the sensor (hangboard routines).";
   for (const key of ["holdType", "grip"]) {
     if (typeof r[key] !== "string" || r[key].length > MAX_TAG_LENGTH) return `Invalid ${key === "grip" ? "grip" : "hold"}.`;
   }
   for (const [key, [min, max]] of Object.entries(LIMITS)) {
+    if (key === "workS" && r.type === "selfpaced") continue; // the climber ends each rep
     if (!Number.isInteger(r[key]) || r[key] < min || r[key] > max) {
       return `${LABELS[key]} must be a whole number from ${min} to ${max}.`;
     }
@@ -147,7 +194,23 @@ export function newRoutineId() {
 // Routine file: { format, version, routines: [...] } for sharing routines.
 export const ROUTINE_FORMAT = "erkdek-routines";
 export const ROUTINE_VERSION = 1;
-const ROUTINE_FIELDS = ["name", "holdType", "grip", "hands", "sets", "reps", "workS", "restS", "setRestS", "prepS", "target"];
+const ROUTINE_FIELDS = [
+  "name",
+  "type",
+  "instruction",
+  "setInstructions",
+  "addedWeightKg",
+  "holdType",
+  "grip",
+  "hands",
+  "sets",
+  "reps",
+  "workS",
+  "restS",
+  "setRestS",
+  "prepS",
+  "target",
+];
 
 function pickRoutine(r) {
   return Object.fromEntries(ROUTINE_FIELDS.map((k) => [k, r[k]]));

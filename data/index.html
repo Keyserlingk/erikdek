@@ -90,12 +90,34 @@
             <span>Name</span>
             <input id="editName" type="text" maxlength="40" placeholder="My repeaters">
           </label>
+          <label class="field stacked">
+            <span>Type</span>
+            <select id="editType">
+              <option value="hangboard">Hangboard (with the sensor)</option>
+              <option value="timed">Timed (no sensor)</option>
+              <option value="selfpaced">Self-paced: tap Done after each rep (no sensor)</option>
+            </select>
+          </label>
+          <p id="editTypeHint" class="muted type-hint"></p>
+          <label class="field stacked">
+            <span>Instruction</span>
+            <textarea id="editInstruction" rows="2" maxlength="200" placeholder="e.g. 1-3-5-7 ladders on medium rungs"></textarea>
+          </label>
+          <label class="check"><input id="editPerSet" type="checkbox"> Different instruction per set</label>
+          <div id="editSetInstructions" class="set-instructions" hidden></div>
+          <div id="editWeightBlock" hidden>
+            <label class="check"><input id="editUseWeight" type="checkbox"> Log added weight</label>
+            <label id="editWeightRow" class="field" hidden>
+              <input id="editWeight" type="number" min="-100" max="300" step="0.5" inputmode="decimal" aria-label="Added weight in kg">
+              <span>kg (negative = assistance)</span>
+            </label>
+          </div>
           <div id="editHold"></div>
           <div id="editGrip"></div>
           <div class="grid2">
             <label class="field stacked"><span>Sets</span><input id="editSets" type="number" min="1" max="20" step="1" inputmode="numeric"></label>
             <label class="field stacked"><span id="editRepsLabel">Reps per set</span><input id="editReps" type="number" min="1" max="50" step="1" inputmode="numeric"></label>
-            <label class="field stacked"><span>Hang (s)</span><input id="editWork" type="number" min="1" max="600" step="1" inputmode="numeric"></label>
+            <label id="editWorkField" class="field stacked"><span id="editWorkLabel">Hang (s)</span><input id="editWork" type="number" min="1" max="600" step="1" inputmode="numeric"></label>
             <label class="field stacked"><span id="editRestLabel">Rest (s)</span><input id="editRest" type="number" min="0" max="600" step="1" inputmode="numeric"></label>
             <label class="field stacked"><span>Rest between sets (s)</span><input id="editSetRest" type="number" min="0" max="1800" step="1" inputmode="numeric"></label>
             <label class="field stacked"><span>Get ready (s)</span><input id="editPrep" type="number" min="0" max="60" step="1" inputmode="numeric"></label>
@@ -109,7 +131,7 @@
               <option value="alternate">Alternating (left, right, …)</option>
             </select>
           </label>
-          <label class="field stacked">
+          <label id="editTargetBlock" class="field stacked">
             <span>Target load</span>
             <select id="editTargetType">
               <option value="none">None</option>
