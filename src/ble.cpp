@@ -65,14 +65,14 @@ class CommandCallbacks : public NimBLECharacteristicCallbacks {
   }
 };
 
-static bool isConnected() { return connHandle != BLE_HS_CONN_HANDLE_NONE; }
+bool bleConnected() { return connHandle != BLE_HS_CONN_HANDLE_NONE; }
 
 static void updateStatus(bool notify) {
   SensorStatus st = sensorStatus();
   uint8_t buf[ble::kStatusSize];
   size_t n = ble::encodeStatus(buf, st.tared, st.calibrated, st.rateHz, st.countsPerKg, millis());
   statusChr->setValue(buf, n);
-  if (notify && isConnected()) statusChr->notify();
+  if (notify && bleConnected()) statusChr->notify();
 }
 
 void bleBegin() {
@@ -120,7 +120,7 @@ static void handleSensorEvents() {
         n = ble::encodeCalError(buf, ev.result == CalResult::BadWeight ? ble::CalErrBadWeight : ble::CalErrTooSmall);
         break;
     }
-    if (isConnected()) eventChr->notify(buf, n);
+    if (bleConnected()) eventChr->notify(buf, n);
     updateStatus(true);
   }
 }
@@ -129,7 +129,7 @@ static void handleSensorEvents() {
 static void sendSamples() {
   Sample buf[kMaxBatch];
   size_t n = sensorDrain(buf, kMaxBatch);
-  if (n == 0 || !isConnected()) return;  // drained anyway, so nothing piles up
+  if (n == 0 || !bleConnected()) return;  // drained anyway, so nothing piles up
 
   uint16_t mtu = max<uint16_t>(server->getPeerMTU(connHandle), 23);  // 23 = BLE minimum
   size_t perPacket = ble::samplesPerPacket(mtu - 3);

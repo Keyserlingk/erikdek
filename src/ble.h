@@ -6,3 +6,5 @@
 void bleBegin();
 // Call from loop(): streams buffered samples (~20 Hz), status (1 Hz) and events.
 void bleLoop();
+// Whether the app is connected.
+bool bleConnected();

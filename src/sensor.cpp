@@ -25,6 +25,9 @@ static volatile bool calSetRequested = false;
 static volatile float calSetCountsPerKg = 0;
 static volatile float calRequestKg = 0;
 static volatile bool tared = false;
+static volatile uint32_t samplesRead = 0;
+static volatile int32_t lastRaw = 0;
+static volatile float lastKg = 0;
 
 static void handleRequests() {
   if (tareRequested) {
@@ -79,7 +82,11 @@ static void sensorTask(void*) {
     }
     if (!calAverager.done() && calAverager.add(raw)) finishCalibration();
 
-    samples.push({now, calibration.toKg(raw)});
+    float kg = calibration.toKg(raw);
+    samples.push({now, kg});
+    lastRaw = raw;
+    lastKg = kg;
+    samplesRead = samplesRead + 1;
   }
 }
 
@@ -116,5 +123,6 @@ size_t sensorDrain(Sample* out, size_t max) {
 bool sensorPollEvent(SensorEvent& out) { return events.pop(out); }
 
 SensorStatus sensorStatus() {
-  return {rateMeter.rateHz(), tared, calibration.calibrated, calibration.countsPerKg, samples.dropped()};
+  return {rateMeter.rateHz(), tared, calibration.calibrated, calibration.countsPerKg,
+          samples.dropped(), samplesRead, lastRaw, lastKg};
 }

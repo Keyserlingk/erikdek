@@ -16,6 +16,9 @@ struct SensorStatus {
   bool calibrated;
   float countsPerKg;
   size_t dropped;
+  uint32_t samplesRead;  // since start; for the serial log's rate over the last second
+  int32_t lastRaw;       // last HX711 reading (counts)
+  float lastKg;
 };
 
 // Results of tare/calibration, reported from the sensor task to the network loop.
