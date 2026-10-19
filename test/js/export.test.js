@@ -7,9 +7,11 @@ import {
   csvEscape,
   curveCsv,
   fileDate,
+  hasCurveData,
   historyCsv,
   mergeBy,
   parseBackup,
+  repsCsv,
   storedCurveCsv,
   toCsv,
 } from "../../data/export.js";
@@ -77,4 +79,28 @@ test("fileDate formats local date", () => {
 test("storedCurveCsv writes stored samples with their real time", () => {
   assert.equal(storedCurveCsv({ hz: 10, segments: [{ t: 1, kg: [5, 6] }] }), "time_s,force_kg\n1,5\n1.1,6\n");
   assert.equal(storedCurveCsv({ hz: 2, kg: [1, 2] }), "time_s,force_kg\n0,1\n0.5,2\n");
+});
+
+test("hasCurveData is false for runs without the sensor", () => {
+  assert.equal(hasCurveData({ hz: 80, kg: [] }), false);
+  assert.equal(hasCurveData({ hz: 80, segments: [] }), false);
+  assert.equal(hasCurveData(undefined), false);
+  assert.equal(hasCurveData({ hz: 80, kg: [1.2] }), true);
+  assert.equal(hasCurveData({ hz: 80, segments: [{ t: 0, kg: [3] }] }), true);
+});
+
+test("repsCsv: one row per rep, with the set's effort and weight when logged", () => {
+  const timed = {
+    reps: [
+      { set: 1, rep: 1, hand: "both", durationS: 20 },
+      { set: 2, rep: 1, hand: "both", durationS: 18.5 },
+    ],
+    sets: [
+      { set: 1, rpe: 7, addedWeightKg: 5 },
+      { set: 2, rpe: null, addedWeightKg: 7.5 },
+    ],
+  };
+  assert.equal(repsCsv(timed), "set,rep,hand,duration_s,effort,added_weight_kg\n1,1,both,20,7,5\n2,1,both,18.5,,7.5\n");
+  const hang = { reps: [{ set: 1, rep: 1, hand: "left", peakKg: 30.12345, holdPct: 95, completed: true }] };
+  assert.equal(repsCsv(hang), "set,rep,hand,peak_kg,hold_pct,completed\n1,1,left,30.123,95,yes\n");
 });

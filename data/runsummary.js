@@ -1,7 +1,7 @@
 // Summary of a finished routine or test: shown before the session is saved or discarded.
 
 import { downloadCsv, downloadJson } from "./download.js";
-import { curveCsv, fileDate } from "./export.js";
+import { curveCsv, fileDate, hasCurveData, repsCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { renderSession } from "./sessionview.js";
 import { summarizeTraining } from "./tests.js";
@@ -16,6 +16,7 @@ const el = {
   discard: $("sumDiscard"),
   save: $("sumSave"),
   rawCsv: $("sumRawCsv"),
+  repsCsv: $("sumRepsCsv"),
   json: $("sumJson"),
 };
 
@@ -31,6 +32,9 @@ export function showResult(session, raw) {
   if (summaryChart) summaryChart.destroy();
   el.error.hidden = true;
   el.save.disabled = false;
+  // Without the sensor there is no force to download.
+  el.rawCsv.hidden = !hasCurveData(raw);
+  el.repsCsv.hidden = !session.reps.length;
   show("summary");
   summaryChart = renderSession(el.view, result);
   renderSetEditor();
@@ -103,6 +107,9 @@ export function initSummary() {
   el.save.addEventListener("click", saveResult);
   el.rawCsv.addEventListener("click", () =>
     downloadCsv(`erkdek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}-raw.csv`, curveCsv(resultRaw, resultRaw.phases)),
+  );
+  el.repsCsv.addEventListener("click", () =>
+    downloadCsv(`erkdek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}-reps.csv`, repsCsv(result)),
   );
   el.json.addEventListener("click", () =>
     downloadJson(`erkdek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}.json`, result),

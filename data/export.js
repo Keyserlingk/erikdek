@@ -37,6 +37,35 @@ export function storedCurveCsv(curve) {
   return toCsv([["time_s", "force_kg"], ...rows]);
 }
 
+// Whether a curve (raw { kg } or stored { segments }) has any samples: runs without the
+// sensor have none.
+export function hasCurveData(curve) {
+  if (!curve) return false;
+  const segments = curve.segments ?? [{ kg: curve.kg ?? [] }];
+  return segments.some((seg) => seg.kg.length > 0);
+}
+
+const snakeCase = (key) => key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+
+// One row per rep: set, rep, hand and the rep's results (duration, or force and hold
+// with the sensor), plus effort and added weight of its set when they were logged.
+export function repsCsv(session) {
+  const reps = session.reps || [];
+  const keys = [...new Set(reps.flatMap((r) => Object.keys(r)))].filter((k) => !["set", "rep", "hand"].includes(k));
+  const sets = session.sets;
+  const head = ["set", "rep", "hand", ...keys.map(snakeCase), ...(sets ? ["effort", "added_weight_kg"] : [])];
+  const value = (v) => (typeof v === "boolean" ? (v ? "yes" : "no") : round(v, 3));
+  const rows = reps.map((r) => {
+    const row = [r.set, r.rep, r.hand, ...keys.map((k) => value(r[k]))];
+    if (sets) {
+      const log = sets.find((x) => x.set === r.set);
+      row.push(log?.rpe ?? "", log?.addedWeightKg ?? "");
+    }
+    return row;
+  });
+  return toCsv([head, ...rows]);
+}
+
 // One row per session with all scalar summary metrics as columns.
 export function historyCsv(index) {
   const sorted = [...index].sort((a, b) => a.startedAt.localeCompare(b.startedAt));

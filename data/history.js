@@ -1,6 +1,6 @@
 import { downloadCsv, downloadJson } from "./download.js";
 import { formatBytes } from "./format.js";
-import { fileDate, historyCsv, storedCurveCsv } from "./export.js";
+import { fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
 import { HANDS, KINDS, TEST_IDS, metricPoints, metricsFor } from "./tests.js";
@@ -38,6 +38,7 @@ const el = {
   remove: $("histDelete"),
   csv: $("histCsv"),
   detailCsv: $("histDetailCsv"),
+  detailRepsCsv: $("histDetailRepsCsv"),
   detailJson: $("histDetailJson"),
 };
 
@@ -287,6 +288,9 @@ async function openDetail(id) {
     const s = await sessions.get(id);
     if (openId !== id) return;
     openSession = s;
+    // Without the sensor there is no force curve to download.
+    el.detailCsv.hidden = !hasCurveData(s.curve);
+    el.detailRepsCsv.hidden = !s.reps?.length;
     if (detailChart) detailChart.destroy();
     detailChart = renderSession(el.detailView, s);
   } catch (e) {
@@ -331,6 +335,9 @@ export function initHistory() {
   const detailName = (s) => `erkdek-${s.type}-${fileDate(new Date(s.startedAt))}-${s.id}`;
   el.detailCsv.addEventListener("click", () => {
     if (openSession?.curve) downloadCsv(`${detailName(openSession)}.csv`, storedCurveCsv(openSession.curve));
+  });
+  el.detailRepsCsv.addEventListener("click", () => {
+    if (openSession) downloadCsv(`${detailName(openSession)}-reps.csv`, repsCsv(openSession));
   });
   el.detailJson.addEventListener("click", () => {
     if (openSession) downloadJson(`${detailName(openSession)}.json`, openSession);
