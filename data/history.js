@@ -206,7 +206,7 @@ function formatPoints(s, metric) {
 function renderList(list, metric) {
   const sorted = [...list].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   if (!sorted.length) {
-    el.list.replaceChildren(create("p", { className: "muted", textContent: "No sessions yet. Run a test or routine in Train and save it." }));
+    el.list.replaceChildren(create("p", { className: "muted", textContent: "No sessions yet. Run a routine in Train or a test in Tests and save it." }));
     return;
   }
   el.list.replaceChildren(
