@@ -1,0 +1,396 @@
+// Running a routine or test: phases by the clock, live force from the sensor (when the
+// routine uses it), the per-set log of routines without the sensor, and the session
+// built at the end. The session goes to onEnd (workouts) or else to the summary.
+
+import { compressCurve } from "./analysis.js";
+import { beep, unlockAudio } from "./audio.js";
+import { LiveChart } from "./chart.js";
+import { device } from "./device.js";
+import { formatClock, formatDuration, formatKg } from "./format.js";
+import { instructionFor, usesSensor } from "./routines.js";
+import { showResult } from "./runsummary.js";
+import { newSessionId } from "./sessions.js";
+import { settings } from "./settingsstore.js";
+import { HANDS, KINDS } from "./tests.js";
+import { groupOf, mountRunScreens, show } from "./trainscreens.js";
+import { $, button } from "./ui.js";
+import { allowScreenOff, keepScreenOn } from "./wakelock.js";
+import {
+  PHASE,
+  WorkoutEngine,
+  buildPhases,
+  hangsPerRep,
+  loadThresholdKg,
+  repStats,
+  targetKg,
+  targetStatus,
+} from "./workout.js";
+
+const TICK_MS = 50;
+// Stored curve: only where force >= 1 kg, at most 1000 points (~6 KB per session).
+const CURVE_MIN_KG = 1;
+const CURVE_MAX_POINTS = 1000;
+
+const el = {
+  card: $("runPhaseCard"),
+  phase: $("runPhase"),
+  countdown: $("runCountdown"),
+  progress: $("runProgress"),
+  next: $("runNext"),
+  kg: $("runKg"),
+  target: $("runTarget"),
+  held: $("runHeld"),
+  repInfo: $("runRepInfo"),
+  chart: $("runChart"),
+  pause: $("runPause"),
+  skip: $("runSkip"),
+  stop: $("runStop"),
+  wakeHint: $("runWakeHint"),
+  screen: $("trainRun"),
+  instruction: $("runInstruction"),
+  done: $("runDone"),
+  setLog: $("runSetLog"),
+  setLogTitle: $("setLogTitle"),
+  setLogRpe: $("setLogRpe"),
+  setLogWeightRow: $("setLogWeightRow"),
+  setLogWeight: $("setLogWeight"),
+  setLogMinus: $("setLogMinus"),
+  setLogPlus: $("setLogPlus"),
+};
+
+let run = null; // active routine or test
+let chart = null;
+
+export const isRunning = () => run !== null;
+
+// Starts a run; false when it wasn't started (the sensor is needed but not connected
+// and the user declined). Options:
+//   onEnd(session, stopped, raw)  called instead of showing the summary
+//   workout: { id, name, index, count }  the workout this routine is part of
+export async function startRun(kind, routine, hand, { onEnd = null, workout = null } = {}) {
+  // Tests always use the sensor; routines only when they are hangboard routines.
+  const sensor = kind !== "workout" || usesSensor(routine);
+  if (sensor && !device.connected && !confirm(`"${routine.name}" uses the sensor, which isn't connected. Start anyway?`)) {
+    return false;
+  }
+  unlockAudio();
+  mountRunScreens(groupOf(kind));
+  const target = targetKg(routine, settings.values.bodyweightKg);
+  const phases = buildPhases(routine);
+  run = {
+    kind,
+    routine,
+    hand,
+    phases,
+    engine: new WorkoutEngine(phases),
+    target,
+    threshold: loadThresholdKg(target, settings.values.repThresholdKg),
+    index: -1,
+    repSamples: null,
+    attempts: [], // raw samples of each work phase
+    reps: [],
+    curve: [], // every sample while not paused
+    curvePhase: [], // phase index of each curve sample
+    smoothed: null,
+    startedAt: new Date(),
+    timer: null,
+    sensor,
+    repStartS: 0, // elapsed time when the current rep began (non-sensor rep times)
+    sets: [], // per set: { set, rpe, addedWeightKg } (non-sensor routines)
+    nextWeightKg: null, // weight entered for the next set
+    onEnd,
+    workout,
+  };
+  el.held.hidden = true;
+  el.screen.dataset.sensor = String(sensor);
+  el.setLog.hidden = true;
+  chart.clear();
+  chart.setTarget(target);
+  el.target.textContent = target !== null ? `Target ${formatKg(target)} kg` : kind === "workout" ? "No target" : HANDS[hand];
+  if (routine.target.type === "bw" && target === null) el.target.textContent = "Set bodyweight for a % target";
+  el.pause.textContent = "Pause";
+  show("run");
+  el.wakeHint.hidden = await keepScreenOn();
+
+  run.engine.start(performance.now() / 1000);
+  run.timer = setInterval(tick, TICK_MS);
+  tick();
+  return true;
+}
+
+function sampleDtS() {
+  return 1 / (device.status?.rate || 80);
+}
+
+// Lets the simulator follow the workout (see mock.js).
+function announcePhase(type) {
+  window.dispatchEvent(new CustomEvent("erkdek:phase", { detail: { type } }));
+}
+
+function finishRep(now) {
+  const prev = run.phases[run.index];
+  if (!run.sensor) {
+    if (prev?.type === PHASE.WORK) {
+      const durationS = prev.durS ?? run.engine.elapsed(now) - run.repStartS;
+      run.reps.push({ set: prev.set, rep: prev.rep, hand: prev.hand, durationS: Math.round(durationS * 10) / 10 });
+    }
+    return;
+  }
+  if (!run.repSamples) return;
+  const phase = run.phases[run.index];
+  run.attempts.push(run.repSamples);
+  run.reps.push({ set: phase.set, rep: phase.rep, hand: phase.hand, ...repStats(run.repSamples, sampleDtS(), run.threshold, phase.durS, run.target) });
+  run.repSamples = null;
+}
+
+function enterPhase(i, now) {
+  const prev = run.phases[run.index];
+  finishRep(now);
+  // A set ends when its last rep ends (the next phase belongs to another set, or done).
+  if (!run.sensor && prev?.type === PHASE.WORK && (i >= run.phases.length || run.phases[i].set !== prev.set)) {
+    setEnded(prev.set, i >= run.phases.length);
+  }
+  run.index = i;
+  if (i >= run.phases.length) {
+    announcePhase("done");
+    return;
+  }
+  const phase = run.phases[i];
+  announcePhase(phase.type);
+  if (phase.type === PHASE.WORK) {
+    run.repSamples = [];
+    run.repLoadedSamples = 0;
+    run.repStartS = run.engine.elapsed(now);
+    el.setLog.hidden = true;
+  }
+}
+
+// ---- per-set log (effort, added weight) for routines without the sensor
+
+function setLog(set) {
+  let log = run.sets.find((s) => s.set === set);
+  if (!log) {
+    // Weight: what was entered after the previous set, else that set's, else the routine's.
+    const weight = run.nextWeightKg ?? run.sets.at(-1)?.addedWeightKg ?? run.routine.addedWeightKg ?? null;
+    log = { set, rpe: null, addedWeightKg: weight };
+    run.sets.push(log);
+  }
+  return log;
+}
+
+function setEnded(set, last) {
+  const log = setLog(set);
+  if (last) return; // the summary lets you log the last set
+  const r = run.routine;
+  el.setLogTitle.textContent = `Set ${set} of ${r.sets} done`;
+  renderRpeButtons(log);
+  const usesWeight = r.addedWeightKg !== null && r.addedWeightKg !== undefined;
+  el.setLogWeightRow.hidden = !usesWeight;
+  if (usesWeight) el.setLogWeight.value = run.nextWeightKg ?? log.addedWeightKg;
+  el.setLog.hidden = false;
+}
+
+function renderRpeButtons(log) {
+  el.setLogRpe.replaceChildren(
+    ...Array.from({ length: 10 }, (_, i) => {
+      const value = i + 1;
+      const b = button(log.rpe === value ? "active" : "", String(value), () => {
+        log.rpe = log.rpe === value ? null : value; // tap again to clear
+        renderRpeButtons(log);
+      });
+      b.setAttribute("aria-pressed", String(log.rpe === value));
+      return b;
+    }),
+  );
+}
+
+// The weight entered after a set is what the next set is done with.
+function changeLoggedWeight(value) {
+  if (!Number.isFinite(value)) return;
+  run.nextWeightKg = Math.round(value * 10) / 10;
+  el.setLogWeight.value = run.nextWeightKg;
+}
+
+function phaseName(type) {
+  if (type === PHASE.WORK && !run.sensor) return run.routine.type === "selfpaced" ? "Go" : "Work";
+  if (type === PHASE.WORK) return KINDS[run.kind].workLabel;
+  if (type === PHASE.REST && run.routine.hands === "alternate") return "Change hand";
+  return { prep: "Get ready", rest: "Rest", setRest: "Set rest" }[type];
+}
+
+function tick() {
+  const now = performance.now() / 1000;
+  const state = run.engine.update(now);
+  for (const i of state.entered) enterPhase(i, now);
+  // One beep per change (hang starts, rest starts, finished); not when starting.
+  if (state.entered.some((i) => i > 0)) beep();
+  if (state.done) {
+    endRun(false);
+    return;
+  }
+
+  const { phase, remainingS, inPhaseS } = state;
+  const next = run.phases[state.index + 1];
+  const r = run.routine;
+  el.card.dataset.phase = phase.type;
+  const handLabel = (p) => (p.hand && p.hand !== "both" ? ` · ${p.hand}` : "");
+  el.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type) + (phase.type === PHASE.WORK ? handLabel(phase) : "");
+  // Countdown, or a stopwatch while a self-paced rep waits for Done.
+  el.countdown.textContent = remainingS === null ? formatClock(inPhaseS) : Math.ceil(remainingS);
+  el.done.hidden = !run.engine.waitingForDone;
+  el.skip.hidden = run.engine.waitingForDone;
+  const instruction = instructionFor(r, phase.set);
+  el.instruction.hidden = !instruction;
+  el.instruction.textContent = instruction;
+  el.progress.textContent =
+    r.reps * hangsPerRep(r) > 1 ? `Set ${phase.set}/${r.sets} · Rep ${phase.rep}/${r.reps}` : `Attempt ${phase.set}/${r.sets}`;
+  const nextTime = (p) => (p.durS === null ? "" : ` ${formatDuration(p.durS)}`);
+  el.next.textContent = next ? `Next: ${phaseName(next.type)}${nextTime(next)}${handLabel(next)}` : "Last one!";
+
+  if (!run.sensor) return;
+  const kg = run.smoothed ?? 0;
+  el.kg.textContent = device.connected ? formatKg(kg) : "–";
+  el.kg.dataset.status = targetStatus(kg, run.target) ?? "";
+  renderHeld(phase);
+  chart.render();
+}
+
+const round2 = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
+
+function buildSession(stopped) {
+  const dtS = sampleDtS();
+  const r = run.routine;
+  const reps = run.reps.map((rep) => Object.fromEntries(Object.entries(rep).map(([k, v]) => [k, round2(v)])));
+  const summary = KINDS[run.kind].analyze({ reps: run.reps, attempts: run.attempts, dtS, routine: r, target: run.target, sets: run.sets });
+  const session = {
+    id: newSessionId(),
+    type: run.kind,
+    name: r.name,
+    startedAt: run.startedAt.toISOString(),
+    durationS: Math.round((Date.now() - run.startedAt.getTime()) / 1000), // wall time, incl. skips/pauses
+    holdType: r.holdType || "",
+    grip: r.grip || "",
+    hand: run.hand,
+    bodyweightKg: settings.values.bodyweightKg || 0,
+    targetKg: run.target,
+    summary: Object.fromEntries(Object.entries(summary).map(([k, v]) => [k, Array.isArray(v) ? v.map(round2) : round2(v)])),
+    reps,
+    curve: compressCurve(run.curve, 1 / dtS, { minKg: CURVE_MIN_KG, maxPoints: CURVE_MAX_POINTS }),
+  };
+  if (run.kind === "workout") {
+    const { name, type, instruction, setInstructions, addedWeightKg, holdType, grip, hands } = r;
+    const { sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;
+    session.routine = {
+      id: r.id,
+      name,
+      type: type || "hangboard",
+      instruction,
+      setInstructions,
+      addedWeightKg,
+      holdType,
+      grip,
+      hands,
+      sets,
+      reps: repCount,
+      workS,
+      restS,
+      setRestS,
+      prepS,
+      target,
+    };
+    if (!run.sensor) session.sets = run.sets.map((x) => ({ ...x }));
+  }
+  if (stopped) session.stopped = true;
+  if (run.workout) session.workout = { ...run.workout };
+  return session;
+}
+
+// Routines only: how long the current rep has been held, the last rep's hold % and
+// the average hold % of the reps done so far.
+function renderHeld(phase) {
+  const show = run.kind === "workout";
+  el.held.hidden = !show || !run.reps.length;
+  el.repInfo.hidden = !show;
+  if (!show) return;
+  const avgHold = run.reps.reduce((sum, r) => sum + r.holdPct, 0) / (run.reps.length || 1);
+  el.held.textContent = `Hold ${Math.round(avgHold)} % so far`;
+
+  const last = run.reps.at(-1);
+  if (phase.type === PHASE.WORK) {
+    el.repInfo.textContent = `Held ${(run.repLoadedSamples * sampleDtS()).toFixed(1)} / ${phase.durS} s`;
+    el.repInfo.dataset.state = "live";
+  } else if (last) {
+    el.repInfo.textContent = `Last rep ${Math.round(last.holdPct)} %${last.completed ? " ✓" : ""}`;
+    el.repInfo.dataset.state = last.completed ? "held" : "short";
+  } else {
+    el.repInfo.textContent = "";
+  }
+}
+
+function endRun(stopped) {
+  if (stopped) announcePhase("done");
+  clearInterval(run.timer);
+  allowScreenOff();
+  if (stopped) {
+    const now = performance.now() / 1000;
+    const prev = run.phases[run.index];
+    finishRep(now);
+    if (!run.sensor && prev?.type === PHASE.WORK) setLog(prev.set);
+  }
+  const session = buildSession(stopped);
+  const raw = { hz: 1 / sampleDtS(), kg: run.curve, phases: run.curvePhase.map((i) => run.phases[i] ?? null) };
+  const onEnd = run.onEnd;
+  run = null;
+  if (onEnd) onEnd(session, stopped, raw);
+  else showResult(session, raw);
+}
+
+function stopRun() {
+  const message = run.workout
+    ? "Stop this routine and end the workout? You can still save what you've done."
+    : "Stop now? You can still save what you've done so far.";
+  if (!confirm(message)) return;
+  endRun(true);
+}
+
+function togglePause() {
+  const now = performance.now() / 1000;
+  if (run.engine.paused) run.engine.resume(now);
+  else run.engine.pause(now);
+  el.pause.textContent = run.engine.paused ? "Resume" : "Pause";
+  tick();
+}
+
+export function initRunner() {
+  chart = new LiveChart(el.chart);
+  chart.setWindow(10);
+  device.on("samples", (msg) => {
+    if (!run || !run.sensor) return;
+    chart.push(msg.ts, msg.te ?? msg.ts, msg.kg);
+    for (const kg of msg.kg) run.smoothed = run.smoothed === null ? kg : run.smoothed + 0.08 * (kg - run.smoothed);
+    if (run.engine.paused || run.index < 0) return; // not started yet (or paused)
+    run.curve.push(...msg.kg);
+    for (let i = 0; i < msg.kg.length; i++) run.curvePhase.push(run.index);
+    if (run.repSamples) {
+      run.repSamples.push(...msg.kg);
+      for (const kg of msg.kg) if (kg >= run.threshold) run.repLoadedSamples++;
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    // The browser drops its wake lock when the page is hidden; take it again.
+    if (run && document.visibilityState === "visible") keepScreenOn();
+  });
+  el.pause.addEventListener("click", togglePause);
+  el.skip.addEventListener("click", () => {
+    run.engine.skip(performance.now() / 1000);
+    tick();
+  });
+  el.stop.addEventListener("click", stopRun);
+  el.done.addEventListener("click", () => {
+    run.engine.finishRep(performance.now() / 1000);
+    tick();
+  });
+  el.setLogMinus.addEventListener("click", () => changeLoggedWeight(parseFloat(el.setLogWeight.value || "0") - 2.5));
+  el.setLogPlus.addEventListener("click", () => changeLoggedWeight(parseFloat(el.setLogWeight.value || "0") + 2.5));
+  el.setLogWeight.addEventListener("change", () => changeLoggedWeight(parseFloat(el.setLogWeight.value)));
+}
