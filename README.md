@@ -27,8 +27,17 @@ Android SDK command-line tools (see PLAN.md → Toolchain).
 ```sh
 npm run android           # build android/app/build/outputs/apk/debug/app-debug.apk
 npm run android:install   # build and install on the phone (USB debugging on)
+npm run android:release   # signed release APK: android/app/build/outputs/apk/release/app-release.apk
+npm run android:release:install
 python3 tools/make_icons.py   # regenerate app icon and splash screens
 ```
+
+Release builds are signed with the key in `~/.android-keys/erkdek-release.jks`; its
+password is in `android/keystore.properties` (git-ignored). **Back both up**: every
+update of the installed release app must be signed with the same key. Debug and
+release builds are signed differently, so switching between them on the phone needs an
+uninstall first, which deletes the app's data (make a backup in Settings first).
+The version comes from git (versionCode = commit count, versionName = short SHA).
 
 The app starts with the simulated sensor; switch to **Erkdek (Bluetooth)** under
 Settings → Sensor. The first connection shows Android's device picker; the chosen

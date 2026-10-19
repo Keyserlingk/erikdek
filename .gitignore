@@ -7,3 +7,4 @@ tools/.mock_sessions/
 node_modules/
 data/vendor/capacitor/
 data/version.json
+android/keystore.properties

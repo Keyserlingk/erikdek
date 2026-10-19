@@ -6,7 +6,9 @@
     "test": "node --test test/js/",
     "vendor": "node tools/vendor.mjs",
     "android": "bash tools/build_android.sh",
-    "android:install": "bash tools/build_android.sh --install"
+    "android:install": "bash tools/build_android.sh --install",
+    "android:release": "bash tools/build_android.sh --release",
+    "android:release:install": "bash tools/build_android.sh --release --install"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.3.0",

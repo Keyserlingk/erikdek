@@ -1,9 +1,26 @@
 #!/usr/bin/env bash
-# Builds the Erkdek Android app (debug APK); with --install also installs it on the
-# phone connected over USB (USB debugging on).
-#   tools/build_android.sh [--install]
+# Builds the Erkdek Android app; installs it on the phone connected over USB (USB
+# debugging on) with --install.
+#   tools/build_android.sh [--release] [--install]
+# --release builds the signed release APK (key in android/keystore.properties);
+# otherwise the debug APK. Debug and release are signed differently, so switching
+# between them on the phone needs an uninstall first (which deletes the app's data).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+VARIANT=debug
+INSTALL=0
+for arg in "$@"; do
+  case "$arg" in
+    --release) VARIANT=release ;;
+    --install) INSTALL=1 ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+if [[ $VARIANT == release && ! -f android/keystore.properties ]]; then
+  echo "android/keystore.properties is missing (release signing key)" >&2
+  exit 1
+fi
 
 export NVM_DIR="$HOME/.nvm"
 # shellcheck disable=SC1091
@@ -15,10 +32,11 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 printf '{"version":"%s"}\n' "$(git describe --always --dirty)" > data/version.json
 node tools/vendor.mjs
 npx cap sync android
-(cd android && ./gradlew --quiet assembleDebug)
+TASK=assemble${VARIANT^}
+(cd android && ./gradlew --quiet "$TASK")
 
-APK=android/app/build/outputs/apk/debug/app-debug.apk
+APK=android/app/build/outputs/apk/$VARIANT/app-$VARIANT.apk
 echo "APK: $APK ($(du -h "$APK" | cut -f1))"
-if [[ "${1:-}" == "--install" ]]; then
+if [[ $INSTALL == 1 ]]; then
   "$ANDROID_HOME/platform-tools/adb" install -r "$APK"
 fi
