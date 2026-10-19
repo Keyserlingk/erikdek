@@ -6,5 +6,5 @@ tools/.mock_state.json
 tools/.mock_sessions/
 node_modules/
 data/vendor/capacitor/
-data/version.json
+data/buildinfo.js
 android/keystore.properties

@@ -1,5 +1,5 @@
 import { device } from "./device.js";
-import { isNativeApp, sensorMode, setSensorMode } from "./platform.js";
+import { buildInfo, canChooseSensor, isNativeApp, sensorMode, setSensorMode } from "./platform.js";
 import { formatBytes } from "./format.js";
 import { sessions } from "./sessions.js";
 import {
@@ -34,7 +34,7 @@ function renderSensor() {
   const native = isNativeApp();
   const mode = sensorMode();
   const t = device.transport;
-  sensorEl.modeGroup.hidden = !native;
+  sensorEl.modeGroup.hidden = !canChooseSensor();
   for (const b of sensorEl.modes) b.classList.toggle("active", b.dataset.mode === mode);
   sensorEl.info.textContent = !native
     ? "In the browser the app uses a simulated sensor (development)."
@@ -77,12 +77,8 @@ const about = {
 // Refreshes versions and the storage breakdown; called when Settings is shown.
 export async function showAbout() {
   about.fw.textContent = device.status?.fw || "–";
-  try {
-    const res = await fetch("/version.json");
-    about.web.textContent = res.ok ? (await res.json()).version : "–";
-  } catch {
-    about.web.textContent = "–";
-  }
+  const build = buildInfo();
+  about.web.textContent = build.variant === "release" ? build.version : `${build.version} (${build.variant})`;
   try {
     const st = await sessions.storage();
     about.sessions.textContent = `${formatBytes(st.sessionsBytes)} (${sessions.index.length})`;

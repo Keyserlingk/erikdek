@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Development server for the app: serves data/ and /version.json (git version).
+"""Development server for the app: serves data/ and /buildinfo.js (git version, variant "dev").
 
 The app uses its simulated sensor in the browser and stores its data in IndexedDB, so
 this only serves files. Standard library only. Run:  python3 tools/serve.py [--port 8080]
@@ -36,10 +36,11 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        if self.path.split("?")[0] == "/version.json":
-            data = json.dumps({"version": git_version()}).encode()
+        if self.path.split("?")[0] == "/buildinfo.js":
+            info = json.dumps({"version": git_version(), "variant": "dev"})
+            data = f"window.ERKDEK_BUILD = {info};\n".encode()
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "text/javascript")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
