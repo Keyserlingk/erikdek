@@ -173,9 +173,10 @@ function sensorStrips(s) {
       return strips;
 }
 
-// Routine sessions without the sensor: reps, time, effort, added weight per set.
+// Routine sessions without the sensor (or meant for it but it wasn't connected):
+// reps, time, effort, added weight per set.
 function isTraining(s) {
-  return s.routine ? !usesSensor(s.routine) : false;
+  return s.noForce || (s.routine ? !usesSensor(s.routine) : false);
 }
 
 const rpe = (v) => (v === null || v === undefined ? "–" : (Math.round(v * 10) / 10).toString());
@@ -186,8 +187,8 @@ function trainingTiles(s) {
   const tiles = [
     [`${t.repsDone}/${t.totalReps}`, "reps done", INFO.repsDone],
     [seconds(t.workTimeS), "work time", INFO.workTime],
-    [rpe(t.avgRpe), `average effort${t.maxRpe !== null ? ` · max ${t.maxRpe}` : ""}`, INFO.effort],
   ];
+  if (s.sets) tiles.push([rpe(t.avgRpe), `average effort${t.maxRpe !== null ? ` · max ${t.maxRpe}` : ""}`, INFO.effort]);
   if (t.maxAddedWeightKg !== null) {
     tiles.push([signedKg(t.maxAddedWeightKg), "highest added weight", INFO.addedWeight]);
     tiles.push([kg(t.volumeKg), "volume (weight × reps)", INFO.volume]);
@@ -197,10 +198,11 @@ function trainingTiles(s) {
 
 function trainingTable(s) {
   const usesWeight = s.routine.addedWeightKg !== null && s.routine.addedWeightKg !== undefined;
+  const logged = !!s.sets; // effort is logged per set (not for sensor runs without force data)
   const sets = new Map((s.sets ?? []).map((x) => [x.set, x]));
   const setNumbers = [...new Set(s.reps.map((r) => r.set))];
   return {
-    head: ["Set", "Reps", "Time", "Effort", ...(usesWeight ? ["Weight"] : [])],
+    head: ["Set", "Reps", "Time", ...(logged ? ["Effort"] : []), ...(usesWeight ? ["Weight"] : [])],
     rows: setNumbers.map((n) => {
       const reps = s.reps.filter((r) => r.set === n);
       const log = sets.get(n) ?? {};
@@ -208,7 +210,7 @@ function trainingTable(s) {
         `${n}`,
         `${reps.length}`,
         seconds(reps.reduce((sum, r) => sum + r.durationS, 0)),
-        rpe(log.rpe),
+        ...(logged ? [rpe(log.rpe)] : []),
         ...(usesWeight ? [signedKg(log.addedWeightKg)] : []),
       ];
     }),

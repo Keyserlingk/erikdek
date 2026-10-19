@@ -177,10 +177,11 @@ async function startWorkoutRoutine() {
 }
 
 function shortResult(s) {
-  if (s.sets) {
+  if (s.sets || s.noForce) {
     // Without the sensor: reps, effort, weight.
     const t = s.summary;
     const parts = [`${t.repsDone}/${t.totalReps} reps`];
+    if (s.noForce) parts.push("no force data");
     if (t.avgRpe !== null) parts.push(`effort ${Math.round(t.avgRpe * 10) / 10}`);
     if (t.maxAddedWeightKg !== null) parts.push(`${t.maxAddedWeightKg >= 0 ? "+" : "−"}${formatKg(Math.abs(t.maxAddedWeightKg))} kg`);
     return parts.join(" · ");

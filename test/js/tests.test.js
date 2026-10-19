@@ -122,3 +122,18 @@ test("non-sensor routines: reps, time, effort, added weight and volume per set",
   // analyze() picks this for non-sensor routines
   assert.equal(KINDS.workout.analyze({ reps, sets, routine }).volumeKg, 32.5);
 });
+
+test("sensor routine without force data shows reps and time, no effort or force metrics", () => {
+  const routine = { type: "hangboard", sets: 2, reps: 1, workS: 7, addedWeightKg: null, hands: "both" };
+  const s = {
+    type: "workout",
+    noForce: true,
+    routine,
+    reps: [{ set: 1, rep: 1, hand: "both", durationS: 7 }, { set: 2, rep: 1, hand: "both", durationS: 7 }],
+    summary: { repsDone: 2, totalReps: 2, workTimeS: 14, avgRpe: null, maxRpe: null, maxAddedWeightKg: null, volumeKg: null },
+  };
+  assert.deepEqual(KINDS.workout.tiles(s).map((t) => t[1]), ["reps done", "work time"]);
+  assert.deepEqual(KINDS.workout.table(s), { head: ["Set", "Reps", "Time"], rows: [["1", "1", "7 s"], ["2", "1", "7 s"]] });
+  assert.deepEqual(KINDS.workout.strips(s), []);
+  assert.deepEqual(metricPoints(metric("workout", "holdPct"), s), [{ hand: "both", value: null }]);
+});

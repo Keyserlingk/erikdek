@@ -107,10 +107,12 @@ export function renderSession(root, s) {
   const meta = [formatDateTime(s.startedAt), formatDuration(s.durationS), ...sessionTags(s)];
   if (s.targetKg) meta.push(`target ${formatKg(s.targetKg)} kg`);
 
+  // Routines show their reps and time; tests have nothing but force to show.
+  const noForceTest = s.noForce && s.type !== "workout";
   const tiles = el(
     "div",
     { className: "tiles" },
-    kind.tiles(s).map(([value, label, info]) =>
+    (noForceTest ? [] : kind.tiles(s)).map(([value, label, info]) =>
       el("div", { className: "tile" }, [el("strong", { textContent: value }), withInfo(el("span", { textContent: label }), info)]),
     ),
   );
@@ -118,9 +120,9 @@ export function renderSession(root, s) {
   const chartBox = el("div", { className: "session-chart" });
   // Sessions without the sensor have no force curve.
   const hasCurve = !!s.curve && curvePoints(s.curve).x.length > 1;
-  const table = kind.table(s);
+  const table = noForceTest ? { head: [], rows: [] } : kind.table(s);
   const rows = table.rows.map((cells) => el("tr", {}, cells.map((c) => el("td", { textContent: c }))));
-  const strips = (kind.strips?.(s) ?? []).filter((strip) => strip.values.length > 1);
+  const strips = (noForceTest ? [] : kind.strips?.(s) ?? []).filter((strip) => strip.values.length > 1);
   const tableCard = el("div", { className: "card" }, [
     el("table", { className: "reps" }, [
       el("thead", {}, [el("tr", {}, table.head.map((h) => el("th", { textContent: h })))]),
@@ -131,7 +133,8 @@ export function renderSession(root, s) {
   root.replaceChildren(
     el("h1", { textContent: sessionTitle(s) }),
     el("p", { className: "muted", textContent: meta.join(" · ") }),
-    tiles,
+    ...(s.noForce ? [el("p", { className: "no-force", textContent: "No force data: the sensor wasn't connected." })] : []),
+    ...(noForceTest ? [] : [tiles]),
     ...(hasCurve ? [el("div", { className: "card chart-card" }, [chartBox])] : []),
     ...(strips.length ? [el("div", { className: "card strips" }, strips.map(renderStrip))] : []),
     ...(rows.length ? [tableCard] : []),

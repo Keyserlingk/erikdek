@@ -242,7 +242,7 @@ function renderList(list, metric) {
           create("strong", { textContent: s.type === "workout" ? sessionTitle(s) : formatDateTime(s.startedAt) }),
           create("span", {
             className: "muted",
-            textContent: [s.type === "workout" ? formatDateTime(s.startedAt) : null, ...sessionTags(s), s.stopped ? "stopped" : null]
+            textContent: [s.type === "workout" ? formatDateTime(s.startedAt) : null, ...sessionTags(s), s.stopped ? "stopped" : null, s.noForce ? "no force data" : null]
               .filter(Boolean)
               .join(" · "),
           }),

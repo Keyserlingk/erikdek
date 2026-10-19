@@ -11,7 +11,7 @@ import { instructionFor, usesSensor } from "./routines.js";
 import { showResult } from "./runsummary.js";
 import { newSessionId } from "./sessions.js";
 import { settings } from "./settingsstore.js";
-import { HANDS, KINDS } from "./tests.js";
+import { HANDS, KINDS, summarizeTraining } from "./tests.js";
 import { groupOf, mountRunScreens, show } from "./trainscreens.js";
 import { $, button } from "./ui.js";
 import { allowScreenOff, keepScreenOn } from "./wakelock.js";
@@ -260,8 +260,14 @@ const round2 = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
 function buildSession(stopped) {
   const dtS = sampleDtS();
   const r = run.routine;
-  const reps = run.reps.map((rep) => Object.fromEntries(Object.entries(rep).map(([k, v]) => [k, round2(v)])));
-  const summary = KINDS[run.kind].analyze({ reps: run.reps, attempts: run.attempts, dtS, routine: r, target: run.target, sets: run.sets });
+  // A run meant for the sensor that got no samples (it wasn't connected) has no force
+  // results: only reps and time are kept, as for routines without the sensor.
+  const noForce = run.sensor && !run.curve.length;
+  const repList = noForce ? run.reps.map(({ set, rep, hand }) => ({ set, rep, hand, durationS: r.workS })) : run.reps;
+  const reps = repList.map((rep) => Object.fromEntries(Object.entries(rep).map(([k, v]) => [k, round2(v)])));
+  const summary = noForce
+    ? summarizeTraining(repList, [], r)
+    : KINDS[run.kind].analyze({ reps: run.reps, attempts: run.attempts, dtS, routine: r, target: run.target, sets: run.sets });
   const session = {
     id: newSessionId(),
     type: run.kind,
@@ -275,8 +281,9 @@ function buildSession(stopped) {
     targetKg: run.target,
     summary: Object.fromEntries(Object.entries(summary).map(([k, v]) => [k, Array.isArray(v) ? v.map(round2) : round2(v)])),
     reps,
-    curve: compressCurve(run.curve, 1 / dtS, { minKg: CURVE_MIN_KG, maxPoints: CURVE_MAX_POINTS }),
   };
+  if (noForce) session.noForce = true;
+  else session.curve = compressCurve(run.curve, 1 / dtS, { minKg: CURVE_MIN_KG, maxPoints: CURVE_MAX_POINTS });
   if (run.kind === "workout") {
     const { name, type, instruction, setInstructions, addedWeightKg, holdType, grip, hands } = r;
     const { sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;

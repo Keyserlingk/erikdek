@@ -420,6 +420,14 @@ h2.section { margin: 20px 0 10px; font-size: 15px; text-transform: uppercase; le
   color: var(--ok);
   font-size: 14px;
 }
+.no-force {
+  padding: 10px 12px;
+  margin: 0 0 16px;
+  border-radius: 8px;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  font-size: 14px;
+}
 .segmented.wide { justify-content: stretch; margin-left: 0; }
 .segmented.wide button { flex: 1; padding: 10px; font-size: 15px; }
 .list-tabs { margin-bottom: 14px; }
