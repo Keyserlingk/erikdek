@@ -16,6 +16,9 @@ pulling training. It should:
   phone keeps its normal internet. The ESP32 is a sensor; the app does the rest.
 - **Support structured training:** live force and graph, work/rest timer, custom
   routines, workouts (routines in a row) and standard tests (max pull, critical force, RFD).
+- **Be a general climbing training app:** also routines that don't use the sensor
+  (campus board, pull-ups and lock-offs to start with), timed or self-paced, with effort
+  and added weight logged, mixed freely with sensor routines in workouts.
 - **Track progress over time:** results and personal bests stored in the app, with
   progress charts.
 - **Keep the data accessible:** export sessions or everything as CSV/JSON, and
@@ -35,6 +38,44 @@ pulling training. It should:
   with a simulated device. No Web Bluetooth on desktop.
 - **No iPhone for now:** Capacitor supports iOS, but building needs a Mac and Apple's
   signing (see Future options).
+
+## Training types (beyond the sensor)
+
+Decided 2026-10-19. Every routine gets a **type**; the existing timing structure (sets,
+reps, rest between reps and sets, get-ready, beeps) stays the same for all of them.
+
+| Type | Sensor | How a rep ends | Examples |
+|---|---|---|---|
+| **Hangboard** | yes | fixed time (countdown) | repeaters, max hangs, endurance (today's routines) |
+| **Timed** | no | fixed time (countdown) | lock-offs, timed pull-up sets |
+| **Self-paced** | no | the climber taps **Done** (the rep shows a stopwatch), then rest counts down | campus ladders, pull-up sets, bumps |
+
+- **Instruction:** each routine has an instruction text shown big on the run screen,
+  e.g. "1-3-5-7 on medium rungs". Optionally a different instruction per set, for
+  routines that change during the session (e.g. ladder 1-3-5 → 1-4-7 → 1-5-9).
+- **Logging, per set after its last rep (non-sensor routines):**
+  - **Effort (RPE 1–10):** quick tap on a row of numbers; can be skipped.
+  - **Added weight (kg):** for routines that use it (e.g. weighted pull-ups); set per
+    routine in the editor, pre-filled from the routine and editable after each set
+    (e.g. when you add a plate). Negative values mean assistance (band, pulley).
+  - The climber counts moves/reps themselves; they aren't logged.
+- **Run screen without the sensor:** no force box or graph; instead a large instruction,
+  the countdown (timed) or stopwatch with a **Done** button (self-paced), set/rep
+  progress and what's next. The sensor doesn't need to be connected.
+- **Summary and History:** per set: duration, effort and added weight; totals: time,
+  average and highest effort, highest added weight, volume (added weight × reps).
+  History "Compare by" offers these for non-sensor routines (e.g. added weight over
+  time for weighted pull-ups, effort for the same campus routine).
+- **Workouts** can mix types (e.g. hangboard → campus → pull-ups); the sensor is only
+  needed while a hangboard routine runs, and the app says so before it starts.
+- **Templates by category** in the Templates tab, with category headings:
+  - **Hangboard:** the existing three.
+  - **Campus board:** ladders 1-3-5 / 1-4-7 (self-paced), bumps, max reach,
+    campus endurance (timed).
+  - **Pull-ups & lock-offs:** pull-up sets, weighted pull-ups (added weight), pyramid,
+    lock-offs at 90° / 120° (timed), offset pull-ups.
+  - Later: bouldering & endurance (4×4, limit, ARC), core, antagonist, mobility.
+- **Tests** stay sensor-based (max pull, critical force, RFD).
 
 ## Hardware
 
@@ -239,5 +280,15 @@ Next:
 - **D. Android app (done; debug and signed release builds installed on the phone):** Capacitor project, BLE transport with scan/connect/auto-reconnect
   and permissions, keep-awake during runs, app name/icon. Build the APK and install it
   on the phone (with the simulated device until the hardware arrives).
+- **F. Routine types:** type field (hangboard / timed / self-paced), instruction (per
+  routine and optionally per set), added weight per routine, editor and routine list
+  updated, routine files and backups carry the new fields. Existing routines are
+  hangboard routines.
+- **G. Run screen without the sensor:** instruction view, stopwatch + Done for
+  self-paced reps, per-set effort (RPE) and added-weight entry, no sensor needed;
+  workouts mixing types (connect the sensor only for hangboard parts).
+- **H. Summary, History and templates:** non-sensor summaries and metrics (effort,
+  added weight, volume, time), "Compare by" for them, category headings in Templates,
+  campus board and pull-up/lock-off templates.
 - **E. Hardware bring-up:** flash, RATE check, calibrate, BLE range and latency test,
   real-world tuning.
