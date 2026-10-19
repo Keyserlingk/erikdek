@@ -31,6 +31,10 @@
     <div id="warning" class="warning" hidden></div>
 
     <section id="view-live">
+      <div id="liveConnect" class="card connect-card" hidden>
+        <p id="liveConnectText"></p>
+        <button id="liveConnectButton" class="primary" type="button">Connect sensor</button>
+      </div>
       <div class="card readout">
         <div class="weight"><span id="kg">–</span><span class="unit">kg</span></div>
         <div id="bw" class="bw" hidden></div>
@@ -430,7 +434,7 @@
       <div id="manageGrips" class="card"></div>
       <div class="card">
         <h2>Backup</h2>
-        <p class="muted">Download everything (settings, calibration, routines, workouts, holds, grips and all sessions) as one file, or restore from one. Keep a backup before reflashing the device.</p>
+        <p class="muted">Download everything (settings, calibration, routines, workouts, holds, grips and all sessions) as one file, or restore from one. In the app the file opens Android's share menu: save it to Files or Drive, or send it. Your data is only on this phone, so keep a recent backup.</p>
         <div class="actions">
           <button id="backupDownload" class="secondary" type="button">Download backup</button>
           <label class="button-link secondary file-button">Restore…<input id="backupFile" type="file" accept=".json,application/json" hidden></label>

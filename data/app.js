@@ -27,6 +27,18 @@ function showView() {
   for (const t of el.tabs) t.classList.toggle("active", t.getAttribute("href") === `#${tab}`);
   if (view === "history") showHistory();
   if (view === "settings") showAbout();
+  renderStatus();
+}
+
+// Sensor warnings (calibration, tare, sample rate) only where the sensor is used: Live,
+// Tests, Calibrate, and a running routine with the sensor.
+const SENSOR_VIEWS = ["live", "tests", "calibrate"];
+
+function sensorInUse() {
+  const view = location.hash.slice(1) || "live";
+  if (SENSOR_VIEWS.includes(view)) return true;
+  const run = document.getElementById("trainRun");
+  return view === "train" && !run.hidden && run.dataset.sensor === "true";
 }
 
 function renderStatus() {
@@ -45,7 +57,7 @@ function renderStatus() {
   if (lowRate) warnings.push(`Sample rate is ${st.rate.toFixed(0)} Hz. Bridge the HX711 RATE pin to VCC for 80 Hz.`);
   if (!st.calibrated) warnings.push("Not calibrated – readings are approximate.");
   if (!st.tared) warnings.push("Not tared – press Tare with no load.");
-  el.warning.hidden = warnings.length === 0;
+  el.warning.hidden = warnings.length === 0 || !sensorInUse();
   el.warning.textContent = warnings.join(" ");
   if (!st.calibrated && location.hash !== "#calibrate") {
     el.warning.append(" ", Object.assign(document.createElement("a"), { href: "#calibrate", textContent: "Calibrate now" }));

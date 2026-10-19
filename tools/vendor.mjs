@@ -1,6 +1,7 @@
 // Copies the Capacitor runtime and plugins' ES module builds into data/vendor/capacitor
 // so the app can import them without a bundler. While copying, extension-less
-// relative imports get ".js" and "@capacitor/core" points at the copied core.
+// relative imports get ".js" and package imports (@capacitor/core, @capacitor/synapse)
+// point at the copied files.
 // Run with: npm run vendor (also part of tools/build_android.sh). Output is git-ignored.
 
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -14,6 +15,17 @@ const PACKAGES = {
   core: "node_modules/@capacitor/core/dist",
   "bluetooth-le": "node_modules/@capacitor-community/bluetooth-le/dist/esm",
   "keep-awake": "node_modules/@capacitor-community/keep-awake/dist/esm",
+  filesystem: "node_modules/@capacitor/filesystem/dist/esm",
+  share: "node_modules/@capacitor/share/dist/esm",
+};
+// Single-file packages: copied as <name>/index.js.
+const SINGLE_FILES = {
+  synapse: "node_modules/@capacitor/synapse/dist/synapse.mjs",
+};
+// Package imports rewritten to the copies.
+const IMPORTS = {
+  "@capacitor/core": "core/index.js",
+  "@capacitor/synapse": "synapse/index.js",
 };
 
 function jsFiles(dir) {
@@ -33,13 +45,19 @@ for (const [name, src] of Object.entries(PACKAGES)) {
   cpSync(join(root, src), dest, { recursive: true, filter: (p) => statSync(p).isDirectory() || wanted(p) });
 }
 
-const corePath = join(out, "core", "index.js");
+for (const [name, src] of Object.entries(SINGLE_FILES)) {
+  mkdirSync(join(out, name), { recursive: true });
+  cpSync(join(root, src), join(out, name, "index.js"));
+}
+
 for (const file of jsFiles(out)) {
-  const toCore = relative(dirname(file), corePath).replace(/^(?!\.)/, "./");
-  const code = readFileSync(file, "utf8")
+  let code = readFileSync(file, "utf8")
     // from './x' / import('./x') without an extension -> './x.js'
-    .replace(/((?:from|import\()\s*)(['"])(\.{1,2}\/[^'"]+?)(?<!\.js)\2/g, "$1$2$3.js$2")
-    .replace(/(['"])@capacitor\/core\1/g, `$1${toCore}$1`);
+    .replace(/((?:from|import\()\s*)(['"])(\.{1,2}\/[^'"]+?)(?<!\.js)\2/g, "$1$2$3.js$2");
+  for (const [pkg, target] of Object.entries(IMPORTS)) {
+    const to = relative(dirname(file), join(out, target)).replace(/^(?!\.)/, "./");
+    code = code.replaceAll(`'${pkg}'`, `'${to}'`).replaceAll(`"${pkg}"`, `"${to}"`);
+  }
   writeFileSync(file, code);
 }
 console.log(`vendor: Capacitor modules copied to ${relative(root, out)}`);

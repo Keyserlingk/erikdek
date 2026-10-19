@@ -475,6 +475,7 @@ label.pill-button { display: inline-flex; align-items: center; cursor: pointer; 
 
 .storage-line { margin-bottom: 14px; font-size: 14px; }
 .sensor-state { font-size: 14px; margin: 12px 0; }
+.connect-card p { margin-bottom: 12px; }
 #sensorMode { margin-top: 4px; }
 .about { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0 0 12px; }
 .about dt { color: var(--muted); }

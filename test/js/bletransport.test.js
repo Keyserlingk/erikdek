@@ -73,14 +73,18 @@ function collect(transport) {
   return { messages, states };
 }
 
-test("first connect picks a sensor, remembers it, reads firmware and status, streams samples", async () => {
+test("without a chosen sensor connect waits; chooseSensor picks, remembers and streams", async () => {
   const client = fakeClient();
   const storage = memoryStorage();
   const t = new BleTransport({ loadClient: async () => client, storage });
   const { messages, states } = collect(t);
-  await t.connect();
+  await t.connect(); // at app start: no picker
+  assert.deepEqual(states, ["closed"]);
+  assert.equal(client.calls.length, 0);
+  states.length = 0;
+  await t.chooseSensor();
 
-  assert.deepEqual(states, ["connecting", "open"]);
+  assert.deepEqual(states, ["closed", "connecting", "open"]); // forget() closes first
   assert.deepEqual(client.calls[0], ["initialize", { androidNeverForLocation: true }]);
   assert.deepEqual(client.calls[1], ["requestDevice", { services: [UUID.service] }]);
   assert.equal(storage.data["erkdek.bleDevice"], "AA:BB");
@@ -108,7 +112,7 @@ test("reconnects after a dropped link and after failed attempts", async () => {
   const client = fakeClient({ failConnect: 1 });
   const t = new BleTransport({ loadClient: async () => client, storage: memoryStorage(), reconnectDelaysMs: [0] });
   const { states } = collect(t);
-  await t.connect(); // picks AA:BB, connect fails once
+  await t.connect({ pick: true }); // picks AA:BB, connect fails once
   await tick();
   assert.deepEqual(states, ["connecting", "closed", "connecting", "open"]);
 
@@ -123,7 +127,7 @@ test("a cancelled picker waits for the user; forget clears the sensor", async ()
   const storage = memoryStorage();
   const t = new BleTransport({ loadClient: async () => client, storage, reconnectDelaysMs: [0] });
   const { states } = collect(t);
-  await t.connect();
+  await t.connect({ pick: true });
   await tick();
   assert.deepEqual(states, ["connecting", "closed"]); // no retry loop
   assert.match(t.error, /cancelled/);

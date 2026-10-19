@@ -59,7 +59,7 @@ async function createBackup() {
       grips: grips.custom,
       sessions: full,
     });
-    downloadJson(`erkdek-backup-${fileDate()}.json`, backup);
+    await downloadJson(`erkdek-backup-${fileDate()}.json`, backup);
     showMessage(`Backup downloaded: ${full.length} sessions, ${routines.custom.length} routines.`);
   } catch (e) {
     showMessage(e.message, true);

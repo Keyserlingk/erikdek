@@ -21,6 +21,9 @@ const el = {
   resetPeak: document.getElementById("resetPeak"),
   chart: document.getElementById("chart"),
   windows: document.querySelectorAll("#chartWindow button"),
+  connect: document.getElementById("liveConnect"),
+  connectText: document.getElementById("liveConnectText"),
+  connectButton: document.getElementById("liveConnectButton"),
   targetHint: document.getElementById("targetHint"),
   targetInfo: document.getElementById("targetInfo"),
   targetKg: document.getElementById("targetKg"),
@@ -82,7 +85,24 @@ function setWindow(seconds) {
   }
 }
 
+// Bluetooth only: a way to choose the sensor (no picker pops up on its own), and a
+// note while a remembered sensor is out of reach.
+function renderConnect() {
+  const t = device.transport;
+  const bluetooth = typeof t.chooseSensor === "function";
+  el.connect.hidden = !bluetooth || device.connected;
+  if (el.connect.hidden) return;
+  el.connectText.textContent = t.deviceId
+    ? "Looking for your sensor… make sure it's switched on and nearby."
+    : "No sensor connected yet. Switch on your Erkdek and connect it.";
+  el.connectButton.textContent = t.deviceId ? "Choose another sensor" : "Connect sensor";
+  el.connectButton.disabled = t.state === "connecting";
+}
+
 export function initLive() {
+  device.on("connection", renderConnect);
+  el.connectButton.addEventListener("click", () => device.transport.chooseSensor());
+  renderConnect();
   chart = new LiveChart(el.chart);
 
   device.on("samples", (msg) => {

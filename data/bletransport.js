@@ -1,8 +1,9 @@
 // Bluetooth LE transport for the Android app (Capacitor @capacitor-community/bluetooth-le).
 // Same interface as the simulated sensor ("state"/"message" events, connect(), send()).
 //
-// First connect shows Android's device picker (filtered to the Erkdek service); the
-// chosen sensor is remembered and reconnected automatically when the link drops.
+// Connecting needs a chosen sensor: chooseSensor() shows Android's device picker
+// (filtered to the Erkdek service). The chosen sensor is remembered, connected at start
+// and reconnected automatically when the link drops. Without one, connect() waits.
 // The BLE client is injected so tests can drive this with a fake.
 
 import { UUID, decodeEvent, decodeSamples, decodeStatus, encodeCommand } from "./bleprotocol.js";
@@ -49,10 +50,16 @@ export class BleTransport extends EventTarget {
     this.timer = null;
   }
 
-  async connect() {
+  // pick: show the device picker when no sensor is chosen yet (only on the user's request).
+  async connect({ pick = false } = {}) {
     this.wanted = true;
     clearTimeout(this.timer);
     if (this.state === "connecting" || this.state === "open") return;
+    if (!this.deviceId && !pick) {
+      this.error = null;
+      this.setState("closed"); // no sensor chosen yet: wait for chooseSensor()
+      return;
+    }
     this.setState("connecting");
     try {
       const client = await this.ensureClient();
@@ -117,10 +124,10 @@ export class BleTransport extends EventTarget {
     this.timer = setTimeout(() => this.connect(), delay);
   }
 
-  // Forgets the sensor and shows the picker again.
+  // Forgets the sensor (if any) and shows the picker.
   async chooseSensor() {
     await this.forget();
-    return this.connect();
+    return this.connect({ pick: true });
   }
 
   async forget() {
