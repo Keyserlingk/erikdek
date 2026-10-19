@@ -22,6 +22,9 @@ if [[ $VARIANT == release && ! -f android/keystore.properties ]]; then
   exit 1
 fi
 
+# `npm run` sets npm_config_prefix (e.g. /usr/local from the system npm), which nvm
+# refuses to work with; this script uses nvm's Node, so drop it here.
+unset npm_config_prefix NPM_CONFIG_PREFIX
 export NVM_DIR="$HOME/.nvm"
 # shellcheck disable=SC1091
 . "$NVM_DIR/nvm.sh"
