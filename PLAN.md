@@ -78,21 +78,23 @@ default settings. Notifications every ~50 ms with ~4 samples give the same 20 Hz
 screen updates as before, with ~20–60 ms latency. BLE retransmits lost packets while
 connected; sequence numbers detect gaps after a reconnect. Range ~10 m indoors.
 
-### GATT service (draft)
+### GATT service
 
-One custom service `Erkdek` with:
+Custom service `9a0b0001-3d10-4e93-8657-4a72c5dd3311` (characteristics `9a0b0002…0005`,
+same suffix), advertised with the name `Erkdek`. All values little-endian.
 
-| Characteristic | Properties | Content |
-|---|---|---|
-| Samples | notify | `seq` u16, `t0` u32 (ms of first sample), `dt` u16 (µs per sample), then n × i16 force in 10 g units (±327 kg) |
-| Status | read, notify (1 Hz and on change) | sample rate, tared, calibrated, counts per kg, firmware version |
-| Command | write | opcode + payload: tare, calibrate(kg f32), reset calibration, set calibration(counts per kg f32) |
-| Event | notify | tared, calibrated(cpk), calibration failed(reason) |
+| Characteristic | UUID | Properties | Content |
+|---|---|---|---|
+| Samples | `9a0b0002-…` | notify | `seq` u16, `t0` u32 (ms of first sample), `dt` u16 (µs per sample), then n × i16 force in 10 g units (±327.67 kg). 6 samples fit the default 23-byte MTU; the firmware asks for MTU 247. |
+| Status | `9a0b0003-…` | read, notify (1 Hz and after events) | flags u8 (bit0 tared, bit1 calibrated), rate u16 (0.1 Hz), counts per kg f32, uptime u32 ms |
+| Command | `9a0b0004-…` | write, write without response | opcode u8: 1 tare, 2 calibrate + kg f32, 3 reset calibration, 4 set calibration + counts per kg f32 |
+| Event | `9a0b0005-…` | notify | 1 tared · 2 calibrated + u8 calibrated + counts per kg f32 · 3 calibration failed + u8 reason (1 bad weight, 2 too small) |
+| Firmware Revision | `2A26` in Device Information `180A` | read | git version, e.g. `27d90cf` |
 
-- Advertises as `Erkdek` so the app finds it; the app remembers the device and
-  reconnects automatically.
-- Encoding/decoding lives in hardware-independent code with unit tests on both
-  sides (C++ in `lib/core`, JS in the app).
+- The firmware asks for a 7.5–15 ms connection interval and sends samples every 50 ms.
+- Encoding/decoding: `lib/core/ble_protocol.h` (firmware) and `data/bleprotocol.js`
+  (app), both tested against the same byte vectors.
+- The app remembers the device and reconnects automatically (milestone D).
 
 ## Architecture
 
@@ -122,7 +124,8 @@ Android app (Capacitor) ◄── BLE ──► live view, graph, timer, routine
 ### Firmware stack
 - PlatformIO + Arduino framework
 - HX711 read in a dedicated FreeRTOS task
-- NimBLE-Arduino for the BLE service; Preferences (NVS) for calibration
+- NimBLE-Arduino 2.5 for the BLE service; Preferences (NVS) for calibration
+- Program space: ~46 % of the 1.25 MB app partition (was ~69 % with WiFi and the web server)
 - Pure logic (calibration, rate meter, ring buffer, BLE packet encoding) in
   hardware-independent C++, unit tested with PlatformIO's `native` environment
 
@@ -168,7 +171,7 @@ Phone: enable Developer options and USB debugging, then `adb install`.
 erkdek/
 ├─ PLAN.md
 ├─ platformio.ini        firmware build
-├─ src/                  firmware: sensor task, BLE service, NVS
+├─ src/                  firmware: sensor task (sensor.*, hx711.*), BLE service (ble.*), NVS (storage.*)
 ├─ lib/core/             hardware-independent firmware logic
 ├─ test/                 native firmware tests, test/js app tests
 ├─ data/                 the app UI (HTML/JS/CSS), Capacitor's web dir
@@ -231,7 +234,7 @@ Next:
 - **B. Simulated device in JS (done):** port the mock's force simulation (including "pull
   during each hang") into a transport, so the app runs in a desktop browser with no
   server. Retire `tools/mock_server.py`.
-- **C. BLE protocol and firmware:** packet encoding in `lib/core` with tests, NimBLE
+- **C. BLE protocol and firmware (done, compile-tested):** packet encoding in `lib/core` with tests, NimBLE
   service on the ESP, remove WiFi/web server/LittleFS. Compile-tested.
 - **D. Android app:** Capacitor project, BLE transport with scan/connect/auto-reconnect
   and permissions, keep-awake during runs, app name/icon. Build the APK and install it

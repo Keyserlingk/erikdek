@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "ble_protocol.h"
 #include "calibration.h"
 #include "rate_meter.h"
 #include "ring_buffer.h"
@@ -107,8 +108,73 @@ void test_ring_buffer_fifo_and_overflow() {
   TEST_ASSERT_FALSE(rb.pop(v));
 }
 
+// Byte vectors shared with test/js/bleprotocol.test.js.
+void test_ble_encode_samples() {
+  const float kg[] = {0.0f, 20.25f, -1.5f, 400.0f};
+  uint8_t buf[32];
+  size_t n = ble::encodeSamples(buf, 258, 1000, 12500, kg, 4);
+  const uint8_t expected[] = {0x02, 0x01, 0xE8, 0x03, 0x00, 0x00, 0xD4, 0x30,
+                              0x00, 0x00, 0xE9, 0x07, 0x6A, 0xFF, 0xFF, 0x7F};
+  TEST_ASSERT_EQUAL(sizeof(expected), n);
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, buf, n);
+}
+
+void test_ble_force_units_round_and_clamp() {
+  TEST_ASSERT_EQUAL_INT16(2, ble::forceUnits(0.015f));
+  TEST_ASSERT_EQUAL_INT16(-2, ble::forceUnits(-0.015f));
+  TEST_ASSERT_EQUAL_INT16(32767, ble::forceUnits(1000.0f));
+  TEST_ASSERT_EQUAL_INT16(-32767, ble::forceUnits(-1000.0f));
+  TEST_ASSERT_EQUAL(6u, ble::samplesPerPacket(20));   // default MTU 23
+  TEST_ASSERT_EQUAL(119u, ble::samplesPerPacket(247));
+  TEST_ASSERT_EQUAL(0u, ble::samplesPerPacket(8));
+}
+
+void test_ble_encode_status_and_events() {
+  uint8_t buf[16];
+  size_t n = ble::encodeStatus(buf, true, false, 80.04f, 16000.0f, 123456);
+  const uint8_t status[] = {0x01, 0x20, 0x03, 0x00, 0x00, 0x7A, 0x46, 0x40, 0xE2, 0x01, 0x00};
+  TEST_ASSERT_EQUAL(sizeof(status), n);
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(status, buf, n);
+
+  const uint8_t calibrated[] = {0x02, 0x01, 0x00, 0x00, 0x7A, 0x46};
+  TEST_ASSERT_EQUAL(sizeof(calibrated), ble::encodeCalibrated(buf, true, 16000.0f));
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(calibrated, buf, sizeof(calibrated));
+
+  const uint8_t calError[] = {0x03, 0x02};
+  TEST_ASSERT_EQUAL(2u, ble::encodeCalError(buf, ble::CalErrTooSmall));
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(calError, buf, 2);
+
+  TEST_ASSERT_EQUAL(1u, ble::encodeTared(buf));
+  TEST_ASSERT_EQUAL_HEX8(0x01, buf[0]);
+}
+
+void test_ble_parse_commands() {
+  ble::ParsedCommand cmd;
+  const uint8_t calibrate[] = {0x02, 0x00, 0x00, 0xA0, 0x41};  // 20.0
+  TEST_ASSERT_TRUE(ble::parseCommand(calibrate, sizeof(calibrate), cmd));
+  TEST_ASSERT_EQUAL(ble::CmdCalibrate, cmd.op);
+  TEST_ASSERT_EQUAL_FLOAT(20.0f, cmd.value);
+
+  const uint8_t setCal[] = {0x04, 0x00, 0x00, 0x7A, 0x46};  // 16000.0
+  TEST_ASSERT_TRUE(ble::parseCommand(setCal, sizeof(setCal), cmd));
+  TEST_ASSERT_EQUAL_FLOAT(16000.0f, cmd.value);
+
+  const uint8_t tare[] = {0x01};
+  TEST_ASSERT_TRUE(ble::parseCommand(tare, 1, cmd));
+  TEST_ASSERT_EQUAL(ble::CmdTare, cmd.op);
+
+  TEST_ASSERT_FALSE(ble::parseCommand(calibrate, 3, cmd));  // value missing
+  const uint8_t unknown[] = {0x09};
+  TEST_ASSERT_FALSE(ble::parseCommand(unknown, 1, cmd));
+  TEST_ASSERT_FALSE(ble::parseCommand(unknown, 0, cmd));
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_ble_encode_samples);
+  RUN_TEST(test_ble_force_units_round_and_clamp);
+  RUN_TEST(test_ble_encode_status_and_events);
+  RUN_TEST(test_ble_parse_commands);
   RUN_TEST(test_calibration_converts_raw_to_kg);
   RUN_TEST(test_compute_counts_per_kg);
   RUN_TEST(test_compute_counts_per_kg_swapped_wires_gives_negative_factor);

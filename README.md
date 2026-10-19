@@ -20,20 +20,15 @@ browser and per address: `localhost:8080` and `192.168.0.8:8080` are separate st
 
 ## Firmware
 
-Requires PlatformIO (`pipx install platformio`). The firmware still has the WiFi web
-server; milestone C replaces it with Bluetooth.
+Requires PlatformIO (`pipx install platformio`). The ESP is a Bluetooth LE sensor
+(`src/ble.cpp`, protocol in `lib/core/ble_protocol.h`); calibration is kept in NVS.
 
 ```sh
 pio test -e native        # unit tests for lib/core on the PC
 pio run                   # build firmware
 pio run -t upload         # flash
-pio run -t uploadfs       # upload the web app (data/, gzipped) to LittleFS
-pio device monitor        # serial log, shows the IP address
+pio device monitor        # serial log (BLE name and firmware version)
 ```
-
-WiFi: copy `include/wifi_secrets.example.h` to `include/wifi_secrets.h` to join your
-phone hotspot. Otherwise, or if the hotspot isn't found within 15 s, the ESP starts its
-own network `Erkdek` (password `erkdek123`) at http://192.168.4.1.
 
 ## Wiring
 

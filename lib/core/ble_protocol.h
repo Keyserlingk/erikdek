@@ -1,0 +1,127 @@
+#pragma once
+
+// Erkdek Bluetooth LE protocol: byte layouts of the GATT characteristics. All values are
+// little-endian. The app's data/bleprotocol.js implements the same layouts, and both
+// sides are tested against the same byte vectors.
+//
+//   Samples (notify)   seq u16 | t0 u32 (ms of first sample) | dt u16 (µs per sample)
+//                      | n × force i16 (10 g units, ±327.67 kg)
+//   Status (read/notify) flags u8 (bit0 tared, bit1 calibrated) | rate u16 (0.1 Hz)
+//                      | countsPerKg f32 | uptime u32 (ms)
+//   Command (write)    opcode u8 [| value f32]
+//   Event (notify)     type u8 [| payload]
+
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+namespace ble {
+
+static constexpr size_t kSamplesHeader = 8;
+static constexpr size_t kStatusSize = 11;
+static constexpr int16_t kForceMax = 32767;  // 327.67 kg
+
+enum Command : uint8_t { CmdTare = 1, CmdCalibrate = 2, CmdCalReset = 3, CmdSetCalibration = 4 };
+enum Event : uint8_t { EvTared = 1, EvCalibrated = 2, EvCalError = 3 };
+enum CalError : uint8_t { CalErrBadWeight = 1, CalErrTooSmall = 2 };
+
+inline void putU16(uint8_t* p, uint16_t v) {
+  p[0] = v & 0xFF;
+  p[1] = v >> 8;
+}
+
+inline void putU32(uint8_t* p, uint32_t v) {
+  for (int i = 0; i < 4; i++) p[i] = (v >> (8 * i)) & 0xFF;
+}
+
+inline void putF32(uint8_t* p, float v) {
+  uint32_t bits;
+  memcpy(&bits, &v, 4);
+  putU32(p, bits);
+}
+
+inline uint32_t getU32(const uint8_t* p) {
+  return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+inline float getF32(const uint8_t* p) {
+  uint32_t bits = getU32(p);
+  float v;
+  memcpy(&v, &bits, 4);
+  return v;
+}
+
+// kg -> 10 g units, rounded and clamped to the i16 range.
+inline int16_t forceUnits(float kg) {
+  float units = kg * 100.0f;
+  if (units >= kForceMax) return kForceMax;
+  if (units <= -kForceMax) return -kForceMax;
+  return (int16_t)(units < 0 ? units - 0.5f : units + 0.5f);
+}
+
+// Samples that fit in a notification of `payload` bytes (MTU - 3).
+inline size_t samplesPerPacket(size_t payload) {
+  return payload > kSamplesHeader ? (payload - kSamplesHeader) / 2 : 0;
+}
+
+// Writes a samples packet; returns its size.
+inline size_t encodeSamples(uint8_t* out, uint16_t seq, uint32_t t0Ms, uint16_t dtUs, const float* kg, size_t n) {
+  putU16(out, seq);
+  putU32(out + 2, t0Ms);
+  putU16(out + 6, dtUs);
+  for (size_t i = 0; i < n; i++) putU16(out + kSamplesHeader + 2 * i, (uint16_t)forceUnits(kg[i]));
+  return kSamplesHeader + 2 * n;
+}
+
+inline size_t encodeStatus(uint8_t* out, bool tared, bool calibrated, float rateHz, float countsPerKg, uint32_t uptimeMs) {
+  out[0] = (tared ? 1 : 0) | (calibrated ? 2 : 0);
+  float r = rateHz * 10.0f + 0.5f;
+  putU16(out + 1, r <= 0 ? 0 : r >= 65535 ? 65535 : (uint16_t)r);
+  putF32(out + 3, countsPerKg);
+  putU32(out + 7, uptimeMs);
+  return kStatusSize;
+}
+
+inline size_t encodeTared(uint8_t* out) {
+  out[0] = EvTared;
+  return 1;
+}
+
+inline size_t encodeCalibrated(uint8_t* out, bool calibrated, float countsPerKg) {
+  out[0] = EvCalibrated;
+  out[1] = calibrated ? 1 : 0;
+  putF32(out + 2, countsPerKg);
+  return 6;
+}
+
+inline size_t encodeCalError(uint8_t* out, CalError reason) {
+  out[0] = EvCalError;
+  out[1] = reason;
+  return 2;
+}
+
+struct ParsedCommand {
+  Command op;
+  float value;  // kg for calibrate, counts per kg for set calibration
+};
+
+// Parses a command write; false for unknown opcodes or a missing value.
+inline bool parseCommand(const uint8_t* data, size_t len, ParsedCommand& out) {
+  if (len < 1) return false;
+  out.op = (Command)data[0];
+  out.value = 0;
+  switch (out.op) {
+    case CmdTare:
+    case CmdCalReset:
+      return true;
+    case CmdCalibrate:
+    case CmdSetCalibration:
+      if (len < 5) return false;
+      out.value = getF32(data + 1);
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace ble

@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
-#include "net.h"
+#include "ble.h"
 #include "sensor.h"
 #include "storage.h"
 
@@ -12,10 +12,10 @@ void setup() {
   Serial.println("\nErkdek starting");
   storageBegin();
   sensorBegin(kHxDoutPin, kHxSckPin, storageLoadCalibration());
-  netBegin();
+  bleBegin();
 }
 
 void loop() {
-  netLoop();
+  bleLoop();
   delay(5);
 }
