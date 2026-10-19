@@ -236,7 +236,7 @@ Next:
   server. Retire `tools/mock_server.py`.
 - **C. BLE protocol and firmware (done, compile-tested):** packet encoding in `lib/core` with tests, NimBLE
   service on the ESP, remove WiFi/web server/LittleFS. Compile-tested.
-- **D. Android app (built; install on the phone pending):** Capacitor project, BLE transport with scan/connect/auto-reconnect
+- **D. Android app (done; debug and signed release builds installed on the phone):** Capacitor project, BLE transport with scan/connect/auto-reconnect
   and permissions, keep-awake during runs, app name/icon. Build the APK and install it
   on the phone (with the simulated device until the hardware arrives).
 - **E. Hardware bring-up:** flash, RATE check, calibrate, BLE range and latency test,
