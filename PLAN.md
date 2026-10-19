@@ -110,10 +110,9 @@ Android app (Capacitor) ◄── BLE ──► live view, graph, timer, routine
 ### App
 - The existing web app (plain HTML/JS/CSS, no build step) is the app's UI. Capacitor
   packages it; only the connection and storage layers change.
-- **Transport** (`transport.js`): one interface, three implementations:
-  - Capacitor BLE (`@capacitor-community/bluetooth-le`) in the app,
-  - simulated device (JS port of the current mock) for development in a browser,
-  - WebSocket to `tools/mock_server.py` until the simulated device replaces it.
+- **Transport** (interface in `device.js`): two implementations:
+  - Capacitor BLE (`@capacitor-community/bluetooth-le`) in the Android app,
+  - simulated sensor (`simdevice.js`) in a desktop browser for development.
 - **Storage:** the stores the screens already use (settings, routines, workouts,
   holds/grips, sessions) keep their interfaces but read/write IndexedDB instead of
   the ESP's HTTP API. Backup/restore and routine files keep working unchanged.
@@ -144,8 +143,8 @@ Android app (Capacitor) ◄── BLE ──► live view, graph, timer, routine
 
 ## Development
 
-- **On the computer:** run the web app in a desktop browser against the simulated
-  device (and, until it exists, `tools/mock_server.py`). No hardware needed.
+- **On the computer:** `python3 tools/serve.py` and open the app in a desktop browser;
+  it uses the simulated sensor. No hardware needed.
 - **Tests:** `npm test` (app logic), `pio test -e native` (firmware logic).
 - **Firmware:** compiled with PlatformIO (no board needed to compile).
 - **Android app:** built from the terminal with the Android command-line tools and
@@ -176,7 +175,7 @@ erkdek/
 ├─ android/              Capacitor Android project (generated, then committed)
 ├─ capacitor.config.json
 ├─ package.json
-└─ tools/                mock server (until the simulated device), build scripts
+└─ tools/                dev server (serve.py), firmware build scripts
 ```
 
 ## Features (built, tested against the mock)
@@ -229,7 +228,7 @@ Next:
   the ESP's HTTP API to IndexedDB behind the existing store interfaces. Backup,
   restore and exports keep working. Storage info under Settings → About reflects the
   phone.
-- **B. Simulated device in JS:** port the mock's force simulation (including "pull
+- **B. Simulated device in JS (done):** port the mock's force simulation (including "pull
   during each hang") into a transport, so the app runs in a desktop browser with no
   server. Retire `tools/mock_server.py`.
 - **C. BLE protocol and firmware:** packet encoding in `lib/core` with tests, NimBLE

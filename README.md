@@ -1,32 +1,27 @@
 # Erkdek DIY
 
-A DIY climbing force gauge built from a load cell, an HX711 and an ESP32. See [PLAN.md](PLAN.md).
+A DIY climbing force gauge built from a load cell, an HX711 and an ESP32, used from an
+Android app over Bluetooth. See [PLAN.md](PLAN.md).
 
-## Web app without hardware
-
-```sh
-python3 tools/mock_server.py            # http://localhost:8080
-```
-
-To use it from your phone, open `http://<laptop-ip>:8080` (same WiFi).
-The mock simulates the sensor (hangs and pulls at 80 Hz, tare, calibration) using the
-same protocol as the firmware. The app stores its own data (settings, routines,
-workouts, sessions) in the browser's IndexedDB, per browser and per address:
-`localhost:8080` and `192.168.0.8:8080` are separate stores.
-
-The ESP stores the web app gzipped (`tools/gzip_data.py` runs on `buildfs`/`uploadfs`)
-and serves `foo.js.gz` for `/foo.js`. To test that exact bundle with the mock:
+## App in the browser (development)
 
 ```sh
-pio run -t buildfs
-python3 tools/mock_server.py --gzip .pio/build/esp32dev/data_gz
+python3 tools/serve.py                  # http://localhost:8080
+npm test                                # app logic tests (Node 18+)
 ```
+
+In the browser the app uses a **simulated sensor** (`data/simdevice.js`): hangs and
+pulls at 80 Hz, tare and calibration, behaving like the firmware. Tap **SIM** in the
+header to choose what hangs on it; "Pull during each hang" follows the workout timer.
+To try it on the phone, open `http://<laptop-ip>:8080` (same WiFi).
+
+The app stores its data (settings, routines, workouts, sessions) in IndexedDB, per
+browser and per address: `localhost:8080` and `192.168.0.8:8080` are separate stores.
 
 ## Firmware
 
-Requires PlatformIO (`pipx install platformio`).
-
-Web app logic tests (Node 18+): `npm test`
+Requires PlatformIO (`pipx install platformio`). The firmware still has the WiFi web
+server; milestone C replaces it with Bluetooth.
 
 ```sh
 pio test -e native        # unit tests for lib/core on the PC

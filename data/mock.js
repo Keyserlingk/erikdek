@@ -1,6 +1,6 @@
 import { device } from "./device.js";
 
-// Simulator controls, only shown when connected to tools/mock_server.py.
+// Simulator controls, only shown when connected to the simulated sensor (simdevice.js).
 const el = {
   badge: document.getElementById("mock"),
   panel: document.getElementById("mockPanel"),
