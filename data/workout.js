@@ -55,30 +55,40 @@ export function targetKg(r, bodyweightKg) {
   return null;
 }
 
-// Time-driven phase sequencer. All times are in seconds from a monotonic clock.
+// Phase sequencer driven by a monotonic clock (seconds). Phases with a duration end on
+// their own, exactly on schedule; open-ended phases (durS null, self-paced reps) last
+// until done() is called. Pausing stops the clock.
 export class WorkoutEngine {
   constructor(phases) {
     this.phases = phases;
-    this.starts = [];
-    let t = 0;
-    for (const p of phases) {
-      this.starts.push(t);
-      t += p.durS;
-    }
-    this.totalS = t;
+    // Planned length; open-ended phases count as 0.
+    this.totalS = phases.reduce((sum, p) => sum + (p.durS ?? 0), 0);
     this.startedAt = null;
     this.pausedAt = null;
     this.offsetS = 0; // time skipped forward minus time spent paused
-    this.lastIndex = -1;
+    this.index = 0;
+    this.phaseStartS = 0; // elapsed time when the current phase began
+    this.entered = []; // phases entered since the last update()
   }
 
   start(now) {
     this.startedAt = now;
-    this.lastIndex = -1;
+    this.index = 0;
+    this.phaseStartS = 0;
+    this.entered = [0];
   }
 
   get paused() {
     return this.pausedAt !== null;
+  }
+
+  get done() {
+    return this.index >= this.phases.length;
+  }
+
+  // True while the current phase waits for done() (a self-paced rep).
+  get waitingForDone() {
+    return !this.done && this.phases[this.index].durS === null;
   }
 
   pause(now) {
@@ -94,35 +104,52 @@ export class WorkoutEngine {
 
   elapsed(now) {
     const t = this.paused ? this.pausedAt : now;
-    return Math.min(this.totalS, Math.max(0, t - this.startedAt + this.offsetS));
+    return Math.max(0, t - this.startedAt + this.offsetS);
   }
 
-  indexAt(elapsedS) {
-    if (elapsedS >= this.totalS) return this.phases.length;
-    let i = 0;
-    while (i + 1 < this.phases.length && this.starts[i + 1] <= elapsedS) i++;
-    return i;
+  advance(startS) {
+    this.index++;
+    this.phaseStartS = startS;
+    this.entered.push(this.index);
   }
 
-  // Jumps to the start of the next phase.
+  // Moves past timed phases that have ended by elapsedS.
+  catchUp(elapsedS) {
+    while (!this.done) {
+      const { durS } = this.phases[this.index];
+      if (durS === null || elapsedS < this.phaseStartS + durS) break;
+      this.advance(this.phaseStartS + durS);
+    }
+  }
+
+  // Ends the current phase now: jumps to the end of a timed phase, or finishes an
+  // open-ended one.
   skip(now) {
-    const i = this.indexAt(this.elapsed(now));
-    if (i >= this.phases.length) return;
-    const nextStart = i + 1 < this.phases.length ? this.starts[i + 1] : this.totalS;
-    this.offsetS += nextStart - this.elapsed(now);
+    const e = this.elapsed(now);
+    this.catchUp(e);
+    if (this.done) return;
+    const { durS } = this.phases[this.index];
+    if (durS === null) this.advance(e);
+    else this.offsetS += this.phaseStartS + durS - e;
+  }
+
+  // The climber finished a self-paced rep.
+  finishRep(now) {
+    if (this.waitingForDone) this.skip(now);
   }
 
   // Current position plus the phases entered since the previous update (none skipped).
+  // remainingS is null in an open-ended phase; inPhaseS counts up in every phase.
   update(now) {
     const elapsedS = this.elapsed(now);
-    const index = this.indexAt(elapsedS);
-    const entered = [];
-    for (let i = this.lastIndex + 1; i <= index; i++) entered.push(i);
-    this.lastIndex = index;
-    const done = index >= this.phases.length;
-    const phase = done ? null : this.phases[index];
-    const remainingS = done ? 0 : this.starts[index] + phase.durS - elapsedS;
-    return { index, phase, remainingS, elapsedS, done, entered };
+    this.catchUp(elapsedS);
+    const entered = this.entered;
+    this.entered = [];
+    const done = this.done;
+    const phase = done ? null : this.phases[this.index];
+    const inPhaseS = done ? 0 : elapsedS - this.phaseStartS;
+    const remainingS = done ? 0 : phase.durS === null ? null : phase.durS - inPhaseS;
+    return { index: this.index, phase, remainingS, inPhaseS, elapsedS, done, entered };
   }
 }
 

@@ -9,6 +9,12 @@ export function formatBytes(b) {
   return b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
 }
 
+// Stopwatch: 7.4 -> "0:07", 83 -> "1:23"
+export function formatClock(totalS) {
+  const s = Math.floor(totalS);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 // 45 -> "45 s", 180 -> "3 min", 1337 -> "22 min 17 s"
 export function formatDuration(totalS) {
   const s = Math.round(totalS);

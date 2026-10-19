@@ -4,6 +4,7 @@
 
 import { CF_LAST_REPS, criticalForceSummary, forceRetention, maxPullSummary, rfdSummary } from "./analysis.js";
 import { formatDuration, formatKg } from "./format.js";
+import { usesSensor } from "./routines.js";
 import { hangsPerRep } from "./workout.js";
 
 const kg = (v) => (v === null || v === undefined ? "–" : `${formatKg(v)} kg`);
@@ -34,6 +35,11 @@ const INFO = {
   peakRfd: "Steepest rise in force over any 50 ms.",
   timeToPeak: "Time from starting to pull until peak force.",
   perHand: "Average force and hold % of the reps done with this hand, to compare left and right.",
+  repsDone: "Reps (or hangs) done out of the planned number. Stopped or skipped reps aren't counted.",
+  workTime: "Total time spent in the reps: for self-paced reps until you tapped Done, for timed reps the work time.",
+  effort: "How hard the sets felt (RPE, 1 = very easy, 10 = maximal), as you logged them after each set.",
+  addedWeight: "The most extra weight used in a set. Negative means assistance (band, pulley).",
+  volume: "Added weight × reps, summed over the sets that logged a weight.",
 };
 
 const handInitial = (hand) => (hand === "left" ? " L" : hand === "right" ? " R" : "");
@@ -51,6 +57,24 @@ function summarizeReps(reps, planned, target) {
     peakKg: reps.reduce((m, r) => Math.max(m, r.peakKg), 0),
     avgKg: reps.length ? sum("meanKg") / reps.length : null,
     tutS: sum("tutS"),
+  };
+}
+
+// Routines without the sensor: reps are timed only; effort (RPE) and added weight are
+// logged per set. Volume = added weight × reps, over sets that logged a weight.
+export function summarizeTraining(reps, sets, routine) {
+  const repsInSet = (n) => reps.filter((r) => r.set === n).length;
+  const rpes = sets.map((s) => s.rpe).filter((v) => typeof v === "number");
+  const weights = sets.filter((s) => typeof s.addedWeightKg === "number" && repsInSet(s.set) > 0);
+  return {
+    repsDone: reps.length,
+    totalReps: routine.sets * routine.reps * hangsPerRep(routine),
+    setsDone: new Set(reps.map((r) => r.set)).size,
+    workTimeS: reps.reduce((sum, r) => sum + r.durationS, 0),
+    avgRpe: rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : null,
+    maxRpe: rpes.length ? Math.max(...rpes) : null,
+    maxAddedWeightKg: weights.length ? Math.max(...weights.map((s) => s.addedWeightKg)) : null,
+    volumeKg: weights.length ? weights.reduce((sum, s) => sum + s.addedWeightKg * repsInSet(s.set), 0) : null,
   };
 }
 
@@ -75,6 +99,106 @@ export function metricPoints(m, s) {
   return [{ hand: s.hand || "both", value: m.value(s) }];
 }
 
+// Routine sessions with the sensor: hold %, force, retention, per hand.
+function sensorTiles(s) {
+  return [
+    [
+      pct(KINDS.workout.metrics[0].value(s)),
+
+        `hold · ${s.summary.completed}/${s.summary.totalReps} full ${s.summary.byHand ? "hangs" : "reps"}`,
+        INFO.hold,
+      ],
+      [pct(s.summary.retentionPct), "force retention", INFO.retention],
+      ...["left", "right"]
+        .filter((h) => s.summary.byHand?.[h])
+        .map((h) => [kg(s.summary.byHand[h].avgKg), `${h} hand avg · hold ${pct(s.summary.byHand[h].holdPct)}`, INFO.perHand]),
+      ...(s.targetKg ? [[pct(s.summary.workPct), "work vs target", INFO.work]] : []),
+      [kg(s.summary.avgKg), "avg force", INFO.avgForce],
+      [kg(s.summary.peakKg), "best peak", INFO.bestPeak],
+      [formatDuration(Math.round(s.summary.tutS)), "time under tension", INFO.tut],
+  ];
+}
+
+function sensorTable(s) {
+      const first = s.reps[0]?.meanKg;
+      const hasWork = s.reps.some((r) => typeof r.workPct === "number");
+      return {
+        head: ["Rep", "Avg", "Hold", ...(hasWork ? ["Work"] : []), "vs 1st"],
+        rows: s.reps.map((r) => {
+          const hold = r.holdPct ?? (100 * r.tutS) / s.routine.workS;
+          return [
+            `${r.set}.${r.rep}${handInitial(r.hand)}`,
+            formatKg(r.meanKg),
+            pct(hold),
+            ...(hasWork ? [pct(r.workPct)] : []),
+            first > 0 ? pct((100 * r.meanKg) / first) : "–",
+          ];
+        }),
+      };
+}
+
+// Per-rep percentages, grouped by set: hold % and force relative to rep 1.
+function sensorStrips(s) {
+      const first = s.reps[0]?.meanKg;
+      const strips = [
+        {
+          label: "Hold per rep",
+          info: INFO.holdPerRep,
+          values: s.reps.map((r) => ({ set: r.set, hand: r.hand, pct: r.holdPct ?? (100 * r.tutS) / s.routine.workS })),
+        },
+      ];
+      if (first > 0) {
+        strips.push({
+          label: "Force vs rep 1",
+          info: INFO.forceVsRep1,
+          values: s.reps.map((r) => ({ set: r.set, hand: r.hand, pct: (100 * r.meanKg) / first })),
+        });
+      }
+      return strips;
+}
+
+// Routine sessions without the sensor: reps, time, effort, added weight per set.
+function isTraining(s) {
+  return s.routine ? !usesSensor(s.routine) : false;
+}
+
+const rpe = (v) => (v === null || v === undefined ? "–" : (Math.round(v * 10) / 10).toString());
+const signedKg = (v) => (v === null || v === undefined ? "–" : `${v >= 0 ? "+" : "−"}${formatKg(Math.abs(v))} kg`);
+
+function trainingTiles(s) {
+  const t = s.summary;
+  const tiles = [
+    [`${t.repsDone}/${t.totalReps}`, "reps done", INFO.repsDone],
+    [seconds(t.workTimeS), "work time", INFO.workTime],
+    [rpe(t.avgRpe), `average effort${t.maxRpe !== null ? ` · max ${t.maxRpe}` : ""}`, INFO.effort],
+  ];
+  if (t.maxAddedWeightKg !== null) {
+    tiles.push([signedKg(t.maxAddedWeightKg), "highest added weight", INFO.addedWeight]);
+    tiles.push([kg(t.volumeKg), "volume (weight × reps)", INFO.volume]);
+  }
+  return tiles;
+}
+
+function trainingTable(s) {
+  const usesWeight = s.routine.addedWeightKg !== null && s.routine.addedWeightKg !== undefined;
+  const sets = new Map((s.sets ?? []).map((x) => [x.set, x]));
+  const setNumbers = [...new Set(s.reps.map((r) => r.set))];
+  return {
+    head: ["Set", "Reps", "Time", "Effort", ...(usesWeight ? ["Weight"] : [])],
+    rows: setNumbers.map((n) => {
+      const reps = s.reps.filter((r) => r.set === n);
+      const log = sets.get(n) ?? {};
+      return [
+        `${n}`,
+        `${reps.length}`,
+        seconds(reps.reduce((sum, r) => sum + r.durationS, 0)),
+        rpe(log.rpe),
+        ...(usesWeight ? [signedKg(log.addedWeightKg)] : []),
+      ];
+    }),
+  };
+}
+
 export const KINDS = {
   workout: {
     name: "Routine", // sessions of type "workout" are routine runs
@@ -94,7 +218,8 @@ export const KINDS = {
       metric("targetKg", "Target load", kg, (summary, s) => num(s.targetKg), "The target load the routine used, in kg (a % of bodyweight target is converted with the bodyweight at the time)."),
     ],
     // Alternating sessions also get the same summary per hand in byHand.
-    analyze({ reps, routine, target }) {
+    analyze({ reps, routine, target, sets = [] }) {
+      if (!usesSensor(routine)) return summarizeTraining(reps, sets, routine);
       const planned = routine.sets * routine.reps * hangsPerRep(routine);
       const summary = summarizeReps(reps, planned, target);
       summary.byHand =
@@ -105,58 +230,11 @@ export const KINDS = {
           : null;
       return summary;
     },
-    tiles: (s) => [
-      [
-        pct(KINDS.workout.metrics[0].value(s)),
-        `hold · ${s.summary.completed}/${s.summary.totalReps} full ${s.summary.byHand ? "hangs" : "reps"}`,
-        INFO.hold,
-      ],
-      [pct(s.summary.retentionPct), "force retention", INFO.retention],
-      ...["left", "right"]
-        .filter((h) => s.summary.byHand?.[h])
-        .map((h) => [kg(s.summary.byHand[h].avgKg), `${h} hand avg · hold ${pct(s.summary.byHand[h].holdPct)}`, INFO.perHand]),
-      ...(s.targetKg ? [[pct(s.summary.workPct), "work vs target", INFO.work]] : []),
-      [kg(s.summary.avgKg), "avg force", INFO.avgForce],
-      [kg(s.summary.peakKg), "best peak", INFO.bestPeak],
-      [formatDuration(Math.round(s.summary.tutS)), "time under tension", INFO.tut],
-    ],
-    table: (s) => {
-      const first = s.reps[0]?.meanKg;
-      const hasWork = s.reps.some((r) => typeof r.workPct === "number");
-      return {
-        head: ["Rep", "Avg", "Hold", ...(hasWork ? ["Work"] : []), "vs 1st"],
-        rows: s.reps.map((r) => {
-          const hold = r.holdPct ?? (100 * r.tutS) / s.routine.workS;
-          return [
-            `${r.set}.${r.rep}${handInitial(r.hand)}`,
-            formatKg(r.meanKg),
-            pct(hold),
-            ...(hasWork ? [pct(r.workPct)] : []),
-            first > 0 ? pct((100 * r.meanKg) / first) : "–",
-          ];
-        }),
-      };
-    },
-    // Per-rep percentages, grouped by set: hold % and force relative to rep 1.
-    strips: (s) => {
-      const first = s.reps[0]?.meanKg;
-      const strips = [
-        {
-          label: "Hold per rep",
-          info: INFO.holdPerRep,
-          values: s.reps.map((r) => ({ set: r.set, hand: r.hand, pct: r.holdPct ?? (100 * r.tutS) / s.routine.workS })),
-        },
-      ];
-      if (first > 0) {
-        strips.push({
-          label: "Force vs rep 1",
-          info: INFO.forceVsRep1,
-          values: s.reps.map((r) => ({ set: r.set, hand: r.hand, pct: (100 * r.meanKg) / first })),
-        });
-      }
-      return strips;
-    },
+    tiles: (s) => (isTraining(s) ? trainingTiles(s) : sensorTiles(s)),
+    table: (s) => (isTraining(s) ? trainingTable(s) : sensorTable(s)),
+    strips: (s) => (isTraining(s) ? [] : sensorStrips(s)),
   },
+
 
   maxPull: {
     name: "Max pull",

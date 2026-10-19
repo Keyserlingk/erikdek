@@ -204,7 +204,8 @@
         </div>
       </div>
 
-      <div id="trainRun" hidden>
+      <div id="trainRun" hidden data-sensor="true">
+        <div id="runInstruction" class="card run-instruction" hidden></div>
         <div class="card chart-card"><div id="runChart" class="chart small"></div></div>
         <div class="run-row">
           <div id="runPhaseCard" class="card phase-card" data-phase="prep">
@@ -221,6 +222,22 @@
             <div id="runRepInfo" class="rep-info" hidden></div>
           </div>
         </div>
+        <button id="runDone" class="primary done-button" type="button" hidden>Done</button>
+        <div id="runSetLog" class="card set-log" hidden>
+          <h2 id="setLogTitle">Set done</h2>
+          <div class="field stacked">
+            <span>Effort (RPE)</span>
+            <div id="setLogRpe" class="rpe-buttons" role="group" aria-label="Effort 1 to 10"></div>
+          </div>
+          <div id="setLogWeightRow" class="field stacked" hidden>
+            <span>Added weight next set (kg)</span>
+            <div class="stepper">
+              <button id="setLogMinus" class="icon-button" type="button" aria-label="Less weight">−</button>
+              <input id="setLogWeight" type="number" step="0.5" inputmode="decimal" aria-label="Added weight in kg">
+              <button id="setLogPlus" class="icon-button" type="button" aria-label="More weight">+</button>
+            </div>
+          </div>
+        </div>
         <div class="actions">
           <button id="runStop" class="secondary" type="button">Stop</button>
           <button id="runSkip" class="secondary" type="button">Skip</button>
@@ -231,6 +248,11 @@
 
       <div id="trainSummary" hidden>
         <div id="sumView"></div>
+        <div id="sumSets" class="card" hidden>
+          <h2>Effort and weight per set</h2>
+          <p class="muted">Fill in or correct before saving.</p>
+          <div id="sumSetRows"></div>
+        </div>
         <div id="sumError" class="error" hidden></div>
         <div class="actions">
           <button id="sumDiscard" class="secondary" type="button">Discard</button>

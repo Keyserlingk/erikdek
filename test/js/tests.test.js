@@ -22,7 +22,7 @@ test("workout analyze averages hold and work over all planned reps", () => {
     { set: 1, rep: 1, meanKg: 20, peakKg: 22, tutS: 7, holdPct: 100, workPct: 100, completed: true },
     { set: 1, rep: 2, meanKg: 18, peakKg: 21, tutS: 5, holdPct: 70, workPct: 60, completed: false },
   ];
-  const routine = { sets: 1, reps: 4, workS: 7 }; // stopped after 2 of 4 reps
+  const routine = { type: "hangboard", sets: 1, reps: 4, workS: 7 }; // stopped after 2 of 4 reps
   const s = KINDS.workout.analyze({ reps, routine, target: 20 });
   assert.equal(s.holdPct, 42.5);
   assert.equal(s.workPct, 40);
@@ -34,7 +34,7 @@ test("workout analyze averages hold and work over all planned reps", () => {
 test("workout table and per-rep percentages", () => {
   const s = {
     targetKg: null,
-    routine: { workS: 7 },
+    routine: { type: "hangboard", workS: 7 },
     reps: [
       { set: 1, rep: 1, meanKg: 20, tutS: 7, holdPct: 100, workPct: null, completed: true },
       { set: 2, rep: 1, meanKg: 15, tutS: 3, holdPct: 40, workPct: null, completed: false },
@@ -58,7 +58,7 @@ test("alternating sessions get per-hand values and L/R rep labels", () => {
     { set: 1, rep: 3, hand: "left", meanKg: 18, peakKg: 19, tutS: 7, holdPct: 90, completed: true },
   ];
   // 3 of 4 planned hangs done (2 reps per hand)
-  const summary = KINDS.workout.analyze({ reps, routine: { sets: 1, reps: 2, workS: 7, hands: "alternate" }, target: null });
+  const summary = KINDS.workout.analyze({ reps, routine: { type: "hangboard", sets: 1, reps: 2, workS: 7, hands: "alternate" }, target: null });
   assert.equal(summary.totalReps, 4);
   assert.equal(summary.holdPct, (100 + 80 + 90) / 4);
   // per hand: 2 planned hangs each
@@ -66,12 +66,12 @@ test("alternating sessions get per-hand values and L/R rep labels", () => {
   assert.equal(summary.byHand.left.holdPct, 95);
   assert.equal(summary.byHand.right.holdPct, 40); // 1 of 2 right hangs done, at 80 %
   assert.equal(summary.byHand.right.peakKg, 17);
-  const s = { targetKg: null, routine: { workS: 7 }, reps, summary };
+  const s = { targetKg: null, routine: { type: "hangboard", workS: 7 }, reps, summary };
   const labels = KINDS.workout.tiles(s).map((t) => t[1]);
   assert.ok(labels.includes("left hand avg · hold 95 %") && labels.includes("right hand avg · hold 40 %"));
   assert.deepEqual(KINDS.workout.table(s).rows.map((r) => r[0]), ["1.1 L", "1.2 R", "1.3 L"]);
   // one hand only: no per-hand summary
-  assert.equal(KINDS.workout.analyze({ reps: [reps[0]], routine: { sets: 1, reps: 1, workS: 7, hands: "left" }, target: null }).byHand, null);
+  assert.equal(KINDS.workout.analyze({ reps: [reps[0]], routine: { type: "hangboard", sets: 1, reps: 1, workS: 7, hands: "left" }, target: null }).byHand, null);
 
   // History points: one per hand for alternating sessions, the session's hand otherwise
   const session = { hand: "alternate", targetKg: 20, summary };
@@ -91,4 +91,34 @@ test("every History metric has an explanation", () => {
   for (const [kind, def] of Object.entries(KINDS)) {
     for (const m of def.metrics) assert.ok(m.info && m.info.length > 20, `${kind}.${m.key} has no info`);
   }
+});
+
+test("non-sensor routines: reps, time, effort, added weight and volume per set", async () => {
+  const { summarizeTraining } = await import("../../data/tests.js");
+  const routine = { type: "selfpaced", sets: 3, reps: 2, hands: "both", addedWeightKg: 10 };
+  const reps = [
+    { set: 1, rep: 1, durationS: 12 },
+    { set: 1, rep: 2, durationS: 14 },
+    { set: 2, rep: 1, durationS: 15 },
+  ];
+  const sets = [
+    { set: 1, rpe: 6, addedWeightKg: 10 },
+    { set: 2, rpe: 8, addedWeightKg: 12.5 },
+  ];
+  assert.deepEqual(summarizeTraining(reps, sets, routine), {
+    repsDone: 3,
+    totalReps: 6,
+    setsDone: 2,
+    workTimeS: 41,
+    avgRpe: 7,
+    maxRpe: 8,
+    maxAddedWeightKg: 12.5,
+    volumeKg: 10 * 2 + 12.5 * 1,
+  });
+  // nothing logged
+  const bare = summarizeTraining(reps, [], { ...routine, addedWeightKg: null });
+  assert.equal(bare.avgRpe, null);
+  assert.equal(bare.volumeKg, null);
+  // analyze() picks this for non-sensor routines
+  assert.equal(KINDS.workout.analyze({ reps, sets, routine }).volumeKg, 32.5);
 });

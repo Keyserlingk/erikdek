@@ -284,7 +284,7 @@ Next:
   routine and optionally per set), added weight per routine, editor and routine list
   updated, routine files and backups carry the new fields. Existing routines are
   hangboard routines.
-- **G. Run screen without the sensor:** instruction view, stopwatch + Done for
+- **G. Run screen without the sensor (done):** instruction view, stopwatch + Done for
   self-paced reps, per-set effort (RPE) and added-weight entry, no sensor needed;
   workouts mixing types (connect the sensor only for hangboard parts).
 - **H. Summary, History and templates:** non-sensor summaries and metrics (effort,

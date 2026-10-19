@@ -116,6 +116,8 @@ export function renderSession(root, s) {
   );
 
   const chartBox = el("div", { className: "session-chart" });
+  // Sessions without the sensor have no force curve.
+  const hasCurve = !!s.curve && curvePoints(s.curve).x.length > 1;
   const table = kind.table(s);
   const rows = table.rows.map((cells) => el("tr", {}, cells.map((c) => el("td", { textContent: c }))));
   const strips = (kind.strips?.(s) ?? []).filter((strip) => strip.values.length > 1);
@@ -130,9 +132,9 @@ export function renderSession(root, s) {
     el("h1", { textContent: sessionTitle(s) }),
     el("p", { className: "muted", textContent: meta.join(" · ") }),
     tiles,
-    el("div", { className: "card chart-card" }, [chartBox]),
+    ...(hasCurve ? [el("div", { className: "card chart-card" }, [chartBox])] : []),
     ...(strips.length ? [el("div", { className: "card strips" }, strips.map(renderStrip))] : []),
     ...(rows.length ? [tableCard] : []),
   );
-  return s.curve && curvePoints(s.curve).x.length > 1 ? curveChart(chartBox, s.curve) : null;
+  return hasCurve ? curveChart(chartBox, s.curve) : null;
 }

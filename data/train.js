@@ -5,21 +5,23 @@ import { curveCsv, fileDate } from "./export.js";
 import { LiveChart } from "./chart.js";
 import { allowScreenOff, keepScreenOn } from "./wakelock.js";
 import { device } from "./device.js";
-import { formatDuration, formatKg } from "./format.js";
+import { formatClock, formatDuration, formatKg } from "./format.js";
 import {
   BUILTIN_ROUTINES,
   ROUTINE_TYPES,
   buildRoutineFile,
+  instructionFor,
   newRoutineId,
   parseRoutineFile,
   routines,
+  usesSensor,
   validateRoutine,
 } from "./routines.js";
 import { newSessionId, sessions } from "./sessions.js";
 import { renderSession } from "./sessionview.js";
 import { settings } from "./settingsstore.js";
 import { TagSelect, grips, holdTypes } from "./tags.js";
-import { HANDS, KINDS, TEST_IDS } from "./tests.js";
+import { HANDS, KINDS, TEST_IDS, summarizeTraining } from "./tests.js";
 import {
   moveItem,
   newWorkoutId,
@@ -163,9 +165,21 @@ const el = {
     skip: $("runSkip"),
     stop: $("runStop"),
     wakeHint: $("runWakeHint"),
+    screen: $("trainRun"),
+    instruction: $("runInstruction"),
+    done: $("runDone"),
+    setLog: $("runSetLog"),
+    setLogTitle: $("setLogTitle"),
+    setLogRpe: $("setLogRpe"),
+    setLogWeightRow: $("setLogWeightRow"),
+    setLogWeight: $("setLogWeight"),
+    setLogMinus: $("setLogMinus"),
+    setLogPlus: $("setLogPlus"),
   },
   summary: {
     view: $("sumView"),
+    sets: $("sumSets"),
+    setRows: $("sumSetRows"),
     error: $("sumError"),
     discard: $("sumDiscard"),
     save: $("sumSave"),
@@ -316,7 +330,7 @@ function renderList() {
         ...(r.instruction ? [create("p", { className: "muted instruction", textContent: r.instruction })] : []),
         create("div", { className: "actions" }, [
           button("secondary", r.builtin ? "Copy & edit" : "Edit", () => openEditor(r)),
-          button("primary", "Start", () => canRunYet([r]) && startRun("workout", r, r.hands || "both")),
+          button("primary", "Start", () => startRun("workout", r, r.hands || "both")),
         ]),
       ]),
     ),
@@ -571,16 +585,8 @@ async function deleteWorkout() {
 
 // Running: each routine is a normal run; endRun() hands the session over to
 // workoutRoutineDone() instead of showing the routine summary.
-// Self-paced reps need the new run screen (milestone G); until then they can't start.
-function canRunYet(list) {
-  if (!list.some((r) => isOpenEnded(r))) return true;
-  alert("Running self-paced routines comes in the next update.");
-  return false;
-}
-
 function startWorkout(w) {
   const items = resolveRoutines(w, routines.all).filter(Boolean);
-  if (!canRunYet(items)) return;
   if (!items.length) {
     alert("This workout has no routines left. Edit it to add some.");
     return;
@@ -592,14 +598,50 @@ function startWorkout(w) {
 function startWorkoutRoutine() {
   const r = workoutRun.routines[workoutRun.index];
   startRun("workout", r, r.hands || "both");
-  run.inWorkout = true; // set synchronously by startRun before its first await
+  if (run) {
+    run.inWorkout = true; // set synchronously by startRun before its first await
+  } else if (workoutRun.sessions.length) {
+    showWorkoutSummary(); // declined to start without the sensor: end the workout here
+  } else {
+    workoutRun = null;
+  }
 }
 
 function shortResult(s) {
+  if (s.sets) {
+    // Without the sensor: reps, effort, weight.
+    const t = s.summary;
+    const parts = [`${t.repsDone}/${t.totalReps} reps`];
+    if (t.avgRpe !== null) parts.push(`effort ${Math.round(t.avgRpe * 10) / 10}`);
+    if (t.maxAddedWeightKg !== null) parts.push(`${t.maxAddedWeightKg >= 0 ? "+" : "−"}${formatKg(Math.abs(t.maxAddedWeightKg))} kg`);
+    return parts.join(" · ");
+  }
   const parts = [];
   if (s.summary.holdPct !== null && s.summary.holdPct !== undefined) parts.push(`hold ${Math.round(s.summary.holdPct)} %`);
   if (s.summary.avgKg !== null && s.summary.avgKg !== undefined) parts.push(`avg ${formatKg(s.summary.avgKg)} kg`);
   return parts.join(" · ") || "–";
+}
+
+// A finished routine in a workout: name and result, plus (without the sensor) the effort
+// of its last set, which is otherwise logged on the routine summary that workouts skip.
+function resultRow(s, label) {
+  const value = create("span", { textContent: shortResult(s) });
+  const row = [create("div", { className: "result-line" }, [create("span", { textContent: label }), value])];
+  const last = s.sets?.at(-1);
+  if (last) {
+    const select = create("select", {}, [
+      create("option", { value: "", textContent: "Effort, last set –" }),
+      ...Array.from({ length: 10 }, (_, i) => create("option", { value: String(i + 1), textContent: `Effort, last set: ${i + 1}` })),
+    ]);
+    select.value = last.rpe ?? "";
+    select.addEventListener("change", () => {
+      last.rpe = select.value ? Number(select.value) : null;
+      s.summary = summarizeTraining(s.reps, s.sets, s.routine);
+      value.textContent = shortResult(s);
+    });
+    row.push(create("label", { className: "field last-set-effort" }, [select]));
+  }
+  return row;
 }
 
 function workoutRoutineDone(session, stopped) {
@@ -611,9 +653,7 @@ function workoutRoutineDone(session, stopped) {
   }
   el.between.workout.textContent = workout.name;
   el.between.title.textContent = `Routine ${index + 1} of ${items.length} done`;
-  el.between.result.replaceChildren(
-    create("div", { className: "result-line" }, [create("span", { textContent: session.name }), create("span", { textContent: shortResult(session) })]),
-  );
+  el.between.result.replaceChildren(...resultRow(session, session.name));
   const next = items[index + 1];
   el.between.next.replaceChildren(
     create("div", { className: "routine-head" }, [
@@ -638,10 +678,7 @@ function showWorkoutSummary() {
   el.wSum.list.replaceChildren(
     ...done.map((s, i) =>
       create("div", { className: "card" }, [
-        create("div", { className: "result-line" }, [
-          create("span", { textContent: `${i + 1}. ${s.name}${s.stopped ? " (stopped)" : ""}` }),
-          create("span", { textContent: shortResult(s) }),
-        ]),
+        ...resultRow(s, `${i + 1}. ${s.name}${s.stopped ? " (stopped)" : ""}`),
       ]),
     ),
   );
@@ -776,6 +813,11 @@ function startTest() {
 
 
 async function startRun(kind, routine, hand) {
+  // Tests always use the sensor; routines only when they are hangboard routines.
+  const sensor = kind !== "workout" || usesSensor(routine);
+  if (sensor && !device.connected && !confirm(`"${routine.name}" uses the sensor, which isn't connected. Start anyway?`)) {
+    return;
+  }
   unlockAudio();
   mountRunScreens(groupOf(kind));
   const target = targetKg(routine, settings.values.bodyweightKg);
@@ -797,7 +839,14 @@ async function startRun(kind, routine, hand) {
     smoothed: null,
     startedAt: new Date(),
     timer: null,
+    sensor,
+    repStartS: 0, // elapsed time when the current rep began (non-sensor rep times)
+    sets: [], // per set: { set, rpe, addedWeightKg } (non-sensor routines)
+    nextWeightKg: null, // weight entered for the next set
   };
+  el.run.held.hidden = true;
+  el.run.screen.dataset.sensor = String(sensor);
+  el.run.setLog.hidden = true;
   chart.clear();
   chart.setTarget(target);
   el.run.target.textContent = target !== null ? `Target ${formatKg(target)} kg` : kind === "workout" ? "No target" : HANDS[hand];
@@ -820,7 +869,15 @@ function announcePhase(type) {
   window.dispatchEvent(new CustomEvent("erkdek:phase", { detail: { type } }));
 }
 
-function finishRep() {
+function finishRep(now) {
+  const prev = run.phases[run.index];
+  if (!run.sensor) {
+    if (prev?.type === PHASE.WORK) {
+      const durationS = prev.durS ?? run.engine.elapsed(now) - run.repStartS;
+      run.reps.push({ set: prev.set, rep: prev.rep, hand: prev.hand, durationS: Math.round(durationS * 10) / 10 });
+    }
+    return;
+  }
   if (!run.repSamples) return;
   const phase = run.phases[run.index];
   run.attempts.push(run.repSamples);
@@ -828,8 +885,13 @@ function finishRep() {
   run.repSamples = null;
 }
 
-function enterPhase(i) {
-  finishRep();
+function enterPhase(i, now) {
+  const prev = run.phases[run.index];
+  finishRep(now);
+  // A set ends when its last rep ends (the next phase belongs to another set, or done).
+  if (!run.sensor && prev?.type === PHASE.WORK && (i >= run.phases.length || run.phases[i].set !== prev.set)) {
+    setEnded(prev.set, i >= run.phases.length);
+  }
   run.index = i;
   if (i >= run.phases.length) {
     announcePhase("done");
@@ -840,10 +902,59 @@ function enterPhase(i) {
   if (phase.type === PHASE.WORK) {
     run.repSamples = [];
     run.repLoadedSamples = 0;
+    run.repStartS = run.engine.elapsed(now);
+    el.run.setLog.hidden = true;
   }
 }
 
+// ---- per-set log (effort, added weight) for routines without the sensor
+
+function setLog(set) {
+  let log = run.sets.find((s) => s.set === set);
+  if (!log) {
+    // Weight: what was entered after the previous set, else that set's, else the routine's.
+    const weight = run.nextWeightKg ?? run.sets.at(-1)?.addedWeightKg ?? run.routine.addedWeightKg ?? null;
+    log = { set, rpe: null, addedWeightKg: weight };
+    run.sets.push(log);
+  }
+  return log;
+}
+
+function setEnded(set, last) {
+  const log = setLog(set);
+  if (last) return; // the summary lets you log the last set
+  const r = run.routine;
+  el.run.setLogTitle.textContent = `Set ${set} of ${r.sets} done`;
+  renderRpeButtons(log);
+  const usesWeight = r.addedWeightKg !== null && r.addedWeightKg !== undefined;
+  el.run.setLogWeightRow.hidden = !usesWeight;
+  if (usesWeight) el.run.setLogWeight.value = run.nextWeightKg ?? log.addedWeightKg;
+  el.run.setLog.hidden = false;
+}
+
+function renderRpeButtons(log) {
+  el.run.setLogRpe.replaceChildren(
+    ...Array.from({ length: 10 }, (_, i) => {
+      const value = i + 1;
+      const b = button(log.rpe === value ? "active" : "", String(value), () => {
+        log.rpe = log.rpe === value ? null : value; // tap again to clear
+        renderRpeButtons(log);
+      });
+      b.setAttribute("aria-pressed", String(log.rpe === value));
+      return b;
+    }),
+  );
+}
+
+// The weight entered after a set is what the next set is done with.
+function changeLoggedWeight(value) {
+  if (!Number.isFinite(value)) return;
+  run.nextWeightKg = Math.round(value * 10) / 10;
+  el.run.setLogWeight.value = run.nextWeightKg;
+}
+
 function phaseName(type) {
+  if (type === PHASE.WORK && !run.sensor) return run.routine.type === "selfpaced" ? "Go" : "Work";
   if (type === PHASE.WORK) return KINDS[run.kind].workLabel;
   if (type === PHASE.REST && run.routine.hands === "alternate") return "Change hand";
   return { prep: "Get ready", rest: "Rest", setRest: "Set rest" }[type];
@@ -852,7 +963,7 @@ function phaseName(type) {
 function tick() {
   const now = performance.now() / 1000;
   const state = run.engine.update(now);
-  for (const i of state.entered) enterPhase(i);
+  for (const i of state.entered) enterPhase(i, now);
   // One beep per change (hang starts, rest starts, finished); not when starting.
   if (state.entered.some((i) => i > 0)) beep();
   if (state.done) {
@@ -860,17 +971,25 @@ function tick() {
     return;
   }
 
-  const { phase, remainingS } = state;
+  const { phase, remainingS, inPhaseS } = state;
   const next = run.phases[state.index + 1];
   const r = run.routine;
   el.run.card.dataset.phase = phase.type;
   const handLabel = (p) => (p.hand && p.hand !== "both" ? ` · ${p.hand}` : "");
   el.run.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type) + (phase.type === PHASE.WORK ? handLabel(phase) : "");
-  el.run.countdown.textContent = Math.ceil(remainingS);
+  // Countdown, or a stopwatch while a self-paced rep waits for Done.
+  el.run.countdown.textContent = remainingS === null ? formatClock(inPhaseS) : Math.ceil(remainingS);
+  el.run.done.hidden = !run.engine.waitingForDone;
+  el.run.skip.hidden = run.engine.waitingForDone;
+  const instruction = instructionFor(r, phase.set);
+  el.run.instruction.hidden = !instruction;
+  el.run.instruction.textContent = instruction;
   el.run.progress.textContent =
     r.reps * hangsPerRep(r) > 1 ? `Set ${phase.set}/${r.sets} · Rep ${phase.rep}/${r.reps}` : `Attempt ${phase.set}/${r.sets}`;
-  el.run.next.textContent = next ? `Next: ${phaseName(next.type)} ${formatDuration(next.durS)}${handLabel(next)}` : "Last one!";
+  const nextTime = (p) => (p.durS === null ? "" : ` ${formatDuration(p.durS)}`);
+  el.run.next.textContent = next ? `Next: ${phaseName(next.type)}${nextTime(next)}${handLabel(next)}` : "Last one!";
 
+  if (!run.sensor) return;
   const kg = run.smoothed ?? 0;
   el.run.kg.textContent = device.connected ? formatKg(kg) : "–";
   el.run.kg.dataset.status = targetStatus(kg, run.target) ?? "";
@@ -884,7 +1003,7 @@ function buildSession(stopped) {
   const dtS = sampleDtS();
   const r = run.routine;
   const reps = run.reps.map((rep) => Object.fromEntries(Object.entries(rep).map(([k, v]) => [k, round2(v)])));
-  const summary = KINDS[run.kind].analyze({ reps: run.reps, attempts: run.attempts, dtS, routine: r, target: run.target });
+  const summary = KINDS[run.kind].analyze({ reps: run.reps, attempts: run.attempts, dtS, routine: r, target: run.target, sets: run.sets });
   const session = {
     id: newSessionId(),
     type: run.kind,
@@ -901,8 +1020,27 @@ function buildSession(stopped) {
     curve: compressCurve(run.curve, 1 / dtS, { minKg: CURVE_MIN_KG, maxPoints: CURVE_MAX_POINTS }),
   };
   if (run.kind === "workout") {
-    const { name, holdType, grip, hands, sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;
-    session.routine = { id: r.id, name, holdType, grip, hands, sets, reps: repCount, workS, restS, setRestS, prepS, target };
+    const { name, type, instruction, setInstructions, addedWeightKg, holdType, grip, hands } = r;
+    const { sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;
+    session.routine = {
+      id: r.id,
+      name,
+      type: type || "hangboard",
+      instruction,
+      setInstructions,
+      addedWeightKg,
+      holdType,
+      grip,
+      hands,
+      sets,
+      reps: repCount,
+      workS,
+      restS,
+      setRestS,
+      prepS,
+      target,
+    };
+    if (!run.sensor) session.sets = run.sets.map((x) => ({ ...x }));
   }
   if (stopped) session.stopped = true;
   if (run.inWorkout) {
@@ -937,7 +1075,12 @@ function endRun(stopped) {
   if (stopped) announcePhase("done");
   clearInterval(run.timer);
   allowScreenOff();
-  if (stopped) finishRep();
+  if (stopped) {
+    const now = performance.now() / 1000;
+    const prev = run.phases[run.index];
+    finishRep(now);
+    if (!run.sensor && prev?.type === PHASE.WORK) setLog(prev.set);
+  }
   const session = buildSession(stopped);
   const raw = { hz: 1 / sampleDtS(), kg: run.curve, phases: run.curvePhase.map((i) => run.phases[i] ?? null) };
   const inWorkout = run.inWorkout;
@@ -975,6 +1118,46 @@ function showSummary() {
   el.summary.save.disabled = false;
   show("summary");
   summaryChart = renderSession(el.summary.view, result);
+  renderSetEditor();
+}
+
+// Routines without the sensor: effort and weight per set can be filled in or corrected
+// before saving (the last set is always logged here).
+function renderSetEditor() {
+  const sets = result?.sets;
+  el.summary.sets.hidden = !sets?.length;
+  if (!sets?.length) return;
+  const r = result.routine;
+  const usesWeight = r.addedWeightKg !== null && r.addedWeightKg !== undefined;
+  const refresh = () => {
+    result.summary = summarizeTraining(result.reps, result.sets, r);
+    renderSession(el.summary.view, result);
+  };
+  el.summary.setRows.replaceChildren(
+    ...sets.map((log) => {
+      const select = create("select", {}, [
+        create("option", { value: "", textContent: "Effort –" }),
+        ...Array.from({ length: 10 }, (_, i) => create("option", { value: String(i + 1), textContent: `Effort ${i + 1}` })),
+      ]);
+      select.value = log.rpe ?? "";
+      select.addEventListener("change", () => {
+        log.rpe = select.value ? Number(select.value) : null;
+        refresh();
+      });
+      const cells = [create("strong", { textContent: `Set ${log.set}` }), select];
+      if (usesWeight) {
+        const input = create("input", { type: "number", step: "0.5", inputMode: "decimal", value: log.addedWeightKg ?? "" });
+        input.setAttribute("aria-label", `Added weight in set ${log.set} (kg)`);
+        input.addEventListener("change", () => {
+          const v = parseFloat(input.value);
+          log.addedWeightKg = Number.isFinite(v) ? v : null;
+          refresh();
+        });
+        cells.push(input);
+      }
+      return create("div", { className: "set-row" }, cells);
+    }),
+  );
 }
 
 async function saveResult() {
@@ -1026,7 +1209,7 @@ export function initTrain() {
   // Data is stored in the app, so it loads right away (no device needed).
   for (const store of [routines, holdTypes, grips, workouts]) store.load().catch((e) => showListError(e.message));
   device.on("samples", (msg) => {
-    if (!run) return;
+    if (!run || !run.sensor) return;
     chart.push(msg.ts, msg.te ?? msg.ts, msg.kg);
     for (const kg of msg.kg) run.smoothed = run.smoothed === null ? kg : run.smoothed + 0.08 * (kg - run.smoothed);
     if (run.engine.paused || run.index < 0) return; // not started yet (or paused)
@@ -1093,6 +1276,13 @@ export function initTrain() {
     tick();
   });
   el.run.stop.addEventListener("click", stopRun);
+  el.run.done.addEventListener("click", () => {
+    run.engine.finishRep(performance.now() / 1000);
+    tick();
+  });
+  el.run.setLogMinus.addEventListener("click", () => changeLoggedWeight(parseFloat(el.run.setLogWeight.value || "0") - 2.5));
+  el.run.setLogPlus.addEventListener("click", () => changeLoggedWeight(parseFloat(el.run.setLogWeight.value || "0") + 2.5));
+  el.run.setLogWeight.addEventListener("change", () => changeLoggedWeight(parseFloat(el.run.setLogWeight.value)));
   el.summary.save.addEventListener("click", saveResult);
   el.summary.rawCsv.addEventListener("click", () =>
     downloadCsv(`erkdek-${result.type}-${fileDate(new Date(result.startedAt))}-${result.id}-raw.csv`, curveCsv(resultRaw, resultRaw.phases)),

@@ -159,3 +159,44 @@ test("loadThresholdKg and targetStatus", () => {
   assert.equal(targetStatus(25.5, 25), "on");
   assert.equal(targetStatus(27, 25), "above");
 });
+
+test("open-ended phases wait for finishRep, then the rest counts down", () => {
+  const r = { sets: 1, reps: 2, workS: 0, restS: 10, setRestS: 0, prepS: 5, type: "selfpaced" };
+  const engine = new WorkoutEngine(buildPhases(r));
+  engine.start(0);
+  assert.deepEqual(engine.update(0).entered, [0]);
+
+  let s = engine.update(40); // prep over long ago; the first rep waits
+  assert.deepEqual(s.entered, [1]);
+  assert.equal(s.phase.type, "work");
+  assert.equal(s.remainingS, null);
+  assert.equal(s.inPhaseS, 35); // stopwatch since the rep began at 5 s
+  assert.equal(engine.waitingForDone, true);
+
+  engine.finishRep(40);
+  s = engine.update(43);
+  assert.deepEqual(s.entered, [2]);
+  assert.equal(s.phase.type, "rest");
+  assert.equal(s.remainingS, 7); // rest started when Done was tapped
+
+  s = engine.update(55); // rest ended at 50 → second rep, waiting 5 s
+  assert.equal(s.phase.type, "work");
+  assert.equal(s.inPhaseS, 5);
+  engine.finishRep(60);
+  s = engine.update(60);
+  assert.equal(s.done, true);
+  assert.deepEqual(s.entered, [4]);
+});
+
+test("pausing freezes the stopwatch of an open-ended rep; finishRep is ignored in timed phases", () => {
+  const r = { sets: 1, reps: 1, workS: 0, restS: 0, setRestS: 0, prepS: 5, type: "selfpaced" };
+  const engine = new WorkoutEngine(buildPhases(r));
+  engine.start(0);
+  engine.finishRep(2); // still in the timed get-ready phase: no effect
+  assert.equal(engine.update(2).phase.type, "prep");
+  engine.update(8);
+  engine.pause(10);
+  assert.equal(engine.update(100).inPhaseS, 5);
+  engine.resume(100);
+  assert.equal(engine.update(101).inPhaseS, 6);
+});
