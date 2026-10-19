@@ -4,6 +4,8 @@ export function formatKg(kg, digits = 1) {
 }
 
 export function formatBytes(b) {
+  if (b < 1024) return `${b} B`;
+  if (b >= 1024 ** 3) return `${(b / 1024 ** 3).toFixed(1)} GB`;
   return b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
 }
 

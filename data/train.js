@@ -15,7 +15,7 @@ import {
 } from "./routines.js";
 import { newSessionId, sessions } from "./sessions.js";
 import { renderSession } from "./sessionview.js";
-import { settings } from "./settings.js";
+import { settings } from "./settingsstore.js";
 import { TagSelect, grips, holdTypes } from "./tags.js";
 import { HANDS, KINDS, TEST_IDS } from "./tests.js";
 import {
@@ -163,7 +163,7 @@ let editing = null; // routine being edited (copy)
 let setup = null; // test being set up: { kind, hand }
 let run = null; // active workout or test
 let result = null; // finished, unsaved session
-let resultRaw = null; // its full-rate curve and per-sample phase (not stored on the device)
+let resultRaw = null; // its full-rate curve and per-sample phase (not saved with the session)
 let chart = null;
 let summaryChart = null;
 let selects = null; // TagSelects: editHold, editGrip, setupHold, setupGrip
@@ -940,13 +940,8 @@ export function initTrain() {
 
   routines.addEventListener("change", renderList);
   workouts.addEventListener("change", renderList);
-  device.on("connection", (state) => {
-    if (state !== "open") return;
-    routines.load().then(() => showListError(""), (e) => showListError(e.message));
-    holdTypes.load().catch((e) => showListError(e.message));
-    grips.load().catch((e) => showListError(e.message));
-    workouts.load().catch((e) => showListError(e.message));
-  });
+  // Data is stored in the app, so it loads right away (no device needed).
+  for (const store of [routines, holdTypes, grips, workouts]) store.load().catch((e) => showListError(e.message));
   device.on("samples", (msg) => {
     if (!run) return;
     chart.push(msg.ts, msg.te ?? msg.ts, msg.kg);

@@ -1,48 +1,14 @@
 import { device } from "./device.js";
 import { formatBytes } from "./format.js";
 import { sessions } from "./sessions.js";
+import {
+  MAX_BODYWEIGHT_KG,
+  MAX_REP_THRESHOLD_KG,
+  MIN_BODYWEIGHT_KG,
+  MIN_REP_THRESHOLD_KG,
+  settings,
+} from "./settingsstore.js";
 import { grips, holdTypes, initTagManager } from "./tags.js";
-
-export const MIN_BODYWEIGHT_KG = 20;
-export const MAX_BODYWEIGHT_KG = 250;
-export const MIN_REP_THRESHOLD_KG = 0.5;
-export const MAX_REP_THRESHOLD_KG = 50;
-
-// Settings stored on the device (GET/PUT /api/settings). Fires "change" after load/save.
-class SettingsStore extends EventTarget {
-  constructor() {
-    super();
-    this.values = { bodyweightKg: 0, repThresholdKg: 2 };
-  }
-
-  async load() {
-    const res = await fetch("/api/settings");
-    if (!res.ok) throw new Error(`Loading settings failed (${res.status})`);
-    this._set(await res.json());
-  }
-
-  async save(changes) {
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(changes),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Saving failed (${res.status})`);
-    this._set(body);
-  }
-
-  _set(values) {
-    this.values = { ...this.values, ...values };
-    this.dispatchEvent(new Event("change"));
-  }
-
-  onChange(handler) {
-    this.addEventListener("change", () => handler(this.values));
-  }
-}
-
-export const settings = new SettingsStore();
 
 const el = {
   bodyweight: document.getElementById("setBodyweight"),
@@ -56,11 +22,10 @@ const el = {
 const about = {
   web: document.getElementById("aboutWeb"),
   fw: document.getElementById("aboutFw"),
-  storage: document.getElementById("aboutStorage"),
-  app: document.getElementById("aboutApp"),
   sessions: document.getElementById("aboutSessions"),
   lists: document.getElementById("aboutLists"),
-  fs: document.getElementById("aboutFs"),
+  used: document.getElementById("aboutUsed"),
+  quota: document.getElementById("aboutQuota"),
 };
 
 // Refreshes versions and the storage breakdown; called when Settings is shown.
@@ -74,15 +39,13 @@ export async function showAbout() {
   }
   try {
     const st = await sessions.storage();
-    // Whatever isn't in a file: directories and the file system's own bookkeeping.
-    const fsBytes = Math.max(0, st.usedBytes - st.sessionsBytes - st.listsBytes - st.appBytes);
-    about.storage.textContent = `${formatBytes(st.usedBytes)} of ${formatBytes(st.totalBytes)} (${Math.round((100 * st.usedBytes) / st.totalBytes)} %)`;
-    about.app.textContent = formatBytes(st.appBytes);
-    about.sessions.textContent = formatBytes(st.sessionsBytes);
+    about.sessions.textContent = `${formatBytes(st.sessionsBytes)} (${sessions.index.length})`;
     about.lists.textContent = formatBytes(st.listsBytes);
-    about.fs.textContent = formatBytes(fsBytes);
+    // The browser's estimate for the whole app (data plus its own overhead).
+    about.used.textContent = st.usedBytes === null ? "–" : formatBytes(st.usedBytes);
+    about.quota.textContent = st.quotaBytes === null ? "–" : formatBytes(st.quotaBytes - (st.usedBytes ?? 0));
   } catch {
-    for (const key of ["storage", "app", "sessions", "lists", "fs"]) about[key].textContent = "–";
+    for (const key of ["sessions", "lists", "used", "quota"]) about[key].textContent = "–";
   }
 }
 
@@ -99,10 +62,7 @@ export function initSettings() {
   device.on("status", (st) => {
     about.fw.textContent = st.fw || "–";
   });
-  device.on("connection", (state) => {
-    el.save.disabled = state !== "open";
-    if (state === "open") settings.load().catch((e) => showMessage(e.message, true));
-  });
+  settings.load().catch((e) => showMessage(e.message, true));
 
   initTagManager(
     document.getElementById("manageHolds"),
@@ -133,7 +93,7 @@ export function initSettings() {
     }
     try {
       await settings.save({ bodyweightKg: bw, repThresholdKg: thr });
-      showMessage("Saved on the device.");
+      showMessage("Saved.");
     } catch (e) {
       showMessage(e.message, true);
     }

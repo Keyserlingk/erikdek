@@ -1,7 +1,7 @@
 import { LiveChart } from "./chart.js";
 import { device } from "./device.js";
 import { formatKg } from "./format.js";
-import { settings } from "./settings.js";
+import { settings } from "./settingsstore.js";
 import { targetStatus } from "./workout.js";
 
 const SAMPLE_RATE_HZ = 80;

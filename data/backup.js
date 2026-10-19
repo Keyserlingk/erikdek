@@ -5,7 +5,7 @@ import { downloadJson } from "./download.js";
 import { buildBackup, fileDate, mergeBy, parseBackup } from "./export.js";
 import { routines } from "./routines.js";
 import { sessions } from "./sessions.js";
-import { settings } from "./settings.js";
+import { settings } from "./settingsstore.js";
 import { formatDateTime } from "./sessionview.js";
 import { grips, holdTypes } from "./tags.js";
 import { workouts } from "./workouts.js";
@@ -35,8 +35,8 @@ function showMessage(text, isError = false) {
 }
 
 function setBusy(busy) {
-  el.download.disabled = busy || !device.connected;
-  el.file.disabled = busy || !device.connected;
+  el.download.disabled = busy;
+  el.file.disabled = busy;
   el.restore.disabled = busy;
 }
 
@@ -125,8 +125,9 @@ async function restore() {
       done.push(`${missing.length} sessions (${b.sessions.length - missing.length} already there)`);
     }
     if (o.calibration.checked && b.calibration) {
-      device.send("setCalibration", { cpk: b.calibration.cpk });
-      done.push("calibration");
+      // Calibration lives on the sensor, so it needs a connection.
+      if (device.send("setCalibration", { cpk: b.calibration.cpk })) done.push("calibration");
+      else done.push("not the calibration (no device connected)");
     }
     pending = null;
     el.preview.hidden = true;
@@ -139,7 +140,6 @@ async function restore() {
 }
 
 export function initBackup() {
-  device.on("connection", () => setBusy(false));
   el.download.addEventListener("click", createBackup);
   el.file.addEventListener("change", openFile);
   el.restore.addEventListener("click", restore);

@@ -9,7 +9,10 @@ python3 tools/mock_server.py            # http://localhost:8080
 ```
 
 To use it from your phone, open `http://<laptop-ip>:8080` (same WiFi).
-The mock simulates hangs and pulls at 80 Hz using the same protocol as the firmware.
+The mock simulates the sensor (hangs and pulls at 80 Hz, tare, calibration) using the
+same protocol as the firmware. The app stores its own data (settings, routines,
+workouts, sessions) in the browser's IndexedDB, per browser and per address:
+`localhost:8080` and `192.168.0.8:8080` are separate stores.
 
 The ESP stores the web app gzipped (`tools/gzip_data.py` runs on `buildfs`/`uploadfs`)
 and serves `foo.js.gz` for `/foo.js`. To test that exact bundle with the mock:

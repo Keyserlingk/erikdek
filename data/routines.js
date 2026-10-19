@@ -1,7 +1,8 @@
+import { loadList, saveList } from "./db.js";
 import { MAX_TAG_LENGTH } from "./tags.js";
 import { HAND_OPTIONS } from "./workout.js";
 
-// Built-in routines ship with the web app; custom ones are stored on the device.
+// Built-in routines ship with the app; custom ones are stored in the app (see RoutineStore).
 
 export const BUILTIN_ROUTINES = [
   {
@@ -92,6 +93,9 @@ const LABELS = {
   prepS: "Get ready time",
 };
 
+const MAX_ROUTINES = 100;
+
+// Own routines stored in the app (db "kv" → "routines"); templates are BUILTIN_ROUTINES.
 class RoutineStore extends EventTarget {
   constructor() {
     super();
@@ -107,9 +111,7 @@ class RoutineStore extends EventTarget {
   }
 
   async load() {
-    const res = await fetch("/api/routines");
-    if (!res.ok) throw new Error(`Loading routines failed (${res.status})`);
-    this.custom = await res.json();
+    this.custom = await loadList("routines");
     this.dispatchEvent(new Event("change"));
   }
 
@@ -128,14 +130,7 @@ class RoutineStore extends EventTarget {
   }
 
   async _put(list) {
-    const res = await fetch("/api/routines", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(list),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Saving failed (${res.status})`);
-    this.custom = body;
+    this.custom = await saveList("routines", list, MAX_ROUTINES);
     this.dispatchEvent(new Event("change"));
   }
 }

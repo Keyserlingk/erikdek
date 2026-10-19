@@ -1,14 +1,17 @@
-// Holds and grips: a standard list in the web app plus the user's own entries, stored on
-// the device (GET/PUT /api/holdtypes, /api/grips). Also the dropdown and the Settings
-// manager used for both.
+// Holds and grips: a standard list in the app plus the user's own entries, stored in the
+// app (db "kv" → "holdtypes" / "grips"). Also the dropdown and the Settings manager used
+// for both.
+
+import { loadList, saveList } from "./db.js";
 
 export const MAX_TAG_LENGTH = 30;
 const NEW_VALUE = "__new__";
+const MAX_TAGS = 100;
 
 class TagList extends EventTarget {
-  constructor(url, builtins) {
+  constructor(key, builtins) {
     super();
-    this.url = url;
+    this.key = key;
     this.builtins = builtins;
     this.custom = [];
   }
@@ -26,9 +29,7 @@ class TagList extends EventTarget {
   }
 
   async load() {
-    const res = await fetch(this.url);
-    if (!res.ok) throw new Error(`Loading ${this.url} failed (${res.status})`);
-    this.custom = await res.json();
+    this.custom = await loadList(this.key);
     this.dispatchEvent(new Event("change"));
   }
 
@@ -47,20 +48,13 @@ class TagList extends EventTarget {
   }
 
   async _put(list) {
-    const res = await fetch(this.url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(list),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Saving failed (${res.status})`);
-    this.custom = body;
+    this.custom = await saveList(this.key, list, MAX_TAGS);
     this.dispatchEvent(new Event("change"));
   }
 }
 
 // What you hang on.
-export const holdTypes = new TagList("/api/holdtypes", [
+export const holdTypes = new TagList("holdtypes", [
   "20 mm edge",
   "15 mm edge",
   "10 mm edge",
@@ -73,7 +67,7 @@ export const holdTypes = new TagList("/api/holdtypes", [
 ]);
 
 // How the hand/fingers hold it.
-export const grips = new TagList("/api/grips", [
+export const grips = new TagList("grips", [
   "Open hand",
   "Half crimp",
   "Full crimp",

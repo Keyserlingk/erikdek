@@ -225,7 +225,7 @@ granular rep metrics, gzip bundle and About.
 (4. WiFi networking was dropped in favour of Bluetooth.)
 
 Next:
-- **A. App storage:** move settings, routines, workouts, holds/grips and sessions from
+- **A. App storage (done):** move settings, routines, workouts, holds/grips and sessions from
   the ESP's HTTP API to IndexedDB behind the existing store interfaces. Backup,
   restore and exports keep working. Storage info under Settings → About reflects the
   phone.

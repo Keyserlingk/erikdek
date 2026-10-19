@@ -94,7 +94,7 @@ export function initCalibrate() {
   });
   device.on("calibrated", (msg) => {
     if (step === "measuring") {
-      el.result.textContent = `${formatKg(measuredKg, 2)} kg now reads correctly (${Math.abs(msg.cpk).toFixed(0)} counts/kg). Saved on the device.`;
+      el.result.textContent = `${formatKg(measuredKg, 2)} kg now reads correctly (${Math.abs(msg.cpk).toFixed(0)} counts/kg). Saved on the sensor.`;
       setStep("done");
     }
     device.status = { ...device.status, calibrated: msg.calibrated, cpk: msg.cpk };

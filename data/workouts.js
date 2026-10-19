@@ -1,10 +1,12 @@
 // Workouts: named, ordered lists of routines (own routines or templates) run one after
-// another. Stored on the device (GET/PUT /api/workouts) as { id, name, routineIds }.
+// another. Stored in the app (db "kv" → "workouts") as { id, name, routineIds }.
 // The logic here has no DOM access, so it runs under node --test too.
 
+import { loadList, saveList } from "./db.js";
 import { totalDurationS } from "./workout.js";
 
 export const MAX_WORKOUT_ITEMS = 20;
+const MAX_WORKOUTS = 50;
 
 // Returns an error message, or null when the workout is valid.
 export function validateWorkout(w) {
@@ -52,9 +54,7 @@ class WorkoutStore extends EventTarget {
   }
 
   async load() {
-    const res = await fetch("/api/workouts");
-    if (!res.ok) throw new Error(`Loading workouts failed (${res.status})`);
-    this.list = await res.json();
+    this.list = await loadList("workouts");
     this.dispatchEvent(new Event("change"));
   }
 
@@ -69,14 +69,7 @@ class WorkoutStore extends EventTarget {
   }
 
   async replaceAll(list) {
-    const res = await fetch("/api/workouts", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(list),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Saving failed (${res.status})`);
-    this.list = body;
+    this.list = await saveList("workouts", list, MAX_WORKOUTS);
     this.dispatchEvent(new Event("change"));
   }
 }

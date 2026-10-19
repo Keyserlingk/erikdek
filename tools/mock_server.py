@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Mock Erkdek ESP32: serves data/ and speaks the same WebSocket protocol as the firmware.
+"""Mock Erkdek sensor: serves data/ and simulates the device over a WebSocket (live
+force, tare, calibration, "pull during each hang"). The app stores its own data
+(IndexedDB), so this only stands in for the sensor.
 
 Standard library only. Run:  python3 tools/mock_server.py [--port 8080]
 then open http://localhost:8080 (or http://<laptop-ip>:8080 from the phone).
 """
 import argparse
 import base64
-import gzip
 import hashlib
 import json
 import math
 import os
 import random
-import re
 import struct
 import subprocess
 import threading
@@ -27,10 +27,6 @@ PUSH_RATE_HZ = 20
 TARE_SAMPLES = 40  # 0.5 s, same as firmware
 CALIBRATION_SAMPLES = 80  # 1 s, same as firmware
 MIN_CALIBRATION_COUNTS = 5000
-MIN_BODYWEIGHT_KG, MAX_BODYWEIGHT_KG = 20, 250
-MIN_REP_THRESHOLD_KG, MAX_REP_THRESHOLD_KG = 0.5, 50
-# User lists stored as JSON array files on the device: name -> (max items, max bytes)
-JSON_LISTS = {"routines": (50, 16384), "holdtypes": (50, 4096), "grips": (50, 4096), "workouts": (30, 8192)}
 
 # The simulated cell is ~12 % off from the firmware's default factor, so calibration matters.
 DEFAULT_COUNTS_PER_KG = 14300.0
@@ -39,10 +35,6 @@ RAW_ZERO = 52000  # raw reading with no load
 NOISE_COUNTS = 900  # ~0.06 kg
 
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mock_state.json")
-SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".mock_sessions")
-SESSION_ID = re.compile(r"^[a-z0-9]{1,16}$")
-MAX_SESSION_BYTES = 32768
-FS_TOTAL_BYTES = 1441792  # LittleFS partition on the ESP32
 def git_version():
     """Short git SHA (with -dirty), reported as firmware and web app version."""
     try:
@@ -55,101 +47,6 @@ def git_version():
 
 
 VERSION = git_version()
-
-FS_BLOCK = 4096  # LittleFS stores every file in whole 4 KB blocks
-FS_OVERHEAD_BLOCKS = 4  # superblock and directories (root, /s, /vendor)
-LIST_FILES = 4  # routines, workouts, holdtypes, grips .json (1 block each)
-
-
-def fs_blocks(size):
-    return max(1, -(-size // FS_BLOCK))
-
-
-def web_app_bytes():
-    """Flash used by the gzipped web app, as tools/gzip_data.py puts it on the ESP."""
-    total = 0
-    for root, _, files in os.walk(DATA_DIR):
-        for name in files:
-            with open(os.path.join(root, name), "rb") as f:
-                total += fs_blocks(len(gzip.compress(f.read(), compresslevel=9, mtime=0))) * FS_BLOCK
-    return total
-
-
-class SessionStore:
-    """Same layout and rules as src/sessions.cpp: one file per session plus an NDJSON index."""
-
-    def __init__(self):
-        os.makedirs(SESSIONS_DIR, exist_ok=True)
-        self.index_path = os.path.join(SESSIONS_DIR, "sessions.ndjson")
-        self.lock = threading.Lock()
-
-    def path(self, sid):
-        return os.path.join(SESSIONS_DIR, f"{sid}.json")
-
-    def storage(self):
-        """Estimate of LittleFS usage on the ESP (whole blocks per file), like /api/storage."""
-        sessions = sum(fs_blocks(os.path.getsize(os.path.join(SESSIONS_DIR, f))) for f in os.listdir(SESSIONS_DIR))
-        use = {
-            "sessionsBytes": sessions * FS_BLOCK,
-            "listsBytes": LIST_FILES * FS_BLOCK,
-            "appBytes": web_app_bytes(),
-        }
-        used = sum(use.values()) + FS_OVERHEAD_BLOCKS * FS_BLOCK
-        return {"totalBytes": FS_TOTAL_BYTES, "usedBytes": used, **use}
-
-    def used_bytes(self):
-        return self.storage()["usedBytes"]
-
-    def index(self):
-        try:
-            with open(self.index_path) as f:
-                return f.read()
-        except OSError:
-            return ""
-
-    def get(self, sid):
-        """Returns (status, body)."""
-        if not SESSION_ID.match(sid):
-            return 400, {"error": "invalid id"}
-        try:
-            with open(self.path(sid)) as f:
-                return 200, json.load(f)
-        except OSError:
-            return 404, {"error": "not found"}
-
-    def save(self, body):
-        if not isinstance(body, dict):
-            return 400, {"error": "expected an object"}
-        sid = body.get("id", "")
-        if not isinstance(sid, str) or not SESSION_ID.match(sid):
-            return 400, {"error": "invalid id"}
-        data = json.dumps(body, separators=(",", ":"))
-        with self.lock:
-            if os.path.exists(self.path(sid)):
-                return 409, {"error": "session exists"}
-            if FS_TOTAL_BYTES - self.used_bytes() < 65536 + len(data):
-                return 507, {"error": "storage full"}
-            with open(self.path(sid), "w") as f:
-                f.write(data)
-            entry = {"id": sid, **{k: v for k, v in body.items() if k not in ("id", "curve", "reps")}}
-            with open(self.index_path, "a") as f:
-                f.write(json.dumps(entry, separators=(",", ":")) + "\n")
-        return 201, entry
-
-    def delete(self, sid):
-        if not SESSION_ID.match(sid):
-            return 400, {"error": "invalid id"}
-        with self.lock:
-            try:
-                os.remove(self.path(sid))
-            except OSError:
-                pass
-            prefix = '{"id":"%s"' % sid
-            lines = [l for l in self.index().splitlines() if l and not l.startswith(prefix)]
-            with open(self.index_path, "w") as f:
-                f.write("".join(l + "\n" for l in lines))
-        return 204, None
-
 
 class SimulatedLoadCell:
     """Generates raw HX711 counts for a selectable scenario.
@@ -253,9 +150,6 @@ class Device:
         self.offset = 0
         self.counts_per_kg = DEFAULT_COUNTS_PER_KG
         self.calibrated = False
-        self.settings = {"bodyweightKg": 0, "repThresholdKg": 2}
-        self.lists = {name: [] for name in JSON_LISTS}
-        self.sessions = SessionStore()
         self.cal_kg = 0.0
         self.tared = False
         self.tare_avg = RawAverager()
@@ -274,48 +168,12 @@ class Device:
                 state = json.load(f)
             self.counts_per_kg = state["counts_per_kg"]
             self.calibrated = state["calibrated"]
-            self.settings.update(state.get("settings", {}))
-            for name in JSON_LISTS:
-                self.lists[name] = state.get(name, [])
         except (OSError, ValueError, KeyError):
             pass
 
     def save_state(self):
         with open(STATE_FILE, "w") as f:
-            json.dump(
-                {
-                    "counts_per_kg": self.counts_per_kg,
-                    "calibrated": self.calibrated,
-                    "settings": self.settings,
-                    **self.lists,
-                },
-                f,
-            )
-
-    def update_settings(self, body):
-        """Same rules as the firmware's PUT /api/settings. Returns an error string or None."""
-        if "bodyweightKg" in body:
-            bw = body["bodyweightKg"]
-            if not isinstance(bw, (int, float)) or (bw != 0 and not MIN_BODYWEIGHT_KG <= bw <= MAX_BODYWEIGHT_KG):
-                return "bodyweightKg out of range"
-            self.settings["bodyweightKg"] = bw
-        if "repThresholdKg" in body:
-            thr = body["repThresholdKg"]
-            if not isinstance(thr, (int, float)) or not MIN_REP_THRESHOLD_KG <= thr <= MAX_REP_THRESHOLD_KG:
-                return "repThresholdKg out of range"
-            self.settings["repThresholdKg"] = thr
-        self.save_state()
-        return None
-
-    def replace_list(self, name, body):
-        """Same rules as the firmware's PUT /api/<list>. Returns an error string or None."""
-        if not isinstance(body, list):
-            return "expected an array"
-        if len(body) > JSON_LISTS[name][0]:
-            return "too many items"
-        self.lists[name] = body
-        self.save_state()
-        return None
+            json.dump({"counts_per_kg": self.counts_per_kg, "calibrated": self.calibrated}, f)
 
     def millis(self):
         return int((time.monotonic() - self.boot) * 1000)
@@ -472,19 +330,8 @@ def make_handler(device, gzip_dir=None):
         def do_GET(self):
             if self.path == "/ws" and self.headers.get("Upgrade", "").lower() == "websocket":
                 return self.serve_websocket()
-            if self.path == "/api/settings":
-                return self.send_json(200, device.settings)
-            name = self.path.removeprefix("/api/")
-            if name in JSON_LISTS:
-                return self.send_json(200, device.lists[name])
-            if self.path == "/api/sessions":
-                return self.send_body(200, device.sessions.index().encode(), "application/x-ndjson")
-            if self.path.startswith("/api/sessions/"):
-                return self.send_json(*device.sessions.get(self.path.removeprefix("/api/sessions/")))
             if self.path == "/version.json" and not gzip_dir:  # generated at uploadfs on the ESP
                 return self.send_json(200, {"version": VERSION})
-            if self.path == "/api/storage":
-                return self.send_json(200, device.sessions.storage())
             if gzip_dir:
                 return self.serve_gzipped()
             return super().do_GET()
@@ -505,48 +352,6 @@ def make_handler(device, gzip_dir=None):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
-
-        def do_POST(self):
-            if self.path != "/api/sessions":
-                return self.send_json(404, {"error": "not found"})
-            length = int(self.headers.get("Content-Length", 0))
-            if length > MAX_SESSION_BYTES:
-                self.rfile.read(length)
-                return self.send_json(413, {"error": "too large"})
-            try:
-                body = json.loads(self.rfile.read(length))
-            except ValueError:
-                return self.send_json(400, {"error": "invalid JSON"})
-            return self.send_json(*device.sessions.save(body))
-
-        def do_DELETE(self):
-            if not self.path.startswith("/api/sessions/"):
-                return self.send_json(404, {"error": "not found"})
-            status, body = device.sessions.delete(self.path.removeprefix("/api/sessions/"))
-            if body is None:
-                return self.send_body(status, b"", "text/plain")
-            return self.send_json(status, body)
-
-        def do_PUT(self):
-            length = int(self.headers.get("Content-Length", 0))
-            name = self.path.removeprefix("/api/")
-            if name in JSON_LISTS and length > JSON_LISTS[name][1]:
-                return self.send_json(413, {"error": "too large"})
-            try:
-                body = json.loads(self.rfile.read(length))
-            except ValueError:
-                return self.send_json(400, {"error": "invalid JSON"})
-            if self.path == "/api/settings":
-                error = device.update_settings(body) if isinstance(body, dict) else "expected an object"
-                result = device.settings
-            elif name in JSON_LISTS:
-                error = device.replace_list(name, body)
-                result = device.lists[name]
-            else:
-                return self.send_json(404, {"error": "not found"})
-            if error:
-                return self.send_json(400, {"error": error})
-            return self.send_json(200, result)
 
         def send_json(self, code, obj):
             self.send_body(code, json.dumps(obj).encode(), "application/json")

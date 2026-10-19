@@ -1,4 +1,3 @@
-import { device } from "./device.js";
 import { downloadCsv, downloadJson } from "./download.js";
 import { formatBytes } from "./format.js";
 import { fileDate, historyCsv, storedCurveCsv } from "./export.js";
@@ -235,9 +234,7 @@ async function renderStorage() {
     // Only the saved sessions here; the full breakdown is under Settings → About.
     const st = await sessions.storage();
     const n = sessions.index.length;
-    el.storage.textContent =
-      `Saved routines & tests: ${formatBytes(st.sessionsBytes)} (${n} session${n === 1 ? "" : "s"}) · ` +
-      `${formatBytes(st.totalBytes - st.usedBytes)} free`;
+    el.storage.textContent = `Saved routines & tests: ${formatBytes(st.sessionsBytes)} (${n} session${n === 1 ? "" : "s"})`;
   } catch {
     el.storage.textContent = "";
   }
@@ -319,9 +316,7 @@ export function initHistory() {
     if (el.detail.hidden) render();
     renderStorage();
   });
-  device.on("connection", (state) => {
-    if (state === "open") sessions.load().then(() => showError(el.error, ""), (e) => showError(el.error, e.message));
-  });
+  sessions.load().catch((e) => showError(el.error, e.message));
   new ResizeObserver(() => {
     if (progressChart) progressChart.setSize({ width: el.chart.clientWidth, height: el.chart.clientHeight });
   }).observe(el.chart);
