@@ -427,6 +427,8 @@ label.pill-button { display: inline-flex; align-items: center; cursor: pointer; 
 .session-chart { min-height: 160px; }
 
 .storage-line { margin-bottom: 14px; font-size: 14px; }
+.sensor-state { font-size: 14px; margin: 12px 0; }
+#sensorMode { margin-top: 4px; }
 .about { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0 0 12px; }
 .about dt { color: var(--muted); }
 .about dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }

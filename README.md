@@ -18,6 +18,22 @@ To try it on the phone, open `http://<laptop-ip>:8080` (same WiFi).
 The app stores its data (settings, routines, workouts, sessions) in IndexedDB, per
 browser and per address: `localhost:8080` and `192.168.0.8:8080` are separate stores.
 
+## Android app
+
+Capacitor wraps `data/` into an Android app (`android/`) that talks to the sensor over
+Bluetooth LE (`data/bletransport.js`). Needs Node 22 (`nvm use`), JDK 21 and the
+Android SDK command-line tools (see PLAN.md → Toolchain).
+
+```sh
+npm run android           # build android/app/build/outputs/apk/debug/app-debug.apk
+npm run android:install   # build and install on the phone (USB debugging on)
+python3 tools/make_icons.py   # regenerate app icon and splash screens
+```
+
+The app starts with the simulated sensor; switch to **Erkdek (Bluetooth)** under
+Settings → Sensor. The first connection shows Android's device picker; the chosen
+sensor is remembered and reconnected automatically.
+
 ## Firmware
 
 Requires PlatformIO (`pipx install platformio`). The ESP is a Bluetooth LE sensor

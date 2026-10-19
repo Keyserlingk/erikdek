@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 tools/.mock_state.json
 tools/.mock_sessions/
+node_modules/
+data/vendor/capacitor/
+data/version.json

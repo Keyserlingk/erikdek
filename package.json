@@ -3,6 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/js/"
+    "test": "node --test test/js/",
+    "vendor": "node tools/vendor.mjs",
+    "android": "bash tools/build_android.sh",
+    "android:install": "bash tools/build_android.sh --install"
+  },
+  "dependencies": {
+    "@capacitor-community/bluetooth-le": "^8.3.0",
+    "@capacitor-community/keep-awake": "^8.0.1",
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
   }
 }

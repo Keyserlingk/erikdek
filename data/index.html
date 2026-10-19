@@ -338,6 +338,16 @@
     <section id="view-settings" hidden>
       <h1>Settings</h1>
       <div class="card">
+        <h2>Sensor</h2>
+        <p id="sensorInfo" class="muted"></p>
+        <div id="sensorMode" class="segmented wide" role="group" aria-label="Sensor" hidden>
+          <button type="button" data-mode="sim">Simulated</button>
+          <button type="button" data-mode="ble">Erkdek (Bluetooth)</button>
+        </div>
+        <p id="sensorState" class="sensor-state"></p>
+        <button id="sensorChoose" class="secondary" type="button" hidden>Choose sensor…</button>
+      </div>
+      <div class="card">
         <h2>Calibration</h2>
         <p id="setCalStatus" class="muted"></p>
         <a href="#calibrate" class="button-link secondary">Calibrate</a>

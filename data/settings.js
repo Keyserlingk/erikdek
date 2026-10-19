@@ -1,4 +1,5 @@
 import { device } from "./device.js";
+import { isNativeApp, sensorMode, setSensorMode } from "./platform.js";
 import { formatBytes } from "./format.js";
 import { sessions } from "./sessions.js";
 import {
@@ -16,6 +17,51 @@ const el = {
   save: document.getElementById("setSave"),
   message: document.getElementById("setMessage"),
 };
+
+// ---------------------------------------------------------------- Sensor
+
+const sensorEl = {
+  info: document.getElementById("sensorInfo"),
+  modes: document.querySelectorAll("#sensorMode button"),
+  modeGroup: document.getElementById("sensorMode"),
+  state: document.getElementById("sensorState"),
+  choose: document.getElementById("sensorChoose"),
+};
+
+const STATE_TEXT = { open: "Connected", connecting: "Connecting…", closed: "Not connected" };
+
+function renderSensor() {
+  const native = isNativeApp();
+  const mode = sensorMode();
+  const t = device.transport;
+  sensorEl.modeGroup.hidden = !native;
+  for (const b of sensorEl.modes) b.classList.toggle("active", b.dataset.mode === mode);
+  sensorEl.info.textContent = !native
+    ? "In the browser the app uses a simulated sensor (development)."
+    : mode === "ble"
+      ? "Connects to your Erkdek over Bluetooth and reconnects automatically."
+      : "A simulated sensor, for trying the app without the hardware.";
+  const parts = [STATE_TEXT[t.state] ?? t.state];
+  if (mode === "ble") {
+    parts.push(t.deviceId ? `sensor ${t.deviceId}` : "no sensor chosen yet");
+    if (t.error && t.state !== "open") parts.push(t.error);
+  }
+  sensorEl.state.textContent = parts.join(" · ");
+  sensorEl.choose.hidden = mode !== "ble";
+}
+
+function initSensor() {
+  for (const b of sensorEl.modes) {
+    b.addEventListener("click", () => {
+      if (b.dataset.mode === sensorMode()) return;
+      setSensorMode(b.dataset.mode);
+      location.reload(); // the sensor connection is set up at start
+    });
+  }
+  sensorEl.choose.addEventListener("click", () => device.transport.chooseSensor());
+  device.on("connection", renderSensor);
+  renderSensor();
+}
 
 // ---------------------------------------------------------------- About
 
@@ -63,6 +109,7 @@ export function initSettings() {
     about.fw.textContent = st.fw || "–";
   });
   settings.load().catch((e) => showMessage(e.message, true));
+  initSensor();
 
   initTagManager(
     document.getElementById("manageHolds"),

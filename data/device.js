@@ -1,3 +1,5 @@
+import { BleTransport } from "./bletransport.js";
+import { sensorMode } from "./platform.js";
 import { SimulatedTransport } from "./simdevice.js";
 
 // Transports connect the app to a sensor. Interface:
@@ -5,9 +7,10 @@ import { SimulatedTransport } from "./simdevice.js";
 //   send(obj)             send a command ({cmd: "tare"} ...); false when not connected
 //   "state" event         detail: "connecting" | "open" | "closed"
 //   "message" event       detail: message from the sensor ({t: "samples"|"status"|...})
-// In the browser the simulated sensor is used; the Android app will use Bluetooth.
+// The browser uses the simulated sensor; the Android app uses Bluetooth or the simulated
+// sensor, as chosen under Settings → Sensor.
 function createTransport() {
-  return new SimulatedTransport();
+  return sensorMode() === "ble" ? new BleTransport() : new SimulatedTransport();
 }
 
 // The connected device as seen by the views. Re-dispatches every device message as an

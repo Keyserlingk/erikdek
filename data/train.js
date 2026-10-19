@@ -3,6 +3,7 @@ import { beep, unlockAudio } from "./audio.js";
 import { downloadCsv, downloadJson } from "./download.js";
 import { curveCsv, fileDate } from "./export.js";
 import { LiveChart } from "./chart.js";
+import { allowScreenOff, keepScreenOn } from "./wakelock.js";
 import { device } from "./device.js";
 import { formatDuration, formatKg } from "./format.js";
 import {
@@ -681,15 +682,6 @@ function startTest() {
 
 // ---------------------------------------------------------------- running
 
-async function requestWakeLock() {
-  if (!("wakeLock" in navigator)) return false;
-  try {
-    run.wakeLock = await navigator.wakeLock.request("screen");
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function startRun(kind, routine, hand) {
   unlockAudio();
@@ -712,7 +704,6 @@ async function startRun(kind, routine, hand) {
     curvePhase: [], // phase index of each curve sample
     smoothed: null,
     startedAt: new Date(),
-    wakeLock: null,
     timer: null,
   };
   chart.clear();
@@ -721,7 +712,7 @@ async function startRun(kind, routine, hand) {
   if (routine.target.type === "bw" && target === null) el.run.target.textContent = "Set bodyweight for a % target";
   el.run.pause.textContent = "Pause";
   show("run");
-  el.run.wakeHint.hidden = await requestWakeLock();
+  el.run.wakeHint.hidden = await keepScreenOn();
 
   run.engine.start(performance.now() / 1000);
   run.timer = setInterval(tick, TICK_MS);
@@ -853,7 +844,7 @@ function renderHeld(phase) {
 function endRun(stopped) {
   if (stopped) announcePhase("done");
   clearInterval(run.timer);
-  if (run.wakeLock) run.wakeLock.release().catch(() => {});
+  allowScreenOff();
   if (stopped) finishRep();
   const session = buildSession(stopped);
   const raw = { hz: 1 / sampleDtS(), kg: run.curve, phases: run.curvePhase.map((i) => run.phases[i] ?? null) };
@@ -955,7 +946,8 @@ export function initTrain() {
     }
   });
   document.addEventListener("visibilitychange", () => {
-    if (run && document.visibilityState === "visible" && run.wakeLock?.released !== false) requestWakeLock();
+    // The browser drops its wake lock when the page is hidden; take it again.
+    if (run && document.visibilityState === "visible") keepScreenOn();
   });
   window.addEventListener("hashchange", () => showNotice(null, ""));
 
