@@ -359,9 +359,15 @@ h2.spaced { margin-top: 20px; }
   font-variant-numeric: tabular-nums;
 }
 .progress { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
-/* Hand, hold and grip: of this hang, or of the next one during rests (one per line). */
-.phase-main { display: flex; align-items: center; justify-content: center; gap: 4px 20px; flex-wrap: wrap; }
-.grip-list { text-align: left; font-size: 17px; font-weight: 700; line-height: 1.3; }
+/* Hand, hold and grip (one per line): of this hang, or of the next one during rests.
+   In their own card left of the timer card; the Force card (number above the graph)
+   then gets its own row below. */
+body #trainRun .run-row[data-grip="true"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+#trainRun .run-row[data-grip="true"] .run-force { grid-column: 1 / -1; }
+body #trainRun .run-row[data-grip="true"] .countdown { font-size: clamp(56px, 17vw, 96px); }
+.run-row .grip-card { justify-content: center; }
+.grip-label { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+.grip-list { font-size: 18px; font-weight: 700; line-height: 1.35; }
 .grip-next { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 /* The next grip on the graph during rests (both layouts): above the curve, on a panel. */
 .chart-grip {

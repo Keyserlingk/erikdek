@@ -43,6 +43,9 @@ const el = {
   repInfo: $("runRepInfo"),
   chartKg: $("runChartKg"),
   chartSub: $("runChartSub"),
+  row: $("runRow"),
+  gripCard: $("runGripCard"),
+  gripLabel: $("runGripLabel"),
   grip: $("runGrip"),
   chartGrip: $("runChartGrip"),
   chart: $("runChart"),
@@ -264,7 +267,7 @@ function tick() {
 }
 
 // Hand, hold and grip, one per line: of the hang now (during a hang) or of the next hang
-// (while getting ready or resting). In the phase card next to the countdown, and while
+// (while getting ready or resting). In their own card left of the countdown, and while
 // not hanging also on the graph.
 function renderGrip(index) {
   const current = run.phases[index];
@@ -276,14 +279,13 @@ function renderGrip(index) {
   const key = `${isWork}|${parts.join("|")}`;
   if (key === run.gripKey) return; // unchanged: don't rebuild the list every tick
   run.gripKey = key;
-  const list = () => [
-    ...(isWork ? [] : [create("div", { className: "grip-next", textContent: "Next" })]),
-    ...parts.map((text) => create("div", { textContent: text })),
-  ];
-  el.grip.hidden = !parts.length;
-  el.grip.replaceChildren(...list());
+  const lines = () => parts.map((text) => create("div", { textContent: text }));
+  el.gripCard.hidden = !parts.length;
+  el.row.dataset.grip = String(parts.length > 0);
+  el.gripLabel.textContent = isWork ? "Now" : "Next";
+  el.grip.replaceChildren(...lines());
   el.chartGrip.hidden = isWork || !parts.length;
-  el.chartGrip.replaceChildren(...list());
+  el.chartGrip.replaceChildren(create("div", { className: "grip-next", textContent: "Next" }), ...lines());
 }
 
 const round2 = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
