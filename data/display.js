@@ -2,7 +2,7 @@
 // force number in the graph (Live and the run screen): behind the curve and grid or in
 // front of them, and how strong it is. Applied as html[data-theme] (also set before the
 // first paint by index.html), body[data-number-layer] and --chart-number-opacity.
-// Charts redraw on the "erkdek:theme" window event.
+// Charts redraw on the "erkdek:theme" and "erkdek:display" window events.
 
 const KEY = "erkdek.display";
 const DEFAULTS = { theme: "system", numberLayer: "behind", numberOpacity: 0.16 };
@@ -49,4 +49,5 @@ export function applyDisplay() {
   const opacity = Math.min(max, Math.max(min, Number(prefs.numberOpacity) || DEFAULTS.numberOpacity));
   document.body.dataset.numberLayer = prefs.numberLayer === "front" ? "front" : "behind";
   document.documentElement.style.setProperty("--chart-number-opacity", String(opacity));
+  window.dispatchEvent(new Event("erkdek:display")); // charts redraw their number
 }

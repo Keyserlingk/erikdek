@@ -39,21 +39,44 @@ export function unitsPlugin({ left = "", right = "" }) {
   };
 }
 
+// The big number is low-pass filtered (exponential moving average) so it reads calmly;
+// the graph and all results use the raw samples.
+const NUMBER_SMOOTHING_S = 0.25;
+
+// Next smoothed value after one sample (dtS: time per sample); null starts it.
+export function smoothKg(prev, kg, dtS) {
+  if (prev === null) return kg;
+  return prev + (1 - Math.exp(-dtS / NUMBER_SMOOTHING_S)) * (kg - prev);
+}
+
+// Status colours of the big number (see workout.js targetStatus).
+const STATUS_COLOR = { on: "--ok", below: "--warn", above: "--accent" };
+
 // Rolling force chart: on the left % of bodyweight when one is set (its own scale, so
-// the ticks are round percentages), else kg; kg on the right.
+// the ticks are round percentages), else kg; kg on the right. The current force is
+// drawn large in the plot (setOverlay): in front of the grid but behind the curve, or
+// in front of everything (Settings → Display, body[data-number-layer]); its strength
+// is --chart-number-opacity.
 export class LiveChart {
   constructor(container) {
     this.container = container;
     this.windowS = 30;
     this.peakKg = 0;
     this.targetKg = null; // drawn as a line with a ±TARGET_TOLERANCE band
-    this.bodyweightKg = 0; // > 0: right axis in % of bodyweight
+    this.bodyweightKg = 0; // > 0: left axis in % of bodyweight
+    this.overlay = { text: "", sub: "", status: "", pulse: false };
     this.x = [];
     this.y = [];
     this.dirty = false;
     this.plot = null;
 
     new ResizeObserver(() => this._resize()).observe(container);
+    // Display settings changed (layer, strength): redraw the number.
+    window.addEventListener("erkdek:display", () => {
+      this.dirty = true;
+      // Only a chart that has drawn (its scales are set); the others draw it new anyway.
+      if (this.plot && this.plot.scales.kg.min !== null && this.plot.scales.kg.min !== undefined) this.plot.redraw(false);
+    });
     window.addEventListener("erkdek:theme", () => this._build()); // see display.js
     this._build();
   }
@@ -110,6 +133,15 @@ export class LiveChart {
     this._build(); // the right axis changes
   }
 
+  // The big number in the plot: text, a smaller line under it, the target status
+  // ("on"/"below"/"above" colours it) and pulse (the last seconds of a hang).
+  setOverlay({ text = "", sub = "", status = "", pulse = false }) {
+    const o = this.overlay;
+    if (o.text === text && o.sub === sub && o.status === status && o.pulse === pulse) return;
+    this.overlay = { text, sub, status, pulse };
+    this.dirty = true;
+  }
+
   setTarget(kg) {
     this.targetKg = kg;
     this.dirty = true;
@@ -117,6 +149,7 @@ export class LiveChart {
 
   // Call once per animation frame.
   render() {
+    if (this.overlay.pulse) this.dirty = true; // animates
     if (!this.dirty || !this.plot) return;
     this.dirty = false;
     const end = this.x.length ? this.x[this.x.length - 1] : 0;
@@ -193,13 +226,48 @@ export class LiveChart {
         series: [{}, { scale: "kg", stroke: line, width: 2, points: { show: false } }],
         hooks: {
           drawClear: [(u) => this._drawTarget(u, band, cssVar("--ok"))],
-          draw: [(u) => this._drawPeak(u, peak)],
+          // After the grid, before the curve: the number behind the curve.
+          drawAxes: [(u) => document.body.dataset.numberLayer !== "front" && this._drawNumber(u)],
+          draw: [(u) => this._drawPeak(u, peak), (u) => document.body.dataset.numberLayer === "front" && this._drawNumber(u)],
         },
       },
       [[], []],
       this.container,
     );
     this.dirty = true;
+  }
+
+  _drawNumber(u) {
+    const { text, sub, status, pulse } = this.overlay;
+    if (!text) return;
+    const { ctx } = u;
+    const { left, top, width, height } = u.bbox;
+    const px = devicePixelRatio;
+    const base = Number(getComputedStyle(document.documentElement).getPropertyValue("--chart-number-opacity")) || 0.16;
+    // Pulse: once a second, a bit larger and stronger.
+    const beat = pulse ? (1 - Math.cos((2 * Math.PI * performance.now()) / 1000)) / 2 : 0;
+    let size = Math.min(180, Math.max(88, innerWidth * 0.3)) * px * (1 + 0.08 * beat);
+    ctx.save();
+    ctx.font = `700 ${size}px system-ui, sans-serif`;
+    const fit = (width * 0.92) / ctx.measureText(text).width;
+    if (fit < 1) {
+      size *= fit;
+      ctx.font = `700 ${size}px system-ui, sans-serif`;
+    }
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = cssVar(STATUS_COLOR[status] ?? "--text");
+    ctx.globalAlpha = Math.min(1, base * (status ? 1.8 : 1) * (1 + 2 * beat));
+    const x = left + width / 2;
+    const y = top + height / 2 - (sub ? 10 * px : 0);
+    ctx.fillText(text, x, y);
+    if (sub) {
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = cssVar("--muted");
+      ctx.font = `${16 * px}px system-ui, sans-serif`;
+      ctx.fillText(sub, x, y + size * 0.42 + 12 * px, width * 0.95);
+    }
+    ctx.restore();
   }
 
   _drawPeak(u, color) {

@@ -1,12 +1,9 @@
-import { LiveChart } from "./chart.js";
+import { LiveChart, smoothKg } from "./chart.js";
 import { device } from "./device.js";
 import { formatKg } from "./format.js";
 import { settings } from "./settingsstore.js";
 import { targetStatus } from "./workout.js";
 
-const SAMPLE_RATE_HZ = 80;
-const SMOOTHING_TAU_S = 0.15; // time constant for the big number; raw data is used for peaks
-const alpha = 1 - Math.exp(-1 / (SAMPLE_RATE_HZ * SMOOTHING_TAU_S));
 const WINDOW_KEY = "erkdek.chartWindow";
 const TARGET_KEY = "erkdek.liveTarget";
 const MIN_TARGET_KG = 0.5;
@@ -23,8 +20,6 @@ const el = {
   targetInfo: document.getElementById("targetInfo"),
   targetKg: document.getElementById("targetKg"),
   removeTarget: document.getElementById("removeTarget"),
-  chartKg: document.getElementById("chartKg"),
-  chartSub: document.getElementById("chartSub"),
 };
 
 const state = { smoothed: null, peak: 0, target: null, dirty: true };
@@ -40,11 +35,13 @@ function render() {
     state.dirty = false;
     // The force, large in the graph (see display.js), with % bodyweight and the peak.
     const value = device.connected ? state.smoothed : null;
-    el.chartKg.textContent = value !== null ? formatKg(value) : "–";
-    el.chartKg.dataset.status = value !== null ? (targetStatus(value, state.target) ?? "") : "";
     const bw = settings.values.bodyweightKg > 0 && value !== null ? `${percentOfBodyweight(value)} BW · ` : "";
     const peakBw = settings.values.bodyweightKg > 0 ? ` (${percentOfBodyweight(state.peak)})` : "";
-    el.chartSub.textContent = `${bw}Peak ${formatKg(state.peak)} kg${peakBw}`;
+    chart.setOverlay({
+      text: value !== null ? formatKg(value) : "–",
+      sub: `${bw}Peak ${formatKg(state.peak)} kg${peakBw}`,
+      status: value !== null ? (targetStatus(value, state.target) ?? "") : "",
+    });
     chart.setPeak(state.peak);
   }
   chart.render();
@@ -104,7 +101,7 @@ export function initLive() {
 
   device.on("samples", (msg) => {
     for (const kg of msg.kg) {
-      state.smoothed = state.smoothed === null ? kg : state.smoothed + alpha * (kg - state.smoothed);
+      state.smoothed = smoothKg(state.smoothed, kg, 1 / (device.status?.rate || 80));
       if (kg > state.peak) state.peak = kg;
     }
     chart.push(msg.ts, msg.te ?? msg.ts, msg.kg);

@@ -4,7 +4,7 @@
 
 import { compressCurve, compressRepCurves } from "./analysis.js";
 import { beep, unlockAudio } from "./audio.js";
-import { LiveChart } from "./chart.js";
+import { LiveChart, smoothKg } from "./chart.js";
 import { device } from "./device.js";
 import { formatClock, formatDuration, formatKg } from "./format.js";
 import { instructionFor, usesSensor } from "./routines.js";
@@ -46,8 +46,6 @@ const el = {
   progress: $("runProgress"),
   next: $("runNext"),
   held: $("runHeld"),
-  chartKg: $("runChartKg"),
-  chartSub: $("runChartSub"),
   row: $("runRow"),
   gripCard: $("runGripCard"),
   gripLabel: $("runGripLabel"),
@@ -282,12 +280,12 @@ function tick() {
   el.restPhase.textContent = el.phase.textContent;
   el.restCountdown.textContent = el.countdown.textContent;
   // The force, large in the graph (see display.js), with the target and the rep so far.
-  el.chartKg.textContent = device.connected ? formatKg(kg) : "–";
-  el.chartKg.dataset.status = targetStatus(kg, run.target) ?? "";
-  el.chartKg.classList.toggle("pulse", phase.type === PHASE.WORK && !waiting && remainingS !== null && remainingS <= PULSE_S);
-  el.chartSub.textContent = waiting
-    ? `${phaseName(phase)} to start the countdown`
-    : [run.targetText, repInfo].filter(Boolean).join(" · ");
+  chart.setOverlay({
+    text: device.connected ? formatKg(kg) : "–",
+    status: targetStatus(kg, run.target) ?? "",
+    pulse: phase.type === PHASE.WORK && !waiting && remainingS !== null && remainingS <= PULSE_S,
+    sub: waiting ? `${phaseName(phase)} to start the countdown` : [run.targetText, repInfo].filter(Boolean).join(" · "),
+  });
   chart.render();
 }
 
@@ -422,15 +420,14 @@ function lingerForRelease(now) {
       el.countdown.textContent = "✓";
       el.next.textContent = "Recording the release…";
       el.restOverlay.hidden = true;
-      el.chartKg.classList.remove("pulse");
-      el.chartSub.textContent = "Done – let go";
+      chart.setOverlay({ text: formatKg(run.smoothed ?? 0), sub: "Done – let go" });
     }
   }
   const f = run.finish;
   if (!f.linger || !device.connected) return false;
   if (f.releasedS !== null && now >= f.releasedS + RELEASE_TAIL_S) return false;
   if (now >= f.startS + RELEASE_MAX_WAIT_S) return false;
-  el.chartKg.textContent = formatKg(run.smoothed ?? 0);
+  chart.setOverlay({ text: formatKg(run.smoothed ?? 0), sub: "Done – let go" });
   chart.render();
   return true;
 }
@@ -461,7 +458,7 @@ export function initRunner() {
   device.on("samples", (msg) => {
     if (!run || !run.sensor) return;
     chart.push(msg.ts, msg.te ?? msg.ts, msg.kg);
-    for (const kg of msg.kg) run.smoothed = run.smoothed === null ? kg : run.smoothed + 0.08 * (kg - run.smoothed);
+    for (const kg of msg.kg) run.smoothed = smoothKg(run.smoothed, kg, sampleDtS());
     if (run.engine.paused || run.index < 0) return; // not started yet (or paused)
     if (run.finish && run.finish.releasedS === null && msg.kg.some((kg) => kg < settings.values.repThresholdKg)) {
       run.finish.releasedS = performance.now() / 1000; // let go after the last hang

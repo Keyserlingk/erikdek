@@ -203,32 +203,8 @@ main {
 .chart-wrap .chart { position: relative; z-index: 1; }
 #view-live .chart { height: min(58vh, 480px); }
 #trainRun .chart { height: min(48vh, 420px); }
-/* The current force, large, in the graph: behind the curve and grid, or in front of
-   them (Settings → Display, body[data-number-layer], see display.js). */
-body[data-number-layer="front"] .chart-number { z-index: 2; }
-.chart-number {
-  position: absolute;
-  inset: 20px 40px 28px 40px; /* the plot area, between the axes */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  font-variant-numeric: tabular-nums;
-}
-.chart-kg {
-  font-size: clamp(88px, 30vw, 180px);
-  font-weight: 700;
-  line-height: 1;
-  color: var(--text);
-  opacity: var(--chart-number-opacity, 0.16); /* Settings → Display */
-}
-/* With a target the colour carries meaning, so it is drawn a bit stronger. */
-.chart-kg[data-status] { opacity: min(1, calc(var(--chart-number-opacity, 0.16) * 1.8)); }
-.chart-kg[data-status=""] { opacity: var(--chart-number-opacity, 0.16); }
-.chart-kg[data-status="on"] { color: var(--ok); }
-.chart-kg[data-status="below"] { color: var(--warn); }
-.chart-kg[data-status="above"] { color: var(--accent); }
+/* The big force number is drawn on the graph's canvas (chart.js); this is its preview
+   under Settings → Display. */
 .opacity-preview {
   display: flex;
   justify-content: center;
@@ -237,13 +213,12 @@ body[data-number-layer="front"] .chart-number { z-index: 2; }
   border-radius: 8px;
   background-image: repeating-linear-gradient(0deg, var(--border) 0 1px, transparent 1px 24px);
 }
-.opacity-preview .chart-kg { font-size: 72px; }
-.chart-sub { margin-top: 6px; font-size: 16px; color: var(--muted); opacity: 0.8; }
-/* The last 3 s of a hang: the number pulses (stronger and slightly larger) once a second. */
-.chart-kg.pulse { animation: kg-pulse 1s ease-in-out infinite; }
-@keyframes kg-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); opacity: min(1, calc(var(--chart-number-opacity, 0.16) * 3)); }
+.opacity-preview .chart-kg {
+  font-size: 72px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  opacity: var(--chart-number-opacity, 0.16);
 }
 
 .chart-head {

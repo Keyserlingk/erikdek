@@ -62,10 +62,6 @@
           </div>
         </div>
         <div class="chart-wrap">
-          <div id="chartNumber" class="chart-number" aria-hidden="true">
-            <span id="chartKg" class="chart-kg">–</span>
-            <span id="chartSub" class="chart-sub"></span>
-          </div>
           <div id="chart" class="chart tappable"></div>
         </div>
       </div>
@@ -228,10 +224,6 @@
         <div id="runInstruction" class="card run-instruction" hidden></div>
         <div class="card chart-card">
           <div class="chart-wrap">
-            <div class="chart-number" aria-hidden="true">
-              <span id="runChartKg" class="chart-kg">–</span>
-              <span id="runChartSub" class="chart-sub"></span>
-            </div>
             <div id="runChart" class="chart small"></div>
             <div id="runRestOverlay" class="rest-overlay" hidden>
               <div id="runRestPhase" class="phase-label"></div>
@@ -455,8 +447,8 @@
         </div>
         <p class="muted">The force is shown large in the graph, on Live and while training.</p>
         <div id="displayLayer" class="segmented wide" role="group" aria-label="Force number">
-          <button type="button" data-layer="behind">Behind the graph</button>
-          <button type="button" data-layer="front">In front of the graph</button>
+          <button type="button" data-layer="behind">Behind the curve</button>
+          <button type="button" data-layer="front">In front of the curve</button>
         </div>
         <div id="displayOpacityRow">
           <label class="field stacked">
