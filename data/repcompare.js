@@ -4,6 +4,7 @@
 // right) with each hand's average drawn bold. Tapping rep chips picks reps: then only
 // the picked ones are drawn, with their numbers listed.
 
+import { axisLabel } from "./chart.js";
 import { alignRepCurves, meanCurve } from "./analysis.js";
 import { formatDuration, formatKg } from "./format.js";
 import { HANDS } from "./tests.js";
@@ -108,7 +109,7 @@ export function repCompareCard(s) {
         scales: { x: { time: false } },
         axes: [
           { ...axis, size: 28, values: (u, vals) => vals.map((v) => (v < 0 ? "" : formatDuration(v))) },
-          { ...axis, size: 40 },
+          { ...axis, size: 34, ...axisLabel("kg") },
         ],
         series,
       },

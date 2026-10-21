@@ -208,7 +208,7 @@ main {
 body[data-number-layer="front"] .chart-number { z-index: 2; }
 .chart-number {
   position: absolute;
-  inset: 0 0 28px 40px; /* leave the axes free */
+  inset: 0 54px 28px 50px; /* the plot area, between the axes */
   display: flex;
   flex-direction: column;
   align-items: center;

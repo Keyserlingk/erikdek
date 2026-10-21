@@ -2,6 +2,7 @@
 // summary after a workout/test and for a session opened in History.
 
 import { curvePoints } from "./analysis.js";
+import { axisLabel } from "./chart.js";
 import { formatDuration, formatKg } from "./format.js";
 import { repCompareCard } from "./repcompare.js";
 import { HANDS, KINDS } from "./tests.js";
@@ -60,7 +61,7 @@ function curveChart(container, curve) {
           size: 28,
           values: (u, vals) => vals.map((v) => formatDuration(v)),
         },
-        { stroke: cssVar("--muted"), grid: { stroke: cssVar("--border"), width: 1 }, ticks: { show: false }, size: 40 },
+        { stroke: cssVar("--muted"), grid: { stroke: cssVar("--border"), width: 1 }, ticks: { show: false }, size: 34, ...axisLabel("kg") },
       ],
       series: [{}, { stroke: cssVar("--accent"), width: 1.5, points: { show: false } }],
     },

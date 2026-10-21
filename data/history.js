@@ -1,3 +1,4 @@
+import { axisLabel } from "./chart.js";
 import { downloadCsv, downloadJson } from "./download.js";
 import { formatBytes } from "./format.js";
 import { buildBackup, fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCsv } from "./export.js";
@@ -187,6 +188,13 @@ function renderBests(list, metric) {
   el.bests.replaceChildren(...tiles);
 }
 
+// The unit of a metric's values ("kg", "%", "kg/s", "s"), read off its formatting;
+// "" for unit-less ones (effort, reps).
+function metricUnit(metric) {
+  const match = metric.format(12).match(/[\d.,]\s*([^\d\s.,].*)$/);
+  return match ? match[1].trim() : "";
+}
+
 function renderProgress(list, metric) {
   if (progressChart) {
     progressChart.destroy();
@@ -229,7 +237,7 @@ function renderProgress(list, metric) {
           values: (u, vals) =>
             vals.map((v) => new Date(v * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" })),
         },
-        { stroke: text, grid: { stroke: grid, width: 1 }, ticks: { show: false }, size: 44 },
+        { stroke: text, grid: { stroke: grid, width: 1 }, ticks: { show: false }, size: 44, ...axisLabel(metricUnit(metric)) },
       ],
       series: [
         {},

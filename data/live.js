@@ -121,6 +121,7 @@ export function initLive() {
     chart.clear();
   });
   settings.onChange(() => {
+    chart.setBodyweight(settings.values.bodyweightKg); // right axis in % of bodyweight
     state.dirty = true;
   });
 

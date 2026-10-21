@@ -128,6 +128,7 @@ export async function startRun(kind, routine, hand, { onEnd = null, workout = nu
   el.screen.dataset.sensor = String(sensor);
   el.setLog.hidden = true;
   chart.clear();
+  chart.setBodyweight(settings.values.bodyweightKg); // right axis in % of bodyweight
   chart.setTarget(target);
   el.pause.textContent = "Pause";
   show("run");

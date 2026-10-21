@@ -9,12 +9,20 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+// A y axis' unit, written vertically along the axis (uPlot rotates y-axis labels).
+export function axisLabel(text) {
+  return { label: text, labelSize: 16, labelGap: 0, labelFont: "12px system-ui, sans-serif" };
+}
+
+// Rolling force chart: kg on the left; on the right % of bodyweight when one is set
+// (its own scale, so the ticks are round percentages), else kg again.
 export class LiveChart {
   constructor(container) {
     this.container = container;
     this.windowS = 30;
     this.peakKg = 0;
     this.targetKg = null; // drawn as a line with a ±TARGET_TOLERANCE band
+    this.bodyweightKg = 0; // > 0: right axis in % of bodyweight
     this.x = [];
     this.y = [];
     this.dirty = false;
@@ -70,6 +78,13 @@ export class LiveChart {
     }
   }
 
+  setBodyweight(kg) {
+    const bw = kg > 0 ? kg : 0;
+    if (bw === this.bodyweightKg) return;
+    this.bodyweightKg = bw;
+    this._build(); // the right axis changes
+  }
+
   setTarget(kg) {
     this.targetKg = kg;
     this.dirty = true;
@@ -93,7 +108,9 @@ export class LiveChart {
         if (this.y[j] > max) max = this.y[j];
         if (this.y[j] < min) min = this.y[j];
       }
-      this.plot.setScale("kg", { min, max: Math.max(10, max * 1.15) });
+      const top = Math.max(10, max * 1.15);
+      this.plot.setScale("kg", { min, max: top });
+      if (this.bodyweightKg) this.plot.setScale("pct", { min: (min / this.bodyweightKg) * 100, max: (top / this.bodyweightKg) * 100 });
     });
   }
 
@@ -124,8 +141,19 @@ export class LiveChart {
           return vals.map((v) => `${Math.round(v - end)}s`);
         },
       },
-      { scale: "kg", stroke: text, grid: { stroke: grid, width: 1 }, ticks: { show: false }, size: 40 },
-      { scale: "kg", side: 1, stroke: text, grid: { show: false }, ticks: { show: false }, size: 40 },
+      { scale: "kg", stroke: text, grid: { stroke: grid, width: 1 }, ticks: { show: false }, size: 34, ...axisLabel("kg") },
+      this.bodyweightKg
+        ? {
+            scale: "pct",
+            side: 1,
+            stroke: text,
+            grid: { show: false },
+            ticks: { show: false },
+            size: 38,
+            values: (u, vals) => vals.map((v) => `${Math.round(v)}`),
+            ...axisLabel("% BW"),
+          }
+        : { scale: "kg", side: 1, stroke: text, grid: { show: false }, ticks: { show: false }, size: 34, ...axisLabel("kg") },
     ];
 
     this.plot = new uPlot(
@@ -134,7 +162,7 @@ export class LiveChart {
         height: this.container.clientHeight,
         legend: { show: false },
         cursor: { show: false },
-        scales: { x: { time: false }, kg: { auto: false } },
+        scales: { x: { time: false }, kg: { auto: false }, pct: { auto: false } },
         axes,
         series: [{}, { scale: "kg", stroke: line, width: 2, points: { show: false } }],
         hooks: {
