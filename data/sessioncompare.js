@@ -3,7 +3,7 @@
 // numbers side by side with the best of each row in bold. Sessions keep one colour each
 // (categorical slots in fixed order, --cmp-1..6) in the legend, chart and table.
 
-import { axisLabel } from "./chart.js";
+import { UNIT_PADDING, unitsPlugin } from "./chart.js";
 import { representativeCurve, resample } from "./analysis.js";
 import { formatDuration } from "./format.js";
 import { formatDateTime, sessionTags } from "./sessionview.js";
@@ -91,10 +91,12 @@ export function renderCompare(root, list) {
         height: 220,
         legend: { show: false },
         cursor: { show: false },
+        padding: UNIT_PADDING,
+        plugins: [unitsPlugin({ left: "kg" })],
         scales: { x: { time: false } },
         axes: [
           { ...axis, size: 28, values: (u, vals) => vals.map((v) => (v < 0 ? "" : formatDuration(v))) },
-          { ...axis, size: 34, ...axisLabel("kg") },
+          { ...axis, size: 40 },
         ],
         series: [{}, ...curves.map((r) => ({ stroke: colorOf(r.i), width: 2, points: { show: false } }))],
       },

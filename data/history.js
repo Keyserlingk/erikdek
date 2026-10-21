@@ -1,4 +1,4 @@
-import { axisLabel } from "./chart.js";
+import { UNIT_PADDING, unitsPlugin } from "./chart.js";
 import { downloadCsv, downloadJson } from "./download.js";
 import { formatBytes } from "./format.js";
 import { buildBackup, fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCsv } from "./export.js";
@@ -226,6 +226,8 @@ function renderProgress(list, metric) {
       height: el.chart.clientHeight,
       legend: { show: false },
       cursor: { show: false },
+      padding: UNIT_PADDING,
+      plugins: [unitsPlugin({ left: metricUnit(metric) })],
       scales: { x: { time: true } },
       axes: [
         {
@@ -237,7 +239,7 @@ function renderProgress(list, metric) {
           values: (u, vals) =>
             vals.map((v) => new Date(v * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" })),
         },
-        { stroke: text, grid: { stroke: grid, width: 1 }, ticks: { show: false }, size: 44, ...axisLabel(metricUnit(metric)) },
+        { stroke: text, grid: { stroke: grid, width: 1 }, ticks: { show: false }, size: 44 },
       ],
       series: [
         {},
