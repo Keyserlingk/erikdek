@@ -306,9 +306,13 @@ Next:
   - *Rollback:* check whether the Arduino/PlatformIO bootloader has
     `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`; if so, mark the new image valid once
     BLE is up, else USB stays the way back from a firmware that crashes on start.
-  - *App:* `tools/build_android.sh` also builds the firmware and bundles
-    `firmware.bin` + its version. Settings → Sensor shows "Firmware vX available
-    (sensor has vY) → Update sensor" (optionally pick a .bin), with progress,
-    cancel, retries, reconnect after the restart and a version check. The simulator
-    gets a fake update for testing the screen.
+  - *App:* every APK carries the firmware built from the same code:
+    `tools/build_android.sh` also runs `pio run` and copies `firmware.bin` into
+    `data/firmware/` (git-ignored) with its version (~0.6 MB, ~30 s more per build).
+    Versions are content-based (`tools/fwversion.py`, done), so an app-only update
+    doesn't offer a firmware update. Settings → Sensor shows "Firmware fw-… available
+    (sensor has fw-…) → Update sensor" (optionally pick a .bin), with progress,
+    cancel, retries, reconnect after the restart and a version check. The status's
+    protocol version (done) marks a sensor that must be updated. The simulator gets
+    a fake update for testing the screen.
   - ~600 KB at BLE speed: expect 30–60 s. Only testable on the board.

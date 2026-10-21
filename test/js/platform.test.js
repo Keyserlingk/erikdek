@@ -36,5 +36,5 @@ test("debug app starts simulated and remembers the choice", () => {
 
 test("buildInfo falls back when buildinfo.js is missing", () => {
   run({ native: false });
-  assert.deepEqual(buildInfo(), { version: "–", variant: "dev" });
+  assert.deepEqual(buildInfo(), { version: "–", variant: "dev", firmware: null });
 });

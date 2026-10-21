@@ -7,6 +7,8 @@
 // SimulatedTransport runs it on a timer and speaks the transport interface
 // ("state"/"message" events, connect(), send()).
 
+import { PROTOCOL_VERSION } from "./bleprotocol.js";
+
 export const SAMPLE_RATE_HZ = 80;
 const PUSH_INTERVAL_MS = 50;
 const STATUS_INTERVAL_MS = 1000;
@@ -263,6 +265,7 @@ export class SimulatedTransport extends EventTarget {
       cpk: s.countsPerKg,
       uptime: Math.round(s.t * 1000),
       mock: true,
+      protocol: PROTOCOL_VERSION,
       fw: "simulated",
       scenario: s.scenario,
     };

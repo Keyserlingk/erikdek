@@ -1,5 +1,6 @@
 import { isMuted, setMuted } from "./audio.js";
 import { initBackup } from "./backup.js";
+import { PROTOCOL_VERSION } from "./bleprotocol.js";
 import { initCalibrate } from "./calibrate.js";
 import { device } from "./device.js";
 import { initHistory, showHistory } from "./history.js";
@@ -58,6 +59,12 @@ function renderStatus() {
   el.rate.classList.toggle("low", lowRate);
 
   const warnings = [];
+  // Firmware from another version of the app: its data may be misread.
+  if (st.protocol !== PROTOCOL_VERSION) {
+    warnings.push(
+      `The sensor's firmware doesn't match this app (protocol ${st.protocol}, app ${PROTOCOL_VERSION}). Flash the firmware of this version.`,
+    );
+  }
   if (lowRate) warnings.push(`Sample rate is ${st.rate.toFixed(0)} Hz. Bridge the HX711 RATE pin to VCC for 80 Hz.`);
   if (!st.calibrated) warnings.push("Not calibrated – readings are approximate.");
   if (!st.tared) warnings.push("Not tared – press Tare with no load.");

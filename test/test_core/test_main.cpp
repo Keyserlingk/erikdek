@@ -134,7 +134,8 @@ void test_ble_encode_status_and_events() {
   uint8_t buf[32];
   size_t n = ble::encodeStatus(buf, true, false, 80.04f, 16000.0f, 123456, 0.0124f, 0.041f, 3.92f);
   const uint8_t status[] = {0x01, 0x20, 0x03, 0x00, 0x00, 0x7A, 0x46, 0x40, 0xE2,
-                            0x01, 0x00, 0x0C, 0x00, 0x29, 0x00, 0x50, 0x0F};  // 3920 mV
+                            0x01, 0x00, 0x0C, 0x00, 0x29, 0x00, 0x50, 0x0F,  // 3920 mV
+                            0x01};                                           // protocol 1
   TEST_ASSERT_EQUAL(sizeof(status), n);
   TEST_ASSERT_EQUAL_HEX8_ARRAY(status, buf, n);
 

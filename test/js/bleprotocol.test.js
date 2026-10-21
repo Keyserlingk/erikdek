@@ -5,7 +5,7 @@ import { UUID, decodeEvent, decodeSamples, decodeStatus, encodeCommand } from ".
 
 // Byte vectors shared with the firmware's test/test_core/test_main.cpp.
 const SAMPLES = Uint8Array.of(0x02, 0x01, 0xe8, 0x03, 0x00, 0x00, 0xd4, 0x30, 0x00, 0x00, 0xe9, 0x07, 0x6a, 0xff, 0xff, 0x7f);
-const STATUS = Uint8Array.of(0x01, 0x20, 0x03, 0x00, 0x00, 0x7a, 0x46, 0x40, 0xe2, 0x01, 0x00, 0x0c, 0x00, 0x29, 0x00, 0x50, 0x0f);
+const STATUS = Uint8Array.of(0x01, 0x20, 0x03, 0x00, 0x00, 0x7a, 0x46, 0x40, 0xe2, 0x01, 0x00, 0x0c, 0x00, 0x29, 0x00, 0x50, 0x0f, 0x01);
 
 test("decodeSamples", () => {
   // 4 samples, 12.5 ms apart from t0 = 1000 ms; 400 kg was clamped to 327.67
@@ -27,7 +27,13 @@ test("decodeStatus", () => {
     tareNoiseKg: 0.012,
     tareNoisePpKg: 0.041,
     batteryV: 3.92,
+    protocol: 1,
   });
+  // Older firmware: shorter status, protocol 0 (the app shows the mismatch).
+  const old = decodeStatus(STATUS.slice(0, 11));
+  assert.equal(old.protocol, 0);
+  assert.equal(old.batteryV, null);
+  assert.equal(old.cpk, 16000);
   const untared = STATUS.slice();
   untared.set([0xff, 0xff, 0xff, 0xff, 0xff, 0xff], 11);
   assert.equal(decodeStatus(untared).tareNoiseKg, null);

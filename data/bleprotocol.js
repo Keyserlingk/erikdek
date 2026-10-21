@@ -6,7 +6,7 @@
 //   Status (read/notify) flags u8 (bit0 tared, bit1 calibrated) | rate u16 (0.1 Hz)
 //                        | countsPerKg f32 | uptime u32 ms
 //                        | tare noise rms u16 (g) | tare noise peak-to-peak u16 (g)
-//                        | battery u16 (mV)
+//                        | battery u16 (mV) | protocol version u8
 //   Command (write)      opcode u8 [| value f32]
 //   Event (notify)       tared 1 | calibrated 2, calibrated u8, countsPerKg f32, noise u16 (g)
 //                        | calError 3, reason u8, noise u16 (g)
@@ -24,6 +24,9 @@ export const UUID = {
   firmware: "00002a26-0000-1000-8000-00805f9b34fb",
 };
 export const DEVICE_NAME = "Erkdek";
+// The layouts here, numbered: same as kProtocolVersion in the firmware. The app warns
+// when the sensor reports another one (its firmware doesn't belong to this app).
+export const PROTOCOL_VERSION = 1;
 
 const COMMANDS = { tare: 1, calibrate: 2, calReset: 3, setCalibration: 4 };
 const CAL_ERRORS = { 1: "badWeight", 2: "tooSmall", 3: "moving" };
@@ -51,8 +54,11 @@ export function decodeSamples(bytes) {
   return { t: "samples", seq, ts: t0, te: t0 + Math.round(((n - 1) * dtUs) / 1000), kg };
 }
 
+// A status from other firmware may be shorter: the fields it doesn't have come out as
+// null (protocol as 0), so the app can say the firmware doesn't match instead of failing.
 export function decodeStatus(bytes) {
   const v = view(bytes);
+  const has = (end) => v.byteLength >= end;
   const flags = v.getUint8(0);
   return {
     t: "status",
@@ -61,9 +67,10 @@ export function decodeStatus(bytes) {
     rate: v.getUint16(1, true) / 10,
     cpk: v.getFloat32(3, true),
     uptime: v.getUint32(7, true),
-    tareNoiseKg: thousandths(v, 11),
-    tareNoisePpKg: thousandths(v, 13),
-    batteryV: thousandths(v, 15),
+    tareNoiseKg: has(13) ? thousandths(v, 11) : null,
+    tareNoisePpKg: has(15) ? thousandths(v, 13) : null,
+    batteryV: has(17) ? thousandths(v, 15) : null,
+    protocol: has(18) ? v.getUint8(17) : 0,
   };
 }
 

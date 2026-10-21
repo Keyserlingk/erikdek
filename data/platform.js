@@ -5,8 +5,9 @@ export function isNativeApp() {
 }
 
 // From buildinfo.js (written by tools/build_android.sh, served by tools/serve.py).
+// firmware: the version of the firmware that belongs to this app (tools/fwversion.py).
 export function buildInfo() {
-  return { version: "–", variant: "dev", ...(globalThis.ERKDEK_BUILD ?? {}) };
+  return { version: "–", variant: "dev", firmware: null, ...(globalThis.ERKDEK_BUILD ?? {}) };
 }
 
 // Only the debug app offers the simulated sensor; release builds always use Bluetooth.

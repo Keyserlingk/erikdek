@@ -9,10 +9,14 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 DATA_DIR = os.path.join(ROOT, "data")
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fwversion import firmware_version  # noqa: E402  (the firmware that belongs to this app)
 
 
 def git_version():
@@ -37,7 +41,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.split("?")[0] == "/buildinfo.js":
-            info = json.dumps({"version": git_version(), "variant": "dev"})
+            info = json.dumps({"version": git_version(), "variant": "dev", "firmware": firmware_version()})
             data = f"window.ERKDEK_BUILD = {info};\n".encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/javascript")

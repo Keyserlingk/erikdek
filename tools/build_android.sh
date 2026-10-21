@@ -31,10 +31,11 @@ export NVM_DIR="$HOME/.nvm"
 nvm use >/dev/null  # Node from .nvmrc (Capacitor 8 needs >= 22)
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 
-# Build info for the app: version (Settings → About) and variant (release builds always
-# use the Bluetooth sensor). Git-ignored, regenerated each build.
-printf 'window.ERKDEK_BUILD = { version: "%s", variant: "%s" };\n' \
-  "$(git describe --always --dirty)" "$VARIANT" > data/buildinfo.js
+# Build info for the app: version (Settings → About), variant (release builds always
+# use the Bluetooth sensor) and the version of the firmware that belongs to this app
+# (tools/fwversion.py). Git-ignored, regenerated each build.
+printf 'window.ERKDEK_BUILD = { version: "%s", variant: "%s", firmware: "%s" };\n' \
+  "$(git describe --always --dirty)" "$VARIANT" "$(python3 tools/fwversion.py)" > data/buildinfo.js
 node tools/vendor.mjs
 npx cap sync android
 TASK=assemble${VARIANT^}

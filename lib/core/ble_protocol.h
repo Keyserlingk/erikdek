@@ -9,7 +9,7 @@
 //   Status (read/notify) flags u8 (bit0 tared, bit1 calibrated) | rate u16 (0.1 Hz)
 //                      | countsPerKg f32 | uptime u32 (ms)
 //                      | tare noise rms u16 (g) | tare noise peak-to-peak u16 (g)
-//                      | battery u16 (mV, 0xFFFF = not measured)
+//                      | battery u16 (mV, 0xFFFF = not measured) | protocol version u8
 //   Command (write)    opcode u8 [| value f32]
 //   Event (notify)     tared:      1
 //                      calibrated: 2 | calibrated u8 | countsPerKg f32 | noise rms u16 (g)
@@ -23,7 +23,10 @@
 namespace ble {
 
 static constexpr size_t kSamplesHeader = 8;
-static constexpr size_t kStatusSize = 17;
+static constexpr size_t kStatusSize = 18;
+// Raised whenever a layout here changes; the app warns when the sensor's differs from
+// its own (data/bleprotocol.js PROTOCOL_VERSION).
+static constexpr uint8_t kProtocolVersion = 1;
 static constexpr uint16_t kNoNoise = 0xFFFF;
 static constexpr int16_t kForceMax = 32767;  // 327.67 kg
 
@@ -103,6 +106,7 @@ inline size_t encodeStatus(uint8_t* out, bool tared, bool calibrated, float rate
   putU16(out + 11, noiseGrams(tareNoiseRmsKg));
   putU16(out + 13, noiseGrams(tareNoisePpKg));
   putU16(out + 15, batteryMillivolts(batteryVolts));
+  out[17] = kProtocolVersion;
   return kStatusSize;
 }
 

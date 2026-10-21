@@ -129,9 +129,19 @@ const about = {
   quota: document.getElementById("aboutQuota"),
 };
 
+// The sensor's firmware, and whether it is the one that belongs to this app (same
+// content-based version, tools/fwversion.py).
+function renderFirmware(st) {
+  const fw = st?.fw;
+  const own = buildInfo().firmware;
+  let text = fw || "–";
+  if (fw && own && !st.mock) text += fw === own ? " (matches this app)" : ` (this app's firmware: ${own})`;
+  about.fw.textContent = text;
+}
+
 // Refreshes versions and the storage breakdown; called when Settings is shown.
 export async function showAbout() {
-  about.fw.textContent = device.status?.fw || "–";
+  renderFirmware(device.status);
   const build = buildInfo();
   about.web.textContent = build.variant === "release" ? build.version : `${build.version} (${build.variant})`;
   try {
@@ -165,7 +175,7 @@ export function initSettings() {
       `E.g. with a 40 kg target: ${formatKg(Math.max(v.repThresholdKg, (40 * v.startPct) / 100))} kg.`;
   });
   device.on("status", (st) => {
-    about.fw.textContent = st.fw || "–";
+    renderFirmware(st);
   });
   settings.load().catch((e) => showMessage(e.message, true));
   initSensor();
