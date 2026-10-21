@@ -13,6 +13,7 @@
     <span class="brand">Erkdek</span>
     <button id="mock" class="badge" type="button" title="Simulated sensor controls" hidden>SIM</button>
     <span class="spacer"></span>
+    <button id="mute" class="icon-toggle" type="button" aria-pressed="false" aria-label="Mute beeps"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path class="waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="cross" d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
     <span id="rate" class="rate" title="Measured sample rate">– Hz</span>
     <span id="conn" class="conn" data-state="closed" title="Connection"></span>
   </header>
@@ -34,13 +35,6 @@
       <div id="liveConnect" class="card connect-card" hidden>
         <p id="liveConnectText"></p>
         <button id="liveConnectButton" class="primary" type="button">Connect sensor</button>
-      </div>
-      <div id="liveReadout" class="card readout">
-        <div class="weight"><span id="kg">–</span><span class="unit">kg</span></div>
-        <div id="bw" class="bw" hidden></div>
-        <button id="peak" class="peak" type="button" title="Tap to reset peak">
-          Peak <strong id="peakKg">0.0</strong> kg <span id="peakBw"></span>
-        </button>
       </div>
       <div class="card chart-card">
         <div class="chart-head">
@@ -206,12 +200,12 @@
       <div id="trainWorkoutSummary" hidden>
         <h1 id="wSumTitle">Workout done</h1>
         <p id="wSumMeta" class="muted"></p>
-        <div id="wSumList"></div>
-        <div id="wSumError" class="error" hidden></div>
-        <div class="actions">
+        <div class="actions top-actions">
           <button id="wSumDiscard" class="secondary" type="button">Discard</button>
           <button id="wSumSave" class="primary" type="button">Save all to history</button>
         </div>
+        <div id="wSumError" class="error" hidden></div>
+        <div id="wSumList"></div>
       </div>
 
       <div id="trainRun" hidden data-sensor="true">
@@ -242,12 +236,6 @@
             <div id="runNext" class="muted next"></div>
             <div id="runHeld" class="held-count" hidden></div>
           </div>
-          <div class="card run-force">
-            <div class="run-force-label">Force</div>
-            <div class="run-force-value"><span id="runKg" class="run-kg">–</span><span class="unit">kg</span></div>
-            <div id="runTarget" class="muted"></div>
-            <div id="runRepInfo" class="rep-info" hidden></div>
-          </div>
         </div>
         <button id="runDone" class="primary done-button" type="button" hidden>Done</button>
         <div id="runSetLog" class="card set-log" hidden>
@@ -274,16 +262,16 @@
       </div>
 
       <div id="trainSummary" hidden>
+        <div class="actions top-actions">
+          <button id="sumDiscard" class="secondary" type="button">Discard</button>
+          <button id="sumSave" class="primary" type="button">Save to history</button>
+        </div>
+        <div id="sumError" class="error" hidden></div>
         <div id="sumView"></div>
         <div id="sumSets" class="card" hidden>
           <h2>Effort and weight per set</h2>
           <p class="muted">Fill in or correct before saving.</p>
           <div id="sumSetRows"></div>
-        </div>
-        <div id="sumError" class="error" hidden></div>
-        <div class="actions">
-          <button id="sumDiscard" class="secondary" type="button">Discard</button>
-          <button id="sumSave" class="primary" type="button">Save to history</button>
         </div>
         <div class="downloads">
           <button id="sumRawCsv" class="pill-button" type="button">Download raw data (CSV)</button>
@@ -429,10 +417,10 @@
       </div>
       <div class="card">
         <h2>Display</h2>
-        <p class="muted">Where the force is shown on Live and while training.</p>
-        <div id="displayLayout" class="segmented wide" role="group" aria-label="Force number">
-          <button type="button" data-layout="graph">In the graph</button>
-          <button type="button" data-layout="above">Above the graph</button>
+        <p class="muted">The force is shown large in the graph, on Live and while training.</p>
+        <div id="displayLayer" class="segmented wide" role="group" aria-label="Force number">
+          <button type="button" data-layer="behind">Behind the graph</button>
+          <button type="button" data-layer="front">In front of the graph</button>
         </div>
         <div id="displayOpacityRow">
           <label class="field stacked">

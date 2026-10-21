@@ -1,3 +1,4 @@
+import { isMuted, setMuted } from "./audio.js";
 import { initBackup } from "./backup.js";
 import { initCalibrate } from "./calibrate.js";
 import { device } from "./device.js";
@@ -14,6 +15,7 @@ const TAB_OF = { calibrate: "settings" };
 
 const el = {
   rate: document.getElementById("rate"),
+  mute: document.getElementById("mute"),
   conn: document.getElementById("conn"),
   warning: document.getElementById("warning"),
   tabs: document.querySelectorAll(".tabs a"),
@@ -69,6 +71,17 @@ device.on("connection", (state) => {
   renderStatus();
 });
 device.on("status", renderStatus);
+
+function renderMute() {
+  el.mute.setAttribute("aria-pressed", String(isMuted()));
+  el.mute.setAttribute("aria-label", isMuted() ? "Unmute beeps" : "Mute beeps");
+  el.mute.title = isMuted() ? "Beeps off" : "Beeps on";
+}
+el.mute.addEventListener("click", () => {
+  setMuted(!isMuted());
+  renderMute();
+});
+renderMute();
 
 initLive();
 initCalibrate();

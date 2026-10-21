@@ -77,25 +77,23 @@ function initSensor() {
 // ---------------------------------------------------------------- Display
 
 const displayEl = {
-  layouts: document.querySelectorAll("#displayLayout button"),
-  opacityRow: document.getElementById("displayOpacityRow"),
+  layers: document.querySelectorAll("#displayLayer button"),
   opacity: document.getElementById("displayOpacity"),
   opacityValue: document.getElementById("displayOpacityValue"),
 };
 
 function renderDisplay() {
   const p = displayPrefs();
-  for (const b of displayEl.layouts) b.classList.toggle("active", b.dataset.layout === p.numberLayout);
-  displayEl.opacityRow.hidden = p.numberLayout !== "graph";
+  for (const b of displayEl.layers) b.classList.toggle("active", b.dataset.layer === p.numberLayer);
   displayEl.opacity.value = Math.round(p.numberOpacity * 100);
   displayEl.opacityValue.textContent = `${Math.round(p.numberOpacity * 100)} %`;
 }
 
 function initDisplay() {
   applyDisplay();
-  for (const b of displayEl.layouts) {
+  for (const b of displayEl.layers) {
     b.addEventListener("click", () => {
-      setDisplayPrefs({ numberLayout: b.dataset.layout });
+      setDisplayPrefs({ numberLayer: b.dataset.layer });
       renderDisplay();
     });
   }

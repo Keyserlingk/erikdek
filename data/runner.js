@@ -30,6 +30,10 @@ const TICK_MS = 50;
 // Stored curve: only where force >= 1 kg, at most 1000 points (~6 KB per session).
 const CURVE_MIN_KG = 1;
 const CURVE_MAX_POINTS = 1000;
+// A hang waiting for force keeps this much from before the force came, for the rise (RFD).
+const PRE_LOAD_S = 0.25;
+// The force number pulses in the last seconds of a hang.
+const PULSE_S = 3;
 
 const el = {
   card: $("runPhaseCard"),
@@ -37,10 +41,7 @@ const el = {
   countdown: $("runCountdown"),
   progress: $("runProgress"),
   next: $("runNext"),
-  kg: $("runKg"),
-  target: $("runTarget"),
   held: $("runHeld"),
-  repInfo: $("runRepInfo"),
   chartKg: $("runChartKg"),
   chartSub: $("runChartSub"),
   row: $("runRow"),
@@ -92,7 +93,8 @@ export async function startRun(kind, routine, hand, { onEnd = null, workout = nu
     routine,
     hand,
     phases,
-    engine: new WorkoutEngine(phases),
+    // With the sensor connected each hang's countdown starts when force is applied.
+    engine: new WorkoutEngine(phases, { waitForLoad: sensor && device.connected }),
     target,
     threshold: loadThresholdKg(target, settings.values.repThresholdKg),
     index: -1,
@@ -110,14 +112,14 @@ export async function startRun(kind, routine, hand, { onEnd = null, workout = nu
     nextWeightKg: null, // weight entered for the next set
     onEnd,
     workout,
+    targetText: target !== null ? `Target ${formatKg(target)} kg` : kind === "workout" ? "No target" : HANDS[hand],
   };
+  if (routine.target.type === "bw" && target === null) run.targetText = "Set bodyweight for a % target";
   el.held.hidden = true;
   el.screen.dataset.sensor = String(sensor);
   el.setLog.hidden = true;
   chart.clear();
   chart.setTarget(target);
-  el.target.textContent = target !== null ? `Target ${formatKg(target)} kg` : kind === "workout" ? "No target" : HANDS[hand];
-  if (routine.target.type === "bw" && target === null) el.target.textContent = "Set bodyweight for a % target";
   el.pause.textContent = "Pause";
   show("run");
   el.wakeHint.hidden = await keepScreenOn();
@@ -243,7 +245,8 @@ function tick() {
   const next = run.phases[state.index + 1];
   const r = run.routine;
   el.card.dataset.phase = phase.type;
-  el.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type);
+  const waiting = state.waitingForLoad;
+  el.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type) + (waiting ? " to start" : "");
   renderGrip(state.index);
   // Countdown, or a stopwatch while a self-paced rep waits for Done.
   el.countdown.textContent = remainingS === null ? formatClock(inPhaseS) : Math.ceil(remainingS);
@@ -259,19 +262,20 @@ function tick() {
 
   if (!run.sensor) return;
   const kg = run.smoothed ?? 0;
-  el.kg.textContent = device.connected ? formatKg(kg) : "–";
-  el.kg.dataset.status = targetStatus(kg, run.target) ?? "";
-  renderHeld(phase);
+  const repInfo = renderHeld(phase);
   // Getting ready or resting: a panel over the (dimmed) graph with the countdown and
   // what comes next.
   el.restOverlay.hidden = phase.type === PHASE.WORK;
   el.restOverlay.dataset.phase = phase.type;
   el.restPhase.textContent = el.phase.textContent;
   el.restCountdown.textContent = el.countdown.textContent;
-  // The same, for the layout with the number behind the graph (see display.js).
-  el.chartKg.textContent = el.kg.textContent;
-  el.chartKg.dataset.status = el.kg.dataset.status;
-  el.chartSub.textContent = [el.target.textContent, el.repInfo.hidden ? "" : el.repInfo.textContent].filter(Boolean).join(" · ");
+  // The force, large in the graph (see display.js), with the target and the rep so far.
+  el.chartKg.textContent = device.connected ? formatKg(kg) : "–";
+  el.chartKg.dataset.status = targetStatus(kg, run.target) ?? "";
+  el.chartKg.classList.toggle("pulse", phase.type === PHASE.WORK && !waiting && remainingS !== null && remainingS <= PULSE_S);
+  el.chartSub.textContent = waiting
+    ? `${phaseName(phase.type)} to start the countdown`
+    : [run.targetText, repInfo].filter(Boolean).join(" · ");
   chart.render();
 }
 
@@ -357,26 +361,19 @@ function buildSession(stopped) {
   return session;
 }
 
-// Routines only: how long the current rep has been held, the last rep's hold % and
-// the average hold % of the reps done so far.
+// Routines only: the average hold % of the reps done so far (phase card), and returns
+// how long the current rep has been held, or the last rep's hold % (for the graph).
 function renderHeld(phase) {
   const show = run.kind === "workout";
   el.held.hidden = !show || !run.reps.length;
-  el.repInfo.hidden = !show;
-  if (!show) return;
+  if (!show) return "";
   const avgHold = run.reps.reduce((sum, r) => sum + r.holdPct, 0) / (run.reps.length || 1);
   el.held.textContent = `Hold ${Math.round(avgHold)} % so far`;
 
   const last = run.reps.at(-1);
-  if (phase.type === PHASE.WORK) {
-    el.repInfo.textContent = `Held ${(run.repLoadedSamples * sampleDtS()).toFixed(1)} / ${phase.durS} s`;
-    el.repInfo.dataset.state = "live";
-  } else if (last) {
-    el.repInfo.textContent = `Last rep ${Math.round(last.holdPct)} %${last.completed ? " ✓" : ""}`;
-    el.repInfo.dataset.state = last.completed ? "held" : "short";
-  } else {
-    el.repInfo.textContent = "";
-  }
+  if (phase.type === PHASE.WORK) return `Held ${(run.repLoadedSamples * sampleDtS()).toFixed(1)} / ${phase.durS} s`;
+  if (last) return `Last rep ${Math.round(last.holdPct)} %${last.completed ? " ✓" : ""}`;
+  return "";
 }
 
 function endRun(stopped) {
@@ -424,9 +421,24 @@ export function initRunner() {
     run.curve.push(...msg.kg);
     for (let i = 0; i < msg.kg.length; i++) run.curvePhase.push(run.index);
     if (run.repSamples) {
+      const from = run.repSamples.length;
       run.repSamples.push(...msg.kg);
-      for (const kg of msg.kg) if (kg >= run.threshold) run.repLoadedSamples++;
+      const hit = run.engine.waitingForLoad ? msg.kg.findIndex((kg) => kg >= run.threshold) : -1;
+      if (hit >= 0) {
+        // Force: the hang starts now. Its samples start just before, for the rise.
+        run.repSamples = run.repSamples.slice(Math.max(0, from + hit - Math.round(PRE_LOAD_S / sampleDtS())));
+        run.repLoadedSamples = run.repSamples.filter((kg) => kg >= run.threshold).length;
+        run.engine.loadApplied(performance.now() / 1000);
+      } else if (!run.engine.waitingForLoad) {
+        for (const kg of msg.kg) if (kg >= run.threshold) run.repLoadedSamples++;
+      }
     }
+  });
+  // Lost the sensor: hangs no longer wait for force (they'd wait forever).
+  device.on("connection", () => {
+    if (!run || device.connected || !run.engine.waitForLoad) return;
+    run.engine.waitForLoad = false;
+    run.engine.loadApplied(performance.now() / 1000);
   });
   document.addEventListener("visibilitychange", () => {
     // The browser drops its wake lock when the page is hidden; take it again.

@@ -119,6 +119,49 @@ test("engine skip while paused stays paused at the new phase", () => {
   assert.equal(engine.update(10).elapsedS, 5);
 });
 
+test("waitForLoad: a hang's countdown starts when force is applied", () => {
+  const engine = new WorkoutEngine(buildPhases(repeaters), { waitForLoad: true });
+  engine.start(0);
+  let s = engine.update(6); // prep (5 s) is over: waiting at the start of the hang
+  assert.equal(s.phase.type, "work");
+  assert.equal(s.waitingForLoad, true);
+  assert.equal(s.remainingS, 7);
+  s = engine.update(30); // still waiting, however long
+  assert.equal(s.remainingS, 7);
+  assert.deepEqual(s.entered, []);
+
+  engine.loadApplied(30);
+  s = engine.update(32);
+  assert.equal(s.waitingForLoad, false);
+  assert.equal(s.remainingS, 5);
+  s = engine.update(37.5); // hang over (30 + 7), rest (3 s) runs on the clock
+  assert.equal(s.phase.type, "rest");
+  assert.equal(s.remainingS, 2.5);
+  s = engine.update(41); // next hang waits again
+  assert.equal(s.phase.type, "work");
+  assert.equal(s.waitingForLoad, true);
+  assert.equal(s.remainingS, 7);
+});
+
+test("waitForLoad with pause and skip", () => {
+  const engine = new WorkoutEngine(buildPhases(repeaters), { waitForLoad: true });
+  engine.start(0);
+  engine.update(6);
+  engine.pause(8);
+  engine.loadApplied(9); // force while paused: the hang starts on resume
+  assert.equal(engine.update(12).remainingS, 7);
+  engine.resume(12);
+  assert.equal(engine.update(14).remainingS, 5);
+
+  const other = new WorkoutEngine(buildPhases(repeaters), { waitForLoad: true });
+  other.start(0);
+  other.update(6);
+  other.skip(10); // skips the waiting hang whole
+  const s = other.update(10);
+  assert.equal(s.phase.type, "rest");
+  assert.equal(s.remainingS, 3);
+});
+
 test("repStats computes peak, mean, time under tension and completion", () => {
   const dt = 1 / 80;
   // 7 s rep: 0.5 s ramp below threshold, then 6.5 s at 20 kg

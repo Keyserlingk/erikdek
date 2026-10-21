@@ -12,11 +12,6 @@ const TARGET_KEY = "erkdek.liveTarget";
 const MIN_TARGET_KG = 0.5;
 
 const el = {
-  kg: document.getElementById("kg"),
-  bw: document.getElementById("bw"),
-  peak: document.getElementById("peak"),
-  peakKg: document.getElementById("peakKg"),
-  peakBw: document.getElementById("peakBw"),
   tare: document.getElementById("tare"),
   resetPeak: document.getElementById("resetPeak"),
   chart: document.getElementById("chart"),
@@ -43,18 +38,13 @@ function percentOfBodyweight(kg) {
 function render() {
   if (state.dirty) {
     state.dirty = false;
+    // The force, large in the graph (see display.js), with % bodyweight and the peak.
     const value = device.connected ? state.smoothed : null;
-    el.kg.textContent = value !== null ? formatKg(value) : "–";
-    el.kg.dataset.status = value !== null ? (targetStatus(value, state.target) ?? "") : "";
-    // The same number behind the graph (when that layout is on, see display.js).
-    el.chartKg.textContent = el.kg.textContent;
-    el.chartKg.dataset.status = el.kg.dataset.status;
+    el.chartKg.textContent = value !== null ? formatKg(value) : "–";
+    el.chartKg.dataset.status = value !== null ? (targetStatus(value, state.target) ?? "") : "";
     const bw = settings.values.bodyweightKg > 0 && value !== null ? `${percentOfBodyweight(value)} BW · ` : "";
-    el.chartSub.textContent = `${bw}Peak ${formatKg(state.peak)} kg`;
-    el.bw.textContent = value !== null ? `${percentOfBodyweight(value)} of bodyweight` : "";
-    el.bw.hidden = !(settings.values.bodyweightKg > 0);
-    el.peakKg.textContent = formatKg(state.peak);
-    el.peakBw.textContent = settings.values.bodyweightKg > 0 ? `· ${percentOfBodyweight(state.peak)}` : "";
+    const peakBw = settings.values.bodyweightKg > 0 ? ` (${percentOfBodyweight(state.peak)})` : "";
+    el.chartSub.textContent = `${bw}Peak ${formatKg(state.peak)} kg${peakBw}`;
     chart.setPeak(state.peak);
   }
   chart.render();
@@ -138,7 +128,6 @@ export function initLive() {
     device.send("tare");
     resetPeak();
   });
-  el.peak.addEventListener("click", resetPeak);
   el.resetPeak.addEventListener("click", resetPeak);
   for (const b of el.windows) b.addEventListener("click", () => setWindow(Number(b.dataset.s)));
   chart.onTap((kg) => {

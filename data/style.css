@@ -82,6 +82,20 @@ p { line-height: 1.45; margin: 0 0 14px; }
   cursor: pointer;
 }
 .rate { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Mute button: speaker with waves, or crossed out when muted. */
+.icon-toggle {
+  display: flex;
+  padding: 4px;
+  margin: -4px 0;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.icon-toggle .cross { display: none; }
+.icon-toggle[aria-pressed="true"] { color: var(--warn); }
+.icon-toggle[aria-pressed="true"] .waves { display: none; }
+.icon-toggle[aria-pressed="true"] .cross { display: inline; }
 .rate.low { color: var(--warn); }
 .conn {
   width: 10px;
@@ -146,54 +160,19 @@ main {
   border-radius: 16px;
 }
 
-.readout {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px 16px;
-}
-.bw { margin-top: 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.weight {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-variant-numeric: tabular-nums;
-}
-#kg { font-size: clamp(60px, 22vw, 112px); font-weight: 700; line-height: 1; }
-#kg[data-status="on"] { color: var(--ok); }
-#kg[data-status="below"] { color: var(--warn); }
-#kg[data-status="above"] { color: var(--accent); }
-.unit { font-size: 24px; color: var(--muted); }
-
-.peak {
-  margin-top: 12px;
-  padding: 8px 16px;
-  font: inherit;
-  font-size: 18px;
-  color: var(--muted);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-.peak strong { color: var(--text); }
-
 .actions { display: flex; gap: 12px; }
+.top-actions { margin-bottom: 16px; }
 
 .chart-card { padding: 10px 6px 4px 0; }
 .chart { height: 220px; }
 .chart-wrap { position: relative; }
-.chart-wrap .chart { position: relative; z-index: 1; } /* the plot draws over the number */
-.chart-number { display: none; }
-/* "Number in the graph" (body[data-number-layout=graph], see live.js): a taller graph
-   with the current force behind the curve, on Live and on the run screen. */
-body[data-number-layout="graph"] #liveReadout { display: none; }
-body[data-number-layout="graph"] #view-live .chart { height: min(58vh, 480px); }
-body[data-number-layout="graph"] #trainRun .chart { height: min(48vh, 420px); }
-body[data-number-layout="graph"] #trainRun .run-force { display: none; }
-body[data-number-layout="graph"] #trainRun .run-row { grid-template-columns: 1fr; }
-body[data-number-layout="graph"] .chart-number {
+.chart-wrap .chart { position: relative; z-index: 1; }
+#view-live .chart { height: min(58vh, 480px); }
+#trainRun .chart { height: min(48vh, 420px); }
+/* The current force, large, in the graph: behind the curve and grid, or in front of
+   them (Settings → Display, body[data-number-layer], see display.js). */
+body[data-number-layer="front"] .chart-number { z-index: 2; }
+.chart-number {
   position: absolute;
   inset: 0 0 28px 40px; /* leave the axes free */
   display: flex;
@@ -226,6 +205,12 @@ body[data-number-layout="graph"] .chart-number {
 }
 .opacity-preview .chart-kg { font-size: 72px; }
 .chart-sub { margin-top: 6px; font-size: 16px; color: var(--muted); opacity: 0.8; }
+/* The last 3 s of a hang: the number pulses (stronger and slightly larger) once a second. */
+.chart-kg.pulse { animation: kg-pulse 1s ease-in-out infinite; }
+@keyframes kg-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); opacity: min(1, calc(var(--chart-number-opacity, 0.16) * 3)); }
+}
 
 .chart-head {
   display: flex;
@@ -350,7 +335,7 @@ h2.spaced { margin-top: 20px; }
 .phase-card[data-phase="work"] .phase-label { color: var(--work); }
 .phase-card[data-phase="rest"] .phase-label, .phase-card[data-phase="setRest"] .phase-label { color: var(--rest); }
 .phase-card[data-phase="prep"] .phase-label { color: var(--warn); }
-.run-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.run-row { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .run-row .card { margin-bottom: 16px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; padding: 14px 8px; }
 .countdown {
   font-size: clamp(56px, 17vw, 96px);
@@ -359,11 +344,9 @@ h2.spaced { margin-top: 20px; }
   font-variant-numeric: tabular-nums;
 }
 .progress { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
-/* Hand, hold and grip (one per line): of this hang, or of the next one during rests.
-   In their own card left of the timer card; the Force card (number above the graph)
-   then gets its own row below. */
-body #trainRun .run-row[data-grip="true"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-#trainRun .run-row[data-grip="true"] .run-force { grid-column: 1 / -1; }
+/* Hand, hold and grip (one per line): of this hang, or of the next one during rests,
+   in their own card left of the timer card. */
+#trainRun .run-row[data-grip="true"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 body #trainRun .run-row[data-grip="true"] .countdown { font-size: clamp(56px, 17vw, 96px); }
 .run-row .grip-card { justify-content: center; }
 .grip-label { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
@@ -374,7 +357,7 @@ body #trainRun .run-row[data-grip="true"] .countdown { font-size: clamp(56px, 17
 .rest-overlay {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -391,37 +374,12 @@ body #trainRun .run-row[data-grip="true"] .countdown { font-size: clamp(56px, 17
 .rest-overlay[data-phase="prep"] .phase-label { color: var(--warn); }
 .next { font-size: 13px; }
 
-.run-force { border-width: 2px; }
-.run-force-label {
-  font-size: 17px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-.run-force-value { display: flex; align-items: baseline; gap: 4px; }
-.run-kg {
-  font-size: clamp(44px, 13vw, 72px);
-  font-weight: 700;
-  line-height: 1.05;
-  font-variant-numeric: tabular-nums;
-}
-.run-force #runTarget { font-size: 13px; }
 .held-count { font-size: 13px; font-weight: 600; margin-top: 2px; }
-.rep-info { font-size: 13px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
-.rep-info[data-state="held"] { color: var(--ok); }
-.rep-info[data-state="short"] { color: var(--warn); }
 .mock-panel .follow { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-.run-kg[data-status="on"] { color: var(--ok); }
-.run-kg[data-status="below"] { color: var(--warn); }
-.run-kg[data-status="above"] { color: var(--accent); }
-.chart.small { height: 315px; }
 
-/* Run screen without the sensor: instruction, timer, Done; no force box or graph. */
+/* Run screen without the sensor: instruction, timer, Done; no graph. */
 .run-instruction { font-size: 22px; font-weight: 600; text-align: center; line-height: 1.3; }
-#trainRun[data-sensor="false"] .chart-card,
-#trainRun[data-sensor="false"] .run-force { display: none; }
-#trainRun[data-sensor="false"] .run-row { grid-template-columns: 1fr; }
+#trainRun[data-sensor="false"] .chart-card { display: none; }
 #trainRun[data-sensor="false"] .countdown { font-size: clamp(80px, 30vw, 140px); }
 .done-button { width: 100%; padding: 22px; font-size: 22px; margin-bottom: 16px; }
 .set-log h2 { margin-bottom: 10px; }

@@ -1,7 +1,27 @@
 // One short beep on every phase change, via Web Audio (works over plain HTTP).
-// unlockAudio() must be called from a tap.
+// unlockAudio() must be called from a tap. Muting is remembered per phone.
 
+const MUTED_KEY = "erkdek.muted";
 let ctx = null;
+let muted = false;
+try {
+  muted = localStorage.getItem(MUTED_KEY) === "1";
+} catch {
+  // not muted
+}
+
+export function isMuted() {
+  return muted;
+}
+
+export function setMuted(value) {
+  muted = value;
+  try {
+    localStorage.setItem(MUTED_KEY, muted ? "1" : "0");
+  } catch {
+    // not remembered
+  }
+}
 
 export function unlockAudio() {
   if (!ctx) {
@@ -13,7 +33,7 @@ export function unlockAudio() {
 }
 
 export function beep() {
-  if (!ctx) return;
+  if (!ctx || muted) return;
   const durS = 0.3;
   const volume = 0.3;
   const t0 = ctx.currentTime;

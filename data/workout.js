@@ -58,14 +58,20 @@ export function targetKg(r, bodyweightKg) {
 // Phase sequencer driven by a monotonic clock (seconds). Phases with a duration end on
 // their own, exactly on schedule; open-ended phases (durS null, self-paced reps) last
 // until done() is called. Pausing stops the clock.
+// Runs the phases on a clock. The clock stops while paused and, with waitForLoad, at
+// the start of every work phase until loadApplied(): the sensor saw force, so the hang's
+// countdown starts when the climber actually starts.
 export class WorkoutEngine {
-  constructor(phases) {
+  constructor(phases, { waitForLoad = false } = {}) {
     this.phases = phases;
+    this.waitForLoad = waitForLoad;
     // Planned length; open-ended phases count as 0.
     this.totalS = phases.reduce((sum, p) => sum + (p.durS ?? 0), 0);
     this.startedAt = null;
-    this.pausedAt = null;
-    this.offsetS = 0; // time skipped forward minus time spent paused
+    this.offsetS = 0; // time skipped forward minus time the clock stood still
+    this.frozenAt = null; // clock time the elapsed time stopped at (paused or waiting)
+    this.isPaused = false;
+    this.isWaiting = false;
     this.index = 0;
     this.phaseStartS = 0; // elapsed time when the current phase began
     this.entered = []; // phases entered since the last update()
@@ -76,10 +82,16 @@ export class WorkoutEngine {
     this.index = 0;
     this.phaseStartS = 0;
     this.entered = [0];
+    this.waitIfWork();
   }
 
   get paused() {
-    return this.pausedAt !== null;
+    return this.isPaused;
+  }
+
+  // True while a work phase waits for force (waitForLoad).
+  get waitingForLoad() {
+    return this.isWaiting;
   }
 
   get done() {
@@ -91,43 +103,76 @@ export class WorkoutEngine {
     return !this.done && this.phases[this.index].durS === null;
   }
 
+  // Clock time at which the elapsed time was elapsedS.
+  clockAt(elapsedS) {
+    return this.startedAt + elapsedS - this.offsetS;
+  }
+
+  freeze(at) {
+    if (this.frozenAt === null) this.frozenAt = at;
+  }
+
+  // Restarts the clock once nothing holds it any more.
+  thaw(now) {
+    if (this.isPaused || this.isWaiting || this.frozenAt === null) return;
+    this.offsetS -= now - this.frozenAt;
+    this.frozenAt = null;
+  }
+
   pause(now) {
-    if (!this.paused) this.pausedAt = now;
+    if (this.isPaused) return;
+    this.isPaused = true;
+    this.freeze(now);
   }
 
   resume(now) {
-    if (this.paused) {
-      this.offsetS -= now - this.pausedAt;
-      this.pausedAt = null;
-    }
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this.thaw(now);
+  }
+
+  // The sensor saw force: the waiting work phase starts now.
+  loadApplied(now) {
+    if (!this.isWaiting) return;
+    this.isWaiting = false;
+    this.thaw(now);
   }
 
   elapsed(now) {
-    const t = this.paused ? this.pausedAt : now;
+    const t = this.frozenAt ?? now;
     return Math.max(0, t - this.startedAt + this.offsetS);
+  }
+
+  // Stops the clock at the start of a work phase until loadApplied().
+  waitIfWork() {
+    if (!this.waitForLoad || this.done || this.phases[this.index].type !== PHASE.WORK) return;
+    this.isWaiting = true;
+    this.freeze(this.clockAt(this.phaseStartS));
   }
 
   advance(startS) {
     this.index++;
     this.phaseStartS = startS;
     this.entered.push(this.index);
+    this.waitIfWork();
   }
 
-  // Moves past timed phases that have ended by elapsedS.
-  catchUp(elapsedS) {
-    while (!this.done) {
+  // Moves past timed phases that have ended by now.
+  catchUp(now) {
+    while (!this.done && !this.isWaiting) {
       const { durS } = this.phases[this.index];
-      if (durS === null || elapsedS < this.phaseStartS + durS) break;
+      if (durS === null || this.elapsed(now) < this.phaseStartS + durS) break;
       this.advance(this.phaseStartS + durS);
     }
   }
 
-  // Ends the current phase now: jumps to the end of a timed phase, or finishes an
-  // open-ended one.
+  // Ends the current phase now: jumps to the end of a timed phase (a waiting hang is
+  // skipped whole), or finishes an open-ended one.
   skip(now) {
-    const e = this.elapsed(now);
-    this.catchUp(e);
+    this.loadApplied(now);
+    this.catchUp(now);
     if (this.done) return;
+    const e = this.elapsed(now);
     const { durS } = this.phases[this.index];
     if (durS === null) this.advance(e);
     else this.offsetS += this.phaseStartS + durS - e;
@@ -141,15 +186,15 @@ export class WorkoutEngine {
   // Current position plus the phases entered since the previous update (none skipped).
   // remainingS is null in an open-ended phase; inPhaseS counts up in every phase.
   update(now) {
+    this.catchUp(now);
     const elapsedS = this.elapsed(now);
-    this.catchUp(elapsedS);
     const entered = this.entered;
     this.entered = [];
     const done = this.done;
     const phase = done ? null : this.phases[this.index];
     const inPhaseS = done ? 0 : elapsedS - this.phaseStartS;
     const remainingS = done ? 0 : phase.durS === null ? null : phase.durS - inPhaseS;
-    return { index: this.index, phase, remainingS, inPhaseS, elapsedS, done, entered };
+    return { index: this.index, phase, remainingS, inPhaseS, elapsedS, done, entered, waitingForLoad: this.isWaiting };
   }
 }
 
