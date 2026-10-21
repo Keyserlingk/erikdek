@@ -98,6 +98,8 @@ export async function startRun(kind, routine, hand, { onEnd = null, workout = nu
     engine: new WorkoutEngine(phases, { waitForLoad: sensor && device.connected && settings.values.startOnForce }),
     target,
     threshold: loadThresholdKg(target, settings.values.repThresholdKg),
+    // Force that starts a waiting hang's countdown.
+    startKg: target !== null ? (target * settings.values.startPct) / 100 : settings.values.repThresholdKg,
     index: -1,
     repSamples: null,
     attempts: [], // raw samples of each work phase
@@ -424,7 +426,7 @@ export function initRunner() {
     if (run.repSamples) {
       const from = run.repSamples.length;
       run.repSamples.push(...msg.kg);
-      const hit = run.engine.waitingForLoad ? msg.kg.findIndex((kg) => kg >= run.threshold) : -1;
+      const hit = run.engine.waitingForLoad ? msg.kg.findIndex((kg) => kg >= run.startKg) : -1;
       if (hit >= 0) {
         // Force: the hang starts now. Its samples start just before, for the rise.
         run.repSamples = run.repSamples.slice(Math.max(0, from + hit - Math.round(PRE_LOAD_S / sampleDtS())));

@@ -12,15 +12,18 @@ beforeEach(() => useBackend(new MemoryBackend()));
 
 test("settings: defaults, save, validation and reload", async () => {
   await settings.load();
-  assert.deepEqual(settings.values, { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true });
+  assert.deepEqual(settings.values, { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true, startPct: 30 });
   await settings.save({ bodyweightKg: 72 });
   await settings.save({ startOnForce: false });
   await settings.load();
-  assert.deepEqual(settings.values, { bodyweightKg: 72, repThresholdKg: 2, startOnForce: false });
+  assert.deepEqual(settings.values, { bodyweightKg: 72, repThresholdKg: 2, startOnForce: false, startPct: 30 });
   await assert.rejects(settings.save({ bodyweightKg: 300 }), /Bodyweight/);
-  assert.match(validateSettings({ bodyweightKg: 0, repThresholdKg: 0.1, startOnForce: true }), /Rep threshold/);
-  assert.match(validateSettings({ bodyweightKg: 0, repThresholdKg: 2, startOnForce: "yes" }), /start-on-force/);
-  assert.equal(validateSettings({ bodyweightKg: 0, repThresholdKg: 2, startOnForce: true }), null);
+  const ok = { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true, startPct: 30 };
+  assert.equal(validateSettings(ok), null);
+  assert.match(validateSettings({ ...ok, repThresholdKg: 0.1 }), /Rep threshold/);
+  assert.match(validateSettings({ ...ok, startOnForce: "yes" }), /start-on-force/);
+  assert.match(validateSettings({ ...ok, startPct: 2 }), /start level/);
+  assert.match(validateSettings({ ...ok, startPct: 30.5 }), /start level/);
 });
 
 test("routines: save, replace and remove persist", async () => {

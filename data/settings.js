@@ -16,6 +16,8 @@ const el = {
   bodyweight: document.getElementById("setBodyweight"),
   repThreshold: document.getElementById("setRepThreshold"),
   startOnForce: document.getElementById("setStartOnForce"),
+  startPct: document.getElementById("setStartPct"),
+  startPctRow: document.getElementById("setStartPctRow"),
   startMessage: document.getElementById("setStartMessage"),
   save: document.getElementById("setSave"),
   message: document.getElementById("setMessage"),
@@ -144,6 +146,8 @@ export function initSettings() {
     el.bodyweight.value = v.bodyweightKg > 0 ? v.bodyweightKg : "";
     el.repThreshold.value = v.repThresholdKg;
     el.startOnForce.checked = v.startOnForce;
+    el.startPct.value = v.startPct;
+    el.startPctRow.hidden = !v.startOnForce;
   });
   device.on("status", (st) => {
     about.fw.textContent = st.fw || "–";
@@ -167,17 +171,20 @@ export function initSettings() {
     "e.g. Four-finger open",
   );
 
-  // Saved right away (no Save button needed for a switch).
-  el.startOnForce.addEventListener("change", async () => {
+  // Saved right away (no Save button in this card).
+  const saveStart = async (changes) => {
     try {
-      await settings.save({ startOnForce: el.startOnForce.checked });
+      await settings.save(changes);
       el.startMessage.textContent = "";
     } catch (e) {
-      el.startOnForce.checked = settings.values.startOnForce;
       el.startMessage.textContent = e.message;
       el.startMessage.classList.add("error-text");
+      el.startOnForce.checked = settings.values.startOnForce;
+      el.startPct.value = settings.values.startPct;
     }
-  });
+  };
+  el.startOnForce.addEventListener("change", () => saveStart({ startOnForce: el.startOnForce.checked }));
+  el.startPct.addEventListener("change", () => saveStart({ startPct: Number(el.startPct.value) }));
 
   el.save.addEventListener("click", async () => {
     const text = el.bodyweight.value.trim();
