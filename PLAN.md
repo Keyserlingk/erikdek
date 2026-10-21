@@ -292,3 +292,23 @@ Next:
   campus board and pull-up/lock-off templates.
 - **E. Hardware bring-up:** flash, RATE check, calibrate, BLE range and latency test,
   real-world tuning.
+- **I. Firmware updates over Bluetooth (after E):** update the sensor from the app,
+  no USB cable.
+  - *Firmware:* an update service on the BLE GATT server: start (size + SHA-256),
+    data packets (write without response, MTU 247), end. Written to the second OTA
+    slot with the ESP-IDF OTA API while the current firmware keeps running; the
+    boot slot only switches after the whole image arrived and the checksum matches,
+    then restart. Packet layout in `lib/core` with native tests, mirrored in
+    `data/bleprotocol.js`. Check the partition table (two app slots; firmware is
+    ~46 % of one).
+  - *Protection:* only accepted while the BOOT button (GPIO0) is held, so nobody
+    nearby can flash it.
+  - *Rollback:* check whether the Arduino/PlatformIO bootloader has
+    `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`; if so, mark the new image valid once
+    BLE is up, else USB stays the way back from a firmware that crashes on start.
+  - *App:* `tools/build_android.sh` also builds the firmware and bundles
+    `firmware.bin` + its version. Settings → Sensor shows "Firmware vX available
+    (sensor has vY) → Update sensor" (optionally pick a .bin), with progress,
+    cancel, retries, reconnect after the restart and a version check. The simulator
+    gets a fake update for testing the screen.
+  - ~600 KB at BLE speed: expect 30–60 s. Only testable on the board.
