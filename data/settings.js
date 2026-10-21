@@ -84,6 +84,7 @@ function initSensor() {
 
 const displayEl = {
   layers: document.querySelectorAll("#displayLayer button"),
+  themes: document.querySelectorAll("#displayTheme button"),
   opacity: document.getElementById("displayOpacity"),
   opacityValue: document.getElementById("displayOpacityValue"),
 };
@@ -91,12 +92,19 @@ const displayEl = {
 function renderDisplay() {
   const p = displayPrefs();
   for (const b of displayEl.layers) b.classList.toggle("active", b.dataset.layer === p.numberLayer);
+  for (const b of displayEl.themes) b.classList.toggle("active", b.dataset.theme === p.theme);
   displayEl.opacity.value = Math.round(p.numberOpacity * 100);
   displayEl.opacityValue.textContent = `${Math.round(p.numberOpacity * 100)} %`;
 }
 
 function initDisplay() {
   applyDisplay();
+  for (const b of displayEl.themes) {
+    b.addEventListener("click", () => {
+      setDisplayPrefs({ theme: b.dataset.theme });
+      renderDisplay();
+    });
+  }
   for (const b of displayEl.layers) {
     b.addEventListener("click", () => {
       setDisplayPrefs({ numberLayer: b.dataset.layer });

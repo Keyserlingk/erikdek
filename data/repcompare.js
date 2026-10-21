@@ -1,14 +1,13 @@
 // Compares a session's reps (History and the summary after a run): every rep's force
 // curve on one chart, lined up at the moment its force starts. Coloured by rep, one hue
 // from light (first) to dark (last) so fatigue shows as a trend, or by hand (left vs
-// right) with each hand's average drawn bold. Tapping a rep chip highlights that rep and
-// shows its numbers.
+// right) with each hand's average drawn bold. Tapping rep chips picks reps: then only
+// the picked ones are drawn, with their numbers listed.
 
 import { alignRepCurves, meanCurve } from "./analysis.js";
 import { formatDuration, formatKg } from "./format.js";
 import { HANDS } from "./tests.js";
 
-const DIMMED_ALPHA = 0.18; // other reps while one is highlighted
 const HAND_REP_ALPHA = 0.35; // single reps under the hand averages
 
 function cssVar(name) {
@@ -54,10 +53,15 @@ export function repCompareCard(s) {
   const hands = new Set(s.reps.map((r) => r.hand));
   const bothHands = hands.has("left") && hands.has("right");
 
-  const state = { mode: "rep", focus: null, plot: null };
+  const state = { mode: "rep", picked: new Set(), plot: null }; // picked: rep indexes
   const chartBox = el("div", { className: "session-chart" });
   const chips = el("div", { className: "rep-chips" });
-  const detail = el("p", { className: "muted rep-detail" });
+  const detail = el("div", { className: "muted rep-detail" });
+  const clear = el("button", { type: "button", className: "pill-button", textContent: "Show all reps", hidden: true });
+  clear.addEventListener("click", () => {
+    state.picked.clear();
+    draw();
+  });
   const intro = el("p", { className: "muted" });
   const legend = el("div", { className: "rep-legend" });
   const modes = el("div", { className: "segmented", role: "group" });
@@ -73,19 +77,25 @@ export function repCompareCard(s) {
   function draw() {
     state.plot?.destroy();
     const repColors = colors();
+    const picking = state.picked.size > 0;
     const data = [x, ...ys];
     const series = [{}];
+    // With reps picked only those are drawn (bold); otherwise all of them.
     ys.forEach((_, i) => {
-      const focused = state.focus === i;
-      const dimmed = state.focus !== null && !focused;
-      const alpha = dimmed ? DIMMED_ALPHA : state.mode === "hand" && !focused ? HAND_REP_ALPHA : 1;
-      series.push({ stroke: rgba(repColors[i], alpha), width: focused ? 3 : 1.5, points: { show: false }, spanGaps: false });
+      const picked = state.picked.has(i);
+      const alpha = state.mode === "hand" && !picking ? HAND_REP_ALPHA : 1;
+      series.push({
+        stroke: rgba(repColors[i], alpha),
+        width: picked ? 2.5 : 1.5,
+        show: !picking || picked,
+        points: { show: false },
+        spanGaps: false,
+      });
     });
-    if (state.mode === "hand") {
+    if (state.mode === "hand" && !picking) {
       for (const hand of ["left", "right"]) {
         data.push(meanCurve(ys.filter((_, i) => s.reps[i].hand === hand)));
-        const color = cssVar(hand === "left" ? "--series-left" : "--series-right");
-        series.push({ stroke: state.focus !== null ? rgba(color, DIMMED_ALPHA) : color, width: 3, points: { show: false } });
+        series.push({ stroke: cssVar(hand === "left" ? "--series-left" : "--series-right"), width: 3, points: { show: false } });
       }
     }
     const axis = { stroke: cssVar("--muted"), grid: { stroke: cssVar("--border"), width: 1 }, ticks: { show: false } };
@@ -107,11 +117,16 @@ export function repCompareCard(s) {
     );
     for (const [i, chip] of [...chips.children].entries()) {
       chip.querySelector(".swatch").style.background = repColors[i];
-      chip.classList.toggle("active", state.focus === i);
-      chip.setAttribute("aria-pressed", String(state.focus === i));
+      chip.classList.toggle("active", state.picked.has(i));
+      chip.setAttribute("aria-pressed", String(state.picked.has(i)));
     }
-    detail.textContent = state.focus !== null ? repDetail(s, s.reps[state.focus]) : "Tap a rep to highlight it.";
-    legend.hidden = state.mode !== "hand";
+    detail.replaceChildren(
+      ...(picking
+        ? [...state.picked].sort((a, b) => a - b).map((i) => el("div", { textContent: repDetail(s, s.reps[i]) }))
+        : [el("div", { textContent: "Tap reps to show only those and compare their numbers." })]),
+    );
+    clear.hidden = !picking;
+    legend.hidden = state.mode !== "hand" || picking;
     intro.textContent =
       state.mode === "hand"
         ? "Each rep's force, lined up where the pull starts. Bold: each hand's average."
@@ -123,7 +138,8 @@ export function repCompareCard(s) {
     ...s.reps.map((r, i) => {
       const b = el("button", { type: "button", className: "rep-chip" }, [el("span", { className: "swatch" }), repLabel(s, r)]);
       b.addEventListener("click", () => {
-        state.focus = state.focus === i ? null : i; // tap again to clear
+        if (state.picked.has(i)) state.picked.delete(i); // tap again to take it out
+        else state.picked.add(i);
         draw();
       });
       return b;
@@ -150,6 +166,7 @@ export function repCompareCard(s) {
     legend,
     chips,
     detail,
+    clear,
   ]);
   // Drawn once the card is in the page (the chart needs its width).
   card.drawChart = draw;

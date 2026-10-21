@@ -24,8 +24,11 @@
   --inset-bottom: max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+/* Dark theme: <html data-theme="dark">, set before the first paint (index.html) from
+   Settings → Display (System follows the phone; see display.js). */
+:root { color-scheme: light; }
+:root[data-theme="dark"] {
+    color-scheme: dark;
     --bg: #111418;
     --surface: #1b1f25;
     --text: #eef1f5;
@@ -43,7 +46,6 @@
     --series-right: #0d9488;
     --rep-first: #1e40af;
     --rep-last: #bfdbfe;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -609,6 +611,7 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
 .check { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .check input { width: 20px; height: 20px; }
 .spaced-check { margin-top: 16px; }
+.spaced-group { margin-bottom: 14px; }
 
 .reading {
   display: flex;
@@ -668,4 +671,5 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
 .swatch.right { background: var(--series-right); height: 4px; }
 .rep-legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); }
 .rep-key { display: inline-flex; align-items: center; gap: 6px; }
-.rep-detail { margin: 8px 0 0; font-size: 14px; min-height: 1.4em; }
+.rep-detail { margin: 8px 0 0; font-size: 14px; line-height: 1.5; }
+.rep-compare > .pill-button { margin-top: 8px; }

@@ -7,6 +7,15 @@
   <title>Erkdek</title>
   <link rel="stylesheet" href="vendor/uPlot.min.css">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Theme before the first paint (Settings → Display; kept up to date by display.js).
+    (function () {
+      var theme = "system";
+      try { theme = JSON.parse(localStorage.getItem("erkdek.display") || "{}").theme || "system"; } catch (e) {}
+      var dark = theme === "dark" || (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
 </head>
 <body>
   <header class="bar">
@@ -435,6 +444,11 @@
       </div>
       <div class="card">
         <h2>Display</h2>
+        <div id="displayTheme" class="segmented wide spaced-group" role="group" aria-label="Theme">
+          <button type="button" data-theme="system">System</button>
+          <button type="button" data-theme="light">Light</button>
+          <button type="button" data-theme="dark">Dark</button>
+        </div>
         <p class="muted">The force is shown large in the graph, on Live and while training.</p>
         <div id="displayLayer" class="segmented wide" role="group" aria-label="Force number">
           <button type="button" data-layer="behind">Behind the graph</button>

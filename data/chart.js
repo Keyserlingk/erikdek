@@ -21,7 +21,7 @@ export class LiveChart {
     this.plot = null;
 
     new ResizeObserver(() => this._resize()).observe(container);
-    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => this._build());
+    window.addEventListener("erkdek:theme", () => this._build()); // see display.js
     this._build();
   }
 
