@@ -13,7 +13,7 @@ import { newSessionId } from "./sessions.js";
 import { settings } from "./settingsstore.js";
 import { HANDS, KINDS, summarizeTraining } from "./tests.js";
 import { groupOf, mountRunScreens, show } from "./trainscreens.js";
-import { $, button } from "./ui.js";
+import { $, button, create } from "./ui.js";
 import { allowScreenOff, keepScreenOn } from "./wakelock.js";
 import {
   PHASE,
@@ -44,6 +44,7 @@ const el = {
   chartKg: $("runChartKg"),
   chartSub: $("runChartSub"),
   grip: $("runGrip"),
+  chartGrip: $("runChartGrip"),
   chart: $("runChart"),
   pause: $("runPause"),
   skip: $("runSkip"),
@@ -262,8 +263,9 @@ function tick() {
   chart.render();
 }
 
-// Hand, hold and grip of the hang now (during a hang) or of the next hang (while
-// getting ready or resting), e.g. "Next: Left hand · 20 mm edge · Half crimp".
+// Hand, hold and grip, one per line: of the hang now (during a hang) or of the next hang
+// (while getting ready or resting). In the phase card next to the countdown, and while
+// not hanging also on the graph.
 function renderGrip(index) {
   const current = run.phases[index];
   const isWork = current.type === PHASE.WORK;
@@ -271,9 +273,17 @@ function renderGrip(index) {
   // Tests have one hand for the whole run (chosen at setup); routines per hang.
   const hand = hang && hang.hand && hang.hand !== "both" ? hang.hand : run.hand;
   const parts = hang ? [hand && hand !== "both" ? HANDS[hand] : "", run.routine.holdType, run.routine.grip].filter(Boolean) : [];
+  const key = `${isWork}|${parts.join("|")}`;
+  if (key === run.gripKey) return; // unchanged: don't rebuild the list every tick
+  run.gripKey = key;
+  const list = () => [
+    ...(isWork ? [] : [create("div", { className: "grip-next", textContent: "Next" })]),
+    ...parts.map((text) => create("div", { textContent: text })),
+  ];
   el.grip.hidden = !parts.length;
-  el.grip.dataset.next = String(!isWork);
-  el.grip.textContent = (isWork ? "" : "Next: ") + parts.join(" · ");
+  el.grip.replaceChildren(...list());
+  el.chartGrip.hidden = isWork || !parts.length;
+  el.chartGrip.replaceChildren(...list());
 }
 
 const round2 = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
