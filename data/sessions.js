@@ -4,7 +4,7 @@
 
 import { db } from "./db.js";
 
-const DETAIL_ONLY = ["reps", "curve"];
+const DETAIL_ONLY = ["reps", "curve", "repCurves"];
 const SESSION_ID = /^[a-z0-9]{1,16}$/;
 
 export function indexEntry(session) {

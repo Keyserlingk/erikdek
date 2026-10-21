@@ -14,6 +14,9 @@
   --rest: #2563eb;
   --series-left: #9333ea;
   --series-right: #0d9488;
+  /* Reps compared (History): first rep → last rep, one hue light → dark. */
+  --rep-first: #93c5fd;
+  --rep-last: #1e3a8a;
   --tabs-h: 60px;
   /* Space taken by Android's status bar (top) and navigation bar (bottom) when the app
      draws edge-to-edge: Capacitor sets --safe-area-inset-*, newer WebViews env(). */
@@ -36,8 +39,10 @@
     --band: rgba(34, 197, 94, 0.16);
     --work: #22c55e;
     --rest: #3b82f6;
-    --series-left: #c084fc;
-    --series-right: #2dd4bf;
+    --series-left: #a855f7;
+    --series-right: #0d9488;
+    --rep-first: #1e40af;
+    --rep-last: #bfdbfe;
   }
 }
 
@@ -604,3 +609,30 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
   font-weight: 600;
 }
 .tabs a.active { color: var(--accent); }
+
+/* Reps compared (session view) */
+.rep-compare-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.rep-compare-head h2 { margin: 0; }
+.rep-compare .session-chart { margin: 8px 0 4px; }
+.rep-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rep-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.rep-chip.active { border-color: var(--text); font-weight: 700; }
+.swatch { display: inline-block; width: 12px; height: 3px; border-radius: 2px; }
+.swatch.left { background: var(--series-left); height: 4px; }
+.swatch.right { background: var(--series-right); height: 4px; }
+.rep-legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); }
+.rep-key { display: inline-flex; align-items: center; gap: 6px; }
+.rep-detail { margin: 8px 0 0; font-size: 14px; min-height: 1.4em; }

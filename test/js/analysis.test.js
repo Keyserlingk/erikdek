@@ -11,6 +11,10 @@ import {
   maxPullSummary,
   rfdOfPull,
   rfdSummary,
+  alignRepCurves,
+  compressRepCurves,
+  meanCurve,
+  repOnset,
 } from "../../data/analysis.js";
 
 const DT = 1 / 80;
@@ -109,4 +113,28 @@ test("curvePoints draws gaps as zero and reads the old single-array format", () 
   assert.deepEqual(p.x, [0, 0.1, 0.2, 1.9, 2]);
   assert.deepEqual(p.y, [5, 5, 0, 0, 7]);
   assert.deepEqual(curvePoints({ hz: 2, kg: [1, 2] }), { x: [0, 0.5], y: [1, 2] });
+});
+
+test("compressRepCurves keeps one curve per rep at ~40 Hz, fewer points when long", () => {
+  const rep = Array.from({ length: 80 }, (_, i) => i / 10); // 1 s at 80 Hz
+  const c = compressRepCurves([rep, rep], 80);
+  assert.equal(c.hz, 40);
+  assert.equal(c.reps.length, 2);
+  assert.equal(c.reps[0].length, 40);
+  assert.equal(c.reps[0][0], 0.05); // average of 0 and 0.1
+  const long = compressRepCurves([rep, rep], 80, { maxPoints: 40 });
+  assert.equal(long.hz, 20);
+  assert.equal(long.reps[0].length, 20);
+});
+
+test("alignRepCurves lines reps up at their force onset; meanCurve where half have data", () => {
+  const early = [0, 10, 20, 20, 20]; // onset index 0 (the sample before 10 kg)
+  const late = [0, 0, 0, 10, 20, 20]; // onset index 2
+  const { x, ys } = alignRepCurves([early, late], 10);
+  assert.deepEqual(x, [-0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4]);
+  assert.deepEqual(ys[0], [null, null, 0, 10, 20, 20, 20]);
+  assert.deepEqual(ys[1], [0, 0, 0, 10, 20, 20, null]);
+  assert.deepEqual(meanCurve(ys), [0, 0, 0, 10, 20, 20, 20]);
+  assert.deepEqual(meanCurve([[1, null], [3, null], [5, 7]]), [3, null]); // 1 of 3 isn't half
+  assert.equal(repOnset([0, 0, 0]), 0);
 });

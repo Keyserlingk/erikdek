@@ -2,7 +2,7 @@
 // routine uses it), the per-set log of routines without the sensor, and the session
 // built at the end. The session goes to onEnd (workouts) or else to the summary.
 
-import { compressCurve } from "./analysis.js";
+import { compressCurve, compressRepCurves } from "./analysis.js";
 import { beep, unlockAudio } from "./audio.js";
 import { LiveChart } from "./chart.js";
 import { device } from "./device.js";
@@ -341,6 +341,8 @@ function buildSession(stopped) {
   };
   if (noForce) session.noForce = true;
   else session.curve = compressCurve(run.curve, 1 / dtS, { minKg: CURVE_MIN_KG, maxPoints: CURVE_MAX_POINTS });
+  // Each rep's own curve, for comparing reps in History.
+  if (!noForce && run.attempts.length === reps.length && reps.length) session.repCurves = compressRepCurves(run.attempts, 1 / dtS);
   if (run.kind === "workout") {
     const { name, type, instruction, setInstructions, addedWeightKg, holdType, grip, hands } = r;
     const { sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;

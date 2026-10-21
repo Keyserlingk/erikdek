@@ -154,3 +154,48 @@ export function curvePoints(curve) {
   }
   return { x, y };
 }
+
+// ---------------------------------------------------------------- rep curves
+
+// Each rep's own samples, for comparing reps (History). Downsampled to about targetHz
+// by block averages (rounded to 10 g); lower if all reps together exceed maxPoints.
+//   { hz, reps: [[kg...], ...] }  one array per rep, in the order of session.reps
+export function compressRepCurves(attempts, hz, { targetHz = 40, maxPoints = 6000 } = {}) {
+  const total = attempts.reduce((n, a) => n + a.length, 0);
+  const factor = Math.max(1, Math.round(hz / targetHz), Math.ceil(total / maxPoints));
+  return { hz: hz / factor, reps: attempts.map((a) => averageBlocks(a, factor)) };
+}
+
+// Index where a rep's force starts: the sample before it first reaches 30 % of the rep's
+// peak (at least minKg). 0 when it never does.
+export function repOnset(kg, minKg = 2) {
+  const peak = Math.max(0, ...kg);
+  const threshold = Math.max(minKg, 0.3 * peak);
+  const i = kg.findIndex((v) => v >= threshold);
+  return i > 0 ? i - 1 : 0;
+}
+
+// Rep curves on one time axis, each shifted so its force onset is at 0 s.
+//   { x: [s...], ys: [[kg or null...] per rep] }
+export function alignRepCurves(curves, hz) {
+  const onsets = curves.map((kg) => repOnset(kg));
+  const before = Math.max(0, ...onsets);
+  const after = Math.max(0, ...curves.map((kg, i) => kg.length - onsets[i]));
+  const n = before + after;
+  const x = Array.from({ length: n }, (_, i) => Math.round(((i - before) / hz) * 1000) / 1000);
+  const ys = curves.map((kg, r) => {
+    const shift = before - onsets[r];
+    return Array.from({ length: n }, (_, i) => (i - shift >= 0 && i - shift < kg.length ? kg[i - shift] : null));
+  });
+  return { x, ys };
+}
+
+// Average of aligned curves at each point, where at least half of them have a value.
+export function meanCurve(ys) {
+  if (!ys.length) return [];
+  const need = Math.ceil(ys.length / 2);
+  return ys[0].map((_, i) => {
+    const values = ys.map((y) => y[i]).filter((v) => v !== null);
+    return values.length >= need ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100 : null;
+  });
+}

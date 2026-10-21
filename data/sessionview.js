@@ -3,6 +3,7 @@
 
 import { curvePoints } from "./analysis.js";
 import { formatDuration, formatKg } from "./format.js";
+import { repCompareCard } from "./repcompare.js";
 import { HANDS, KINDS } from "./tests.js";
 
 function cssVar(name) {
@@ -101,7 +102,7 @@ function renderStrip(strip) {
   ]);
 }
 
-// Fills `root` with the session view. Returns the chart (or null) so callers can destroy it.
+// Fills `root` with the session view. Returns { destroy } for its charts.
 export function renderSession(root, s) {
   const kind = KINDS[s.type];
   const meta = [formatDateTime(s.startedAt), formatDuration(s.durationS), ...sessionTags(s)];
@@ -130,14 +131,23 @@ export function renderSession(root, s) {
     ]),
   ]);
 
+  const compare = repCompareCard(s);
   root.replaceChildren(
     el("h1", { textContent: sessionTitle(s) }),
     el("p", { className: "muted", textContent: meta.join(" · ") }),
     ...(s.noForce ? [el("p", { className: "no-force", textContent: "No force data: the sensor wasn't connected." })] : []),
     ...(noForceTest ? [] : [tiles]),
     ...(hasCurve ? [el("div", { className: "card chart-card" }, [chartBox])] : []),
+    ...(compare ? [compare] : []),
     ...(strips.length ? [el("div", { className: "card strips" }, strips.map(renderStrip))] : []),
     ...(rows.length ? [tableCard] : []),
   );
-  return hasCurve ? curveChart(chartBox, s.curve) : null;
+  const chart = hasCurve ? curveChart(chartBox, s.curve) : null;
+  compare?.drawChart();
+  return {
+    destroy() {
+      chart?.destroy();
+      compare?.destroyChart();
+    },
+  };
 }
