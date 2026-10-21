@@ -1,7 +1,7 @@
 import { device } from "./device.js";
 import { applyDisplay, displayPrefs, setDisplayPrefs } from "./display.js";
 import { buildInfo, canChooseSensor, isNativeApp, sensorMode, setSensorMode } from "./platform.js";
-import { formatBytes } from "./format.js";
+import { formatBytes, formatKg } from "./format.js";
 import { sessions } from "./sessions.js";
 import {
   MAX_BODYWEIGHT_KG,
@@ -18,6 +18,7 @@ const el = {
   startOnForce: document.getElementById("setStartOnForce"),
   startPct: document.getElementById("setStartPct"),
   startPctRow: document.getElementById("setStartPctRow"),
+  startInfo: document.getElementById("setStartInfo"),
   startMessage: document.getElementById("setStartMessage"),
   save: document.getElementById("setSave"),
   message: document.getElementById("setMessage"),
@@ -148,6 +149,10 @@ export function initSettings() {
     el.startOnForce.checked = v.startOnForce;
     el.startPct.value = v.startPct;
     el.startPctRow.hidden = !v.startOnForce;
+    el.startInfo.hidden = !v.startOnForce;
+    el.startInfo.textContent =
+      `Never below the rep threshold (${formatKg(v.repThresholdKg)} kg), which is also the start level without a target. ` +
+      `E.g. with a 40 kg target: ${formatKg(Math.max(v.repThresholdKg, (40 * v.startPct) / 100))} kg.`;
   });
   device.on("status", (st) => {
     about.fw.textContent = st.fw || "–";

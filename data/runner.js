@@ -98,8 +98,9 @@ export async function startRun(kind, routine, hand, { onEnd = null, workout = nu
     engine: new WorkoutEngine(phases, { waitForLoad: sensor && device.connected && settings.values.startOnForce }),
     target,
     threshold: loadThresholdKg(target, settings.values.repThresholdKg),
-    // Force that starts a waiting hang's countdown.
-    startKg: target !== null ? (target * settings.values.startPct) / 100 : settings.values.repThresholdKg,
+    // Force that starts a waiting hang's countdown: a share of the target, but never
+    // below the rep threshold (so a light touch doesn't start it).
+    startKg: Math.max(settings.values.repThresholdKg, target !== null ? (target * settings.values.startPct) / 100 : 0),
     index: -1,
     repSamples: null,
     attempts: [], // raw samples of each work phase
