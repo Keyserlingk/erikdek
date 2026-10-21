@@ -15,6 +15,8 @@ import { grips, holdTypes, initTagManager } from "./tags.js";
 const el = {
   bodyweight: document.getElementById("setBodyweight"),
   repThreshold: document.getElementById("setRepThreshold"),
+  startOnForce: document.getElementById("setStartOnForce"),
+  startMessage: document.getElementById("setStartMessage"),
   save: document.getElementById("setSave"),
   message: document.getElementById("setMessage"),
 };
@@ -141,6 +143,7 @@ export function initSettings() {
   settings.onChange((v) => {
     el.bodyweight.value = v.bodyweightKg > 0 ? v.bodyweightKg : "";
     el.repThreshold.value = v.repThresholdKg;
+    el.startOnForce.checked = v.startOnForce;
   });
   device.on("status", (st) => {
     about.fw.textContent = st.fw || "–";
@@ -163,6 +166,18 @@ export function initSettings() {
     "Added to the standard grips (open hand, half crimp…) when choosing a grip.",
     "e.g. Four-finger open",
   );
+
+  // Saved right away (no Save button needed for a switch).
+  el.startOnForce.addEventListener("change", async () => {
+    try {
+      await settings.save({ startOnForce: el.startOnForce.checked });
+      el.startMessage.textContent = "";
+    } catch (e) {
+      el.startOnForce.checked = settings.values.startOnForce;
+      el.startMessage.textContent = e.message;
+      el.startMessage.classList.add("error-text");
+    }
+  });
 
   el.save.addEventListener("click", async () => {
     const text = el.bodyweight.value.trim();

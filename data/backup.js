@@ -103,8 +103,8 @@ async function restore() {
   setBusy(true);
   try {
     if (o.settings.checked && b.settings) {
-      const { bodyweightKg, repThresholdKg } = b.settings;
-      await settings.save({ bodyweightKg, repThresholdKg });
+      const { bodyweightKg, repThresholdKg, startOnForce } = b.settings;
+      await settings.save({ bodyweightKg, repThresholdKg, ...(typeof startOnForce === "boolean" ? { startOnForce } : {}) });
       done.push("settings");
     }
     if (o.routines.checked) {

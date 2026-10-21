@@ -1,4 +1,5 @@
-// Settings stored in the app: bodyweight and rep threshold (db "kv" → "settings").
+// Settings stored in the app: bodyweight, rep threshold and whether hangs start on
+// force (db "kv" → "settings").
 // No DOM access, so it runs under node --test too.
 
 import { db } from "./db.js";
@@ -8,7 +9,8 @@ export const MAX_BODYWEIGHT_KG = 250;
 export const MIN_REP_THRESHOLD_KG = 0.5;
 export const MAX_REP_THRESHOLD_KG = 50;
 
-const DEFAULTS = { bodyweightKg: 0, repThresholdKg: 2 };
+// startOnForce: with the sensor, a hang's countdown starts when force is applied.
+const DEFAULTS = { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true };
 
 // Returns an error message, or null when the settings are valid.
 export function validateSettings(v) {
@@ -18,6 +20,7 @@ export function validateSettings(v) {
   if (!(v.repThresholdKg >= MIN_REP_THRESHOLD_KG && v.repThresholdKg <= MAX_REP_THRESHOLD_KG)) {
     return `Rep threshold must be between ${MIN_REP_THRESHOLD_KG} and ${MAX_REP_THRESHOLD_KG} kg.`;
   }
+  if (typeof v.startOnForce !== "boolean") return "Invalid start-on-force setting.";
   return null;
 }
 

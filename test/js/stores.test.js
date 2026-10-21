@@ -12,13 +12,15 @@ beforeEach(() => useBackend(new MemoryBackend()));
 
 test("settings: defaults, save, validation and reload", async () => {
   await settings.load();
-  assert.deepEqual(settings.values, { bodyweightKg: 0, repThresholdKg: 2 });
+  assert.deepEqual(settings.values, { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true });
   await settings.save({ bodyweightKg: 72 });
+  await settings.save({ startOnForce: false });
   await settings.load();
-  assert.deepEqual(settings.values, { bodyweightKg: 72, repThresholdKg: 2 });
+  assert.deepEqual(settings.values, { bodyweightKg: 72, repThresholdKg: 2, startOnForce: false });
   await assert.rejects(settings.save({ bodyweightKg: 300 }), /Bodyweight/);
-  assert.match(validateSettings({ bodyweightKg: 0, repThresholdKg: 0.1 }), /Rep threshold/);
-  assert.equal(validateSettings({ bodyweightKg: 0, repThresholdKg: 2 }), null);
+  assert.match(validateSettings({ bodyweightKg: 0, repThresholdKg: 0.1, startOnForce: true }), /Rep threshold/);
+  assert.match(validateSettings({ bodyweightKg: 0, repThresholdKg: 2, startOnForce: "yes" }), /start-on-force/);
+  assert.equal(validateSettings({ bodyweightKg: 0, repThresholdKg: 2, startOnForce: true }), null);
 });
 
 test("routines: save, replace and remove persist", async () => {

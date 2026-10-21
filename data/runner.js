@@ -93,8 +93,9 @@ export async function startRun(kind, routine, hand, { onEnd = null, workout = nu
     routine,
     hand,
     phases,
-    // With the sensor connected each hang's countdown starts when force is applied.
-    engine: new WorkoutEngine(phases, { waitForLoad: sensor && device.connected }),
+    // With the sensor connected each hang's countdown can start when force is applied
+    // (Settings → Starting a hang).
+    engine: new WorkoutEngine(phases, { waitForLoad: sensor && device.connected && settings.values.startOnForce }),
     target,
     threshold: loadThresholdKg(target, settings.values.repThresholdKg),
     index: -1,
