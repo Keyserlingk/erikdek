@@ -69,7 +69,8 @@ bool bleConnected() { return connHandle != BLE_HS_CONN_HANDLE_NONE; }
 static void updateStatus(bool notify) {
   SensorStatus st = sensorStatus();
   uint8_t buf[ble::kStatusSize];
-  size_t n = ble::encodeStatus(buf, st.tared, st.calibrated, st.rateHz, st.countsPerKg, millis());
+  size_t n = ble::encodeStatus(buf, st.tared, st.calibrated, st.rateHz, st.countsPerKg, millis(), st.tareNoise.rmsKg,
+                               st.tareNoise.ppKg);
   statusChr->setValue(buf, n);
   if (notify && bleConnected()) statusChr->notify();
 }
@@ -101,6 +102,17 @@ void bleBegin() {
   Serial.printf("BLE advertising as %s (firmware %s)\n", kDeviceName, ERKDEK_VERSION);
 }
 
+static ble::CalError calError(CalResult r) {
+  switch (r) {
+    case CalResult::BadWeight:
+      return ble::CalErrBadWeight;
+    case CalResult::Moving:
+      return ble::CalErrMoving;
+    default:
+      return ble::CalErrTooSmall;
+  }
+}
+
 void bleSendEvent(const SensorEvent& ev) {
   uint8_t buf[8];
   size_t n = 0;
@@ -109,10 +121,10 @@ void bleSendEvent(const SensorEvent& ev) {
       n = ble::encodeTared(buf);
       break;
     case SensorEvent::Calibrated:
-      n = ble::encodeCalibrated(buf, ev.calibration.calibrated, ev.calibration.countsPerKg);
+      n = ble::encodeCalibrated(buf, ev.calibration.calibrated, ev.calibration.countsPerKg, ev.noise.rmsKg);
       break;
     case SensorEvent::CalibrationFailed:
-      n = ble::encodeCalError(buf, ev.result == CalResult::BadWeight ? ble::CalErrBadWeight : ble::CalErrTooSmall);
+      n = ble::encodeCalError(buf, calError(ev.result), ev.noise.rmsKg);
       break;
   }
   if (bleConnected()) eventChr->notify(buf, n);

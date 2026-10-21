@@ -18,6 +18,12 @@ const TRUE_COUNTS_PER_KG = 16000;
 const RAW_ZERO = 52000; // raw reading with no load
 const NOISE_COUNTS = 900; // ~0.06 kg
 const CALIBRATION_KEY = "erkdek.simCalibration";
+// A calibration is refused when its readings spread more than this (firmware: calibration.h).
+const MOVING_RMS_KG = 0.15;
+const MOVING_RMS_SHARE = 0.005;
+
+// kg -> whole grams as sent by the sensor (null = not measured).
+const grams = (kg) => (Number.isFinite(kg) ? Math.round(kg * 1000) / 1000 : null);
 
 // Normal distribution from a uniform random source (Box–Muller).
 function gauss(random, sd) {
@@ -46,6 +52,21 @@ class Averager {
   average() {
     return Math.trunc(this.values.reduce((a, b) => a + b, 0) / this.values.length);
   }
+
+  // { rms, pp }: spread of the readings in counts.
+  spread() {
+    const n = this.values.length;
+    const mean = this.values.reduce((a, b) => a + b, 0) / n;
+    const rms = Math.sqrt(this.values.reduce((a, v) => a + (v - mean) ** 2, 0) / n);
+    return { rms, pp: Math.max(...this.values) - Math.min(...this.values) };
+  }
+
+  // { rmsKg, ppKg }: the spread converted with countsPerKg.
+  noise(countsPerKg) {
+    const { rms, pp } = this.spread();
+    const cpk = Math.abs(countsPerKg);
+    return { rmsKg: rms / cpk, ppKg: pp / cpk };
+  }
 }
 
 // Scenarios: what is hanging on the simulated cell.
@@ -62,6 +83,7 @@ export class SimSensor {
     this.countsPerKg = calibration?.countsPerKg ?? DEFAULT_COUNTS_PER_KG;
     this.calibrated = calibration?.calibrated ?? false;
     this.tared = false;
+    this.tareNoise = null; // { rms, pp } of the last tare in counts
     this.calKg = 0;
     this.tareAvg = new Averager();
     this.calAvg = new Averager();
@@ -128,6 +150,7 @@ export class SimSensor {
     const events = [];
     if (this.tareAvg.add(raw)) {
       this.offset = this.tareAvg.average();
+      this.tareNoise = this.tareAvg.spread(); // counts; converted with the current factor
       this.tared = true;
       events.push({ t: "tared" });
     }
@@ -136,16 +159,19 @@ export class SimSensor {
   }
 
   finishCalibration() {
-    if (!(this.calKg > 0)) return { t: "calError", reason: "badWeight" };
     const delta = this.calAvg.average() - this.offset;
-    if (Math.abs(delta) < MIN_CALIBRATION_COUNTS) return { t: "calError", reason: "tooSmall" };
+    const ok = this.calKg > 0 && Math.abs(delta) >= MIN_CALIBRATION_COUNTS;
+    const noiseKg = grams(this.calAvg.noise(ok ? delta / this.calKg : this.countsPerKg).rmsKg);
+    if (!(this.calKg > 0)) return { t: "calError", reason: "badWeight", noiseKg };
+    if (!ok) return { t: "calError", reason: "tooSmall", noiseKg };
+    if (noiseKg > Math.max(MOVING_RMS_KG, this.calKg * MOVING_RMS_SHARE)) return { t: "calError", reason: "moving", noiseKg };
     this.countsPerKg = delta / this.calKg;
     this.calibrated = true;
-    return this.calibratedEvent();
+    return this.calibratedEvent(noiseKg);
   }
 
-  calibratedEvent() {
-    return { t: "calibrated", calibrated: this.calibrated, cpk: this.countsPerKg };
+  calibratedEvent(noiseKg = null) {
+    return { t: "calibrated", calibrated: this.calibrated, cpk: this.countsPerKg, noiseKg };
   }
 
   // Commands from the app; returns events to send right away.
@@ -227,6 +253,8 @@ export class SimulatedTransport extends EventTarget {
       rate: SAMPLE_RATE_HZ,
       tared: s.tared,
       calibrated: s.calibrated,
+      tareNoiseKg: grams(s.tareNoise?.rms / Math.abs(s.countsPerKg)),
+      tareNoisePpKg: grams(s.tareNoise?.pp / Math.abs(s.countsPerKg)),
       cpk: s.countsPerKg,
       uptime: Math.round(s.t * 1000),
       mock: true,
@@ -246,6 +274,7 @@ export class SimulatedTransport extends EventTarget {
   emitEvent(ev) {
     if (ev.t === "calibrated") saveCalibration({ countsPerKg: ev.cpk, calibrated: ev.calibrated });
     this.emit(ev);
+    if (ev.t === "tared") this.emit(this.status()); // like the firmware: new tare noise
   }
 
   emit(msg) {

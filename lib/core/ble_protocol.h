@@ -8,8 +8,12 @@
 //                      | n × force i16 (10 g units, ±327.67 kg)
 //   Status (read/notify) flags u8 (bit0 tared, bit1 calibrated) | rate u16 (0.1 Hz)
 //                      | countsPerKg f32 | uptime u32 (ms)
+//                      | tare noise rms u16 (g) | tare noise peak-to-peak u16 (g)
 //   Command (write)    opcode u8 [| value f32]
-//   Event (notify)     type u8 [| payload]
+//   Event (notify)     tared:      1
+//                      calibrated: 2 | calibrated u8 | countsPerKg f32 | noise rms u16 (g)
+//                      calError:   3 | reason u8 | noise rms u16 (g)
+// Noise values are 0xFFFF when not measured (e.g. a calibration reset).
 
 #include <stddef.h>
 #include <stdint.h>
@@ -18,12 +22,13 @@
 namespace ble {
 
 static constexpr size_t kSamplesHeader = 8;
-static constexpr size_t kStatusSize = 11;
+static constexpr size_t kStatusSize = 15;
+static constexpr uint16_t kNoNoise = 0xFFFF;
 static constexpr int16_t kForceMax = 32767;  // 327.67 kg
 
 enum Command : uint8_t { CmdTare = 1, CmdCalibrate = 2, CmdCalReset = 3, CmdSetCalibration = 4 };
 enum Event : uint8_t { EvTared = 1, EvCalibrated = 2, EvCalError = 3 };
-enum CalError : uint8_t { CalErrBadWeight = 1, CalErrTooSmall = 2 };
+enum CalError : uint8_t { CalErrBadWeight = 1, CalErrTooSmall = 2, CalErrMoving = 3 };
 
 inline void putU16(uint8_t* p, uint16_t v) {
   p[0] = v & 0xFF;
@@ -59,6 +64,13 @@ inline int16_t forceUnits(float kg) {
   return (int16_t)(units < 0 ? units - 0.5f : units + 0.5f);
 }
 
+// kg -> whole grams for the noise fields; kNoNoise for NAN, clamped below it.
+inline uint16_t noiseGrams(float kg) {
+  if (!(kg >= 0)) return kNoNoise;
+  float g = kg * 1000.0f + 0.5f;
+  return g >= kNoNoise ? (uint16_t)(kNoNoise - 1) : (uint16_t)g;
+}
+
 // Samples that fit in a notification of `payload` bytes (MTU - 3).
 inline size_t samplesPerPacket(size_t payload) {
   return payload > kSamplesHeader ? (payload - kSamplesHeader) / 2 : 0;
@@ -73,12 +85,15 @@ inline size_t encodeSamples(uint8_t* out, uint16_t seq, uint32_t t0Ms, uint16_t 
   return kSamplesHeader + 2 * n;
 }
 
-inline size_t encodeStatus(uint8_t* out, bool tared, bool calibrated, float rateHz, float countsPerKg, uint32_t uptimeMs) {
+inline size_t encodeStatus(uint8_t* out, bool tared, bool calibrated, float rateHz, float countsPerKg, uint32_t uptimeMs,
+                           float tareNoiseRmsKg, float tareNoisePpKg) {
   out[0] = (tared ? 1 : 0) | (calibrated ? 2 : 0);
   float r = rateHz * 10.0f + 0.5f;
   putU16(out + 1, r <= 0 ? 0 : r >= 65535 ? 65535 : (uint16_t)r);
   putF32(out + 3, countsPerKg);
   putU32(out + 7, uptimeMs);
+  putU16(out + 11, noiseGrams(tareNoiseRmsKg));
+  putU16(out + 13, noiseGrams(tareNoisePpKg));
   return kStatusSize;
 }
 
@@ -87,17 +102,19 @@ inline size_t encodeTared(uint8_t* out) {
   return 1;
 }
 
-inline size_t encodeCalibrated(uint8_t* out, bool calibrated, float countsPerKg) {
+inline size_t encodeCalibrated(uint8_t* out, bool calibrated, float countsPerKg, float noiseRmsKg) {
   out[0] = EvCalibrated;
   out[1] = calibrated ? 1 : 0;
   putF32(out + 2, countsPerKg);
-  return 6;
+  putU16(out + 6, noiseGrams(noiseRmsKg));
+  return 8;
 }
 
-inline size_t encodeCalError(uint8_t* out, CalError reason) {
+inline size_t encodeCalError(uint8_t* out, CalError reason, float noiseRmsKg) {
   out[0] = EvCalError;
   out[1] = reason;
-  return 2;
+  putU16(out + 2, noiseGrams(noiseRmsKg));
+  return 4;
 }
 
 struct ParsedCommand {

@@ -112,19 +112,28 @@ void consoleLoop() {
 void consoleLogEvent(const SensorEvent& ev) {
   switch (ev.type) {
     case SensorEvent::Tared:
-      Serial.printf("> tared (offset %ld)\n", (long)ev.calibration.offset);
+      Serial.printf("> tared (offset %ld), noise %.0f g rms, %.0f g peak-to-peak%s\n", (long)ev.calibration.offset,
+                    ev.noise.rmsKg * 1000, ev.noise.ppKg * 1000, ev.calibration.calibrated ? "" : " (approx., not calibrated)");
       break;
     case SensorEvent::Calibrated:
-      if (ev.calibration.calibrated) {
-        Serial.printf("> calibrated: %.1f counts/kg, saved\n", ev.calibration.countsPerKg);
+      if (!isnan(ev.noise.rmsKg)) {
+        Serial.printf("> calibrated: %.1f counts/kg, saved. Noise under load %.0f g rms, %.0f g peak-to-peak\n",
+                      ev.calibration.countsPerKg, ev.noise.rmsKg * 1000, ev.noise.ppKg * 1000);
+      } else if (ev.calibration.calibrated) {
+        Serial.printf("> calibration set: %.1f counts/kg, saved\n", ev.calibration.countsPerKg);
       } else {
         Serial.printf("> calibration reset: %.1f counts/kg (default), saved\n", ev.calibration.countsPerKg);
       }
       break;
     case SensorEvent::CalibrationFailed:
-      Serial.println(ev.result == CalResult::BadWeight
-                         ? "> calibration failed: the weight must be more than 0 kg"
-                         : "> calibration failed: the reading barely changed (weight hanging freely? wiring?)");
+      if (ev.result == CalResult::BadWeight) {
+        Serial.println("> calibration failed: the weight must be more than 0 kg");
+      } else if (ev.result == CalResult::Moving) {
+        Serial.printf("> calibration failed: the weight was moving (%.0f g rms). Let it hang still and try again\n",
+                      ev.noise.rmsKg * 1000);
+      } else {
+        Serial.println("> calibration failed: the reading barely changed (weight hanging freely? wiring?)");
+      }
       break;
   }
 }

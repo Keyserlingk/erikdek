@@ -29,6 +29,25 @@ test("auto-tares on start and reads ~0 with no load", () => {
   const r = run(sensor, 120);
   assert.deepEqual(r.events, [{ t: "tared" }]);
   assert.ok(Math.abs(r.mean(40)) < 0.1, `mean ${r.mean(40)}`);
+  // Tare noise in counts: the simulated noise is 900 counts rms (≈ 63 g at the default factor).
+  assert.ok(sensor.tareNoise.rms > 650 && sensor.tareNoise.rms < 1150, `rms ${sensor.tareNoise.rms}`);
+  assert.ok(sensor.tareNoise.pp > 3 * sensor.tareNoise.rms);
+});
+
+test("a swinging weight is refused as moving; once still, it calibrates", () => {
+  const sensor = new SimSensor({ random: seeded(5) });
+  sensor.setScenario("idle");
+  run(sensor, 40);
+  sensor.setScenario("weight", 20); // swings right after hanging
+  sensor.handle({ cmd: "calibrate", kg: 20 });
+  const [moving] = run(sensor, 80).events;
+  assert.equal(moving.reason, "moving");
+  assert.ok(moving.noiseKg > 0.15, `noise ${moving.noiseKg}`);
+  run(sensor, 400); // settles
+  sensor.handle({ cmd: "calibrate", kg: 20 });
+  const [ok] = run(sensor, 80).events;
+  assert.equal(ok.t, "calibrated");
+  assert.ok(ok.noiseKg > 0.03 && ok.noiseKg < 0.1, `noise ${ok.noiseKg}`);
 });
 
 test("uncalibrated reads ~12 % high; calibrating with the weight fixes it", () => {
@@ -52,13 +71,15 @@ test("calibration errors, reset and restore", () => {
   sensor.setScenario("idle");
   run(sensor, 40);
   sensor.handle({ cmd: "calibrate", kg: 20 });
-  assert.deepEqual(run(sensor, 80).events, [{ t: "calError", reason: "tooSmall" }]);
+  assert.deepEqual(run(sensor, 80).events.map((e) => e.reason), ["tooSmall"]);
   sensor.handle({ cmd: "calibrate", kg: 0 });
-  assert.deepEqual(run(sensor, 80).events, [{ t: "calError", reason: "badWeight" }]);
+  assert.deepEqual(run(sensor, 80).events.map((e) => e.reason), ["badWeight"]);
 
-  assert.deepEqual(sensor.handle({ cmd: "setCalibration", cpk: 15000 }), [{ t: "calibrated", calibrated: true, cpk: 15000 }]);
+  const restored = { t: "calibrated", calibrated: true, cpk: 15000, noiseKg: null };
+  assert.deepEqual(sensor.handle({ cmd: "setCalibration", cpk: 15000 }), [restored]);
   assert.deepEqual(sensor.handle({ cmd: "setCalibration", cpk: 5 }), []); // implausible: ignored
-  assert.deepEqual(sensor.handle({ cmd: "calReset" }), [{ t: "calibrated", calibrated: false, cpk: DEFAULT_COUNTS_PER_KG }]);
+  const reset = { t: "calibrated", calibrated: false, cpk: DEFAULT_COUNTS_PER_KG, noiseKg: null };
+  assert.deepEqual(sensor.handle({ cmd: "calReset" }), [reset]);
 });
 
 test("a saved calibration is used from the start", () => {

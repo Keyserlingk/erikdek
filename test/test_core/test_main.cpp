@@ -132,18 +132,21 @@ void test_ble_force_units_round_and_clamp() {
 
 void test_ble_encode_status_and_events() {
   uint8_t buf[16];
-  size_t n = ble::encodeStatus(buf, true, false, 80.04f, 16000.0f, 123456);
-  const uint8_t status[] = {0x01, 0x20, 0x03, 0x00, 0x00, 0x7A, 0x46, 0x40, 0xE2, 0x01, 0x00};
+  size_t n = ble::encodeStatus(buf, true, false, 80.04f, 16000.0f, 123456, 0.0124f, 0.041f);
+  const uint8_t status[] = {0x01, 0x20, 0x03, 0x00, 0x00, 0x7A, 0x46, 0x40, 0xE2, 0x01, 0x00, 0x0C, 0x00, 0x29, 0x00};
   TEST_ASSERT_EQUAL(sizeof(status), n);
   TEST_ASSERT_EQUAL_HEX8_ARRAY(status, buf, n);
 
-  const uint8_t calibrated[] = {0x02, 0x01, 0x00, 0x00, 0x7A, 0x46};
-  TEST_ASSERT_EQUAL(sizeof(calibrated), ble::encodeCalibrated(buf, true, 16000.0f));
+  const uint8_t calibrated[] = {0x02, 0x01, 0x00, 0x00, 0x7A, 0x46, 0x12, 0x00};  // noise 18 g
+  TEST_ASSERT_EQUAL(sizeof(calibrated), ble::encodeCalibrated(buf, true, 16000.0f, 0.018f));
   TEST_ASSERT_EQUAL_HEX8_ARRAY(calibrated, buf, sizeof(calibrated));
 
-  const uint8_t calError[] = {0x03, 0x02};
-  TEST_ASSERT_EQUAL(2u, ble::encodeCalError(buf, ble::CalErrTooSmall));
-  TEST_ASSERT_EQUAL_HEX8_ARRAY(calError, buf, 2);
+  const uint8_t calError[] = {0x03, 0x03, 0xA4, 0x01};  // moving, 420 g
+  TEST_ASSERT_EQUAL(4u, ble::encodeCalError(buf, ble::CalErrMoving, 0.42f));
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(calError, buf, 4);
+
+  TEST_ASSERT_EQUAL_HEX16(0xFFFF, ble::noiseGrams(NAN));
+  TEST_ASSERT_EQUAL_HEX16(0xFFFE, ble::noiseGrams(1000.0f));
 
   TEST_ASSERT_EQUAL(1u, ble::encodeTared(buf));
   TEST_ASSERT_EQUAL_HEX8(0x01, buf[0]);
@@ -168,6 +171,31 @@ void test_ble_parse_commands() {
   const uint8_t unknown[] = {0x09};
   TEST_ASSERT_FALSE(ble::parseCommand(unknown, 1, cmd));
   TEST_ASSERT_FALSE(ble::parseCommand(unknown, 0, cmd));
+}
+
+void test_averager_measures_noise() {
+  RawAverager avg;
+  avg.reset(4);
+  const int32_t values[] = {8000000, 8000100, 7999900, 8000000};
+  for (int32_t v : values) avg.add(v);
+  TEST_ASSERT_EQUAL_INT32(8000000, avg.average());
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 70.71f, avg.stdDev());  // sqrt((0+100²+100²+0)/4)
+  TEST_ASSERT_EQUAL_INT32(200, avg.peakToPeak());
+  Noise n = noiseKg(avg, -10000.0f);  // swapped wires: factor sign doesn't matter
+  TEST_ASSERT_FLOAT_WITHIN(1e-5f, 0.007071f, n.rmsKg);
+  TEST_ASSERT_FLOAT_WITHIN(1e-5f, 0.02f, n.ppKg);
+
+  avg.reset(4);
+  avg.add(5);
+  TEST_ASSERT_TRUE(isnan(noiseKg(avg, 10000.0f).rmsKg));  // not done yet
+}
+
+void test_calibration_moving_limit() {
+  TEST_ASSERT_FALSE(calibrationMoving(0.02f, 20.0f));
+  TEST_ASSERT_FALSE(calibrationMoving(0.15f, 20.0f));  // 0.15 kg floor
+  TEST_ASSERT_TRUE(calibrationMoving(0.16f, 20.0f));
+  TEST_ASSERT_FALSE(calibrationMoving(0.3f, 70.0f));   // 0.5 % of 70 kg = 0.35 kg
+  TEST_ASSERT_TRUE(calibrationMoving(0.4f, 70.0f));
 }
 
 void test_console_parses_commands() {
@@ -211,6 +239,8 @@ int main() {
   RUN_TEST(test_rate_meter_measures_80hz);
   RUN_TEST(test_rate_meter_measures_10hz);
   RUN_TEST(test_ring_buffer_fifo_and_overflow);
+  RUN_TEST(test_averager_measures_noise);
+  RUN_TEST(test_calibration_moving_limit);
   RUN_TEST(test_console_parses_commands);
   RUN_TEST(test_console_rejects_bad_input);
   return UNITY_END();

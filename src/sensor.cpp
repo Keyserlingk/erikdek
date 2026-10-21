@@ -30,6 +30,10 @@ static volatile bool tared = false;
 static volatile uint32_t samplesRead = 0;
 static volatile int32_t lastRaw = 0;
 static volatile float lastKg = 0;
+// Spread of the last tare in counts (written by the sensor task), converted with the
+// current factor for the status, so it stays right after a calibration.
+static volatile float tareNoiseRmsCounts = NAN;
+static volatile float tareNoisePpCounts = NAN;
 
 static void handleRequests() {
   if (tareRequested) {
@@ -44,25 +48,28 @@ static void handleRequests() {
     calResetRequested = false;
     calibration.countsPerKg = Calibration::kDefaultCountsPerKg;
     calibration.calibrated = false;
-    events.push({SensorEvent::Calibrated, CalResult::Ok, calibration});
+    events.push({SensorEvent::Calibrated, CalResult::Ok, calibration, Noise()});
   }
   if (calSetRequested) {
     calSetRequested = false;
     calibration.countsPerKg = calSetCountsPerKg;
     calibration.calibrated = true;
-    events.push({SensorEvent::Calibrated, CalResult::Ok, calibration});
+    events.push({SensorEvent::Calibrated, CalResult::Ok, calibration, Noise()});
   }
 }
 
 static void finishCalibration() {
   float cpk;
   CalResult result = computeCountsPerKg(calibration.offset, calAverager.average(), calRequestKg, cpk);
+  // Noise with the new factor when there is one, else with the current one.
+  Noise noise = noiseKg(calAverager, result == CalResult::Ok ? cpk : calibration.countsPerKg);
+  if (result == CalResult::Ok && calibrationMoving(noise.rmsKg, calRequestKg)) result = CalResult::Moving;
   if (result == CalResult::Ok) {
     calibration.countsPerKg = cpk;
     calibration.calibrated = true;
-    events.push({SensorEvent::Calibrated, result, calibration});
+    events.push({SensorEvent::Calibrated, result, calibration, noise});
   } else {
-    events.push({SensorEvent::CalibrationFailed, result, calibration});
+    events.push({SensorEvent::CalibrationFailed, result, calibration, noise});
   }
 }
 
@@ -79,8 +86,10 @@ static void sensorTask(void*) {
 
     if (!tareAverager.done() && tareAverager.add(raw)) {
       calibration.offset = tareAverager.average();
+      tareNoiseRmsCounts = tareAverager.stdDev();
+      tareNoisePpCounts = (float)tareAverager.peakToPeak();
       tared = true;
-      events.push({SensorEvent::Tared, CalResult::Ok, calibration});
+      events.push({SensorEvent::Tared, CalResult::Ok, calibration, noiseKg(tareAverager, calibration.countsPerKg)});
     }
     if (!calAverager.done() && calAverager.add(raw)) finishCalibration();
 
@@ -134,6 +143,10 @@ size_t sensorDrainMonitor(RawSample* out, size_t max) {
 }
 
 SensorStatus sensorStatus() {
+  Noise tareNoise;
+  float cpk = fabsf(calibration.countsPerKg);
+  tareNoise.rmsKg = tareNoiseRmsCounts / cpk;  // stays NAN until the first tare
+  tareNoise.ppKg = tareNoisePpCounts / cpk;
   return {rateMeter.rateHz(), tared, calibration.calibrated, calibration.countsPerKg,
-          samples.dropped(), samplesRead, lastRaw, lastKg};
+          samples.dropped(), samplesRead, lastRaw, lastKg, tareNoise};
 }

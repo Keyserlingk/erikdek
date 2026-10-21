@@ -5,7 +5,7 @@ import { UUID, decodeEvent, decodeSamples, decodeStatus, encodeCommand } from ".
 
 // Byte vectors shared with the firmware's test/test_core/test_main.cpp.
 const SAMPLES = Uint8Array.of(0x02, 0x01, 0xe8, 0x03, 0x00, 0x00, 0xd4, 0x30, 0x00, 0x00, 0xe9, 0x07, 0x6a, 0xff, 0xff, 0x7f);
-const STATUS = Uint8Array.of(0x01, 0x20, 0x03, 0x00, 0x00, 0x7a, 0x46, 0x40, 0xe2, 0x01, 0x00);
+const STATUS = Uint8Array.of(0x01, 0x20, 0x03, 0x00, 0x00, 0x7a, 0x46, 0x40, 0xe2, 0x01, 0x00, 0x0c, 0x00, 0x29, 0x00);
 
 test("decodeSamples", () => {
   // 4 samples, 12.5 ms apart from t0 = 1000 ms; 400 kg was clamped to 327.67
@@ -17,14 +17,32 @@ test("decodeSamples", () => {
 });
 
 test("decodeStatus", () => {
-  assert.deepEqual(decodeStatus(STATUS), { t: "status", tared: true, calibrated: false, rate: 80, cpk: 16000, uptime: 123456 });
+  assert.deepEqual(decodeStatus(STATUS), {
+    t: "status",
+    tared: true,
+    calibrated: false,
+    rate: 80,
+    cpk: 16000,
+    uptime: 123456,
+    tareNoiseKg: 0.012,
+    tareNoisePpKg: 0.041,
+  });
+  const untared = STATUS.slice();
+  untared.set([0xff, 0xff, 0xff, 0xff], 11);
+  assert.equal(decodeStatus(untared).tareNoiseKg, null);
 });
 
 test("decodeEvent", () => {
   assert.deepEqual(decodeEvent(Uint8Array.of(0x01)), { t: "tared" });
-  assert.deepEqual(decodeEvent(Uint8Array.of(0x02, 0x01, 0x00, 0x00, 0x7a, 0x46)), { t: "calibrated", calibrated: true, cpk: 16000 });
-  assert.deepEqual(decodeEvent(Uint8Array.of(0x03, 0x02)), { t: "calError", reason: "tooSmall" });
-  assert.deepEqual(decodeEvent(Uint8Array.of(0x03, 0x01)), { t: "calError", reason: "badWeight" });
+  assert.deepEqual(decodeEvent(Uint8Array.of(0x02, 0x01, 0x00, 0x00, 0x7a, 0x46, 0x12, 0x00)), {
+    t: "calibrated",
+    calibrated: true,
+    cpk: 16000,
+    noiseKg: 0.018,
+  });
+  assert.deepEqual(decodeEvent(Uint8Array.of(0x02, 0x00, 0x00, 0x7c, 0x5f, 0x46, 0xff, 0xff)).noiseKg, null); // reset
+  assert.deepEqual(decodeEvent(Uint8Array.of(0x03, 0x03, 0xa4, 0x01)), { t: "calError", reason: "moving", noiseKg: 0.42 });
+  assert.deepEqual(decodeEvent(Uint8Array.of(0x03, 0x01, 0xff, 0xff)), { t: "calError", reason: "badWeight", noiseKg: null });
   assert.equal(decodeEvent(Uint8Array.of(0x09)), null);
 });
 

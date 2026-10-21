@@ -12,7 +12,7 @@ globalThis.CustomEvent ??= class extends Event {
   }
 };
 
-const STATUS = Uint8Array.of(0x03, 0x20, 0x03, 0x00, 0x00, 0x7a, 0x46, 0x40, 0xe2, 0x01, 0x00);
+const STATUS = Uint8Array.of(0x03, 0x20, 0x03, 0x00, 0x00, 0x7a, 0x46, 0x40, 0xe2, 0x01, 0x00, 0x0c, 0x00, 0x29, 0x00);
 const SAMPLES = Uint8Array.of(0x02, 0x01, 0xe8, 0x03, 0x00, 0x00, 0xd4, 0x30, 0x00, 0x00, 0xe9, 0x07);
 const dv = (bytes) => new DataView(bytes.buffer);
 const tick = () => new Promise((r) => setTimeout(r, 5));
@@ -88,7 +88,18 @@ test("without a chosen sensor connect waits; chooseSensor picks, remembers and s
   assert.deepEqual(client.calls[0], ["initialize", { androidNeverForLocation: true }]);
   assert.deepEqual(client.calls[1], ["requestDevice", { services: [UUID.service] }]);
   assert.equal(storage.data["erkdek.bleDevice"], "AA:BB");
-  assert.deepEqual(messages[0], { t: "status", tared: true, calibrated: true, rate: 80, cpk: 16000, uptime: 123456, fw: "abc1234", mock: false });
+  assert.deepEqual(messages[0], {
+    t: "status",
+    tared: true,
+    calibrated: true,
+    rate: 80,
+    cpk: 16000,
+    uptime: 123456,
+    tareNoiseKg: 0.012,
+    tareNoisePpKg: 0.041,
+    fw: "abc1234",
+    mock: false,
+  });
 
   client.notify[UUID.samples](dv(SAMPLES));
   assert.deepEqual(messages.at(-1).kg, [0, 20.25]);

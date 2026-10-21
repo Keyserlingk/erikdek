@@ -5,8 +5,11 @@
 //   Samples (notify)     seq u16 | t0 u32 ms | dt u16 µs/sample | n × force i16 (10 g)
 //   Status (read/notify) flags u8 (bit0 tared, bit1 calibrated) | rate u16 (0.1 Hz)
 //                        | countsPerKg f32 | uptime u32 ms
+//                        | tare noise rms u16 (g) | tare noise peak-to-peak u16 (g)
 //   Command (write)      opcode u8 [| value f32]
-//   Event (notify)       type u8 [| payload]
+//   Event (notify)       tared 1 | calibrated 2, calibrated u8, countsPerKg f32, noise u16 (g)
+//                        | calError 3, reason u8, noise u16 (g)
+// Noise values of 0xFFFF mean "not measured" and decode to null.
 
 const BASE = (n) => `9a0b000${n}-3d10-4e93-8657-4a72c5dd3311`;
 export const UUID = {
@@ -22,7 +25,13 @@ export const UUID = {
 export const DEVICE_NAME = "Erkdek";
 
 const COMMANDS = { tare: 1, calibrate: 2, calReset: 3, setCalibration: 4 };
-const CAL_ERRORS = { 1: "badWeight", 2: "tooSmall" };
+const CAL_ERRORS = { 1: "badWeight", 2: "tooSmall", 3: "moving" };
+
+// Grams (0xFFFF = not measured) -> kg or null.
+function noiseKg(v, offset) {
+  const g = v.getUint16(offset, true);
+  return g === 0xffff ? null : g / 1000;
+}
 
 function view(bytes) {
   if (bytes instanceof DataView) return bytes;
@@ -51,19 +60,21 @@ export function decodeStatus(bytes) {
     rate: v.getUint16(1, true) / 10,
     cpk: v.getFloat32(3, true),
     uptime: v.getUint32(7, true),
+    tareNoiseKg: noiseKg(v, 11),
+    tareNoisePpKg: noiseKg(v, 13),
   };
 }
 
-// -> { t: "tared" } | { t: "calibrated", calibrated, cpk } | { t: "calError", reason } | null
+// -> { t: "tared" } | { t: "calibrated", calibrated, cpk, noiseKg } | { t: "calError", reason, noiseKg } | null
 export function decodeEvent(bytes) {
   const v = view(bytes);
   switch (v.getUint8(0)) {
     case 1:
       return { t: "tared" };
     case 2:
-      return { t: "calibrated", calibrated: v.getUint8(1) === 1, cpk: v.getFloat32(2, true) };
+      return { t: "calibrated", calibrated: v.getUint8(1) === 1, cpk: v.getFloat32(2, true), noiseKg: noiseKg(v, 6) };
     case 3:
-      return { t: "calError", reason: CAL_ERRORS[v.getUint8(1)] ?? "unknown" };
+      return { t: "calError", reason: CAL_ERRORS[v.getUint8(1)] ?? "unknown", noiseKg: noiseKg(v, 2) };
     default:
       return null;
   }

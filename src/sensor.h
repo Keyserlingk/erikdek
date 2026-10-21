@@ -26,6 +26,7 @@ struct SensorStatus {
   uint32_t samplesRead;  // since start; for the serial log's rate over the last second
   int32_t lastRaw;       // last HX711 reading (counts)
   float lastKg;
+  Noise tareNoise;  // noise during the last tare (NAN until the first one)
 };
 
 // Results of tare/calibration, reported from the sensor task to the network loop.
@@ -33,6 +34,7 @@ struct SensorEvent {
   enum Type : uint8_t { Tared, Calibrated, CalibrationFailed } type;
   CalResult result;
   Calibration calibration;  // new calibration for Calibrated
+  Noise noise;              // spread of the tare/calibration readings (NAN for a reset)
 };
 
 // Starts the HX711 reading task on core 1 and auto-tares.
