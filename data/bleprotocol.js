@@ -6,10 +6,11 @@
 //   Status (read/notify) flags u8 (bit0 tared, bit1 calibrated) | rate u16 (0.1 Hz)
 //                        | countsPerKg f32 | uptime u32 ms
 //                        | tare noise rms u16 (g) | tare noise peak-to-peak u16 (g)
+//                        | battery u16 (mV)
 //   Command (write)      opcode u8 [| value f32]
 //   Event (notify)       tared 1 | calibrated 2, calibrated u8, countsPerKg f32, noise u16 (g)
 //                        | calError 3, reason u8, noise u16 (g)
-// Noise values of 0xFFFF mean "not measured" and decode to null.
+// Noise and battery values of 0xFFFF mean "not measured" and decode to null.
 
 const BASE = (n) => `9a0b000${n}-3d10-4e93-8657-4a72c5dd3311`;
 export const UUID = {
@@ -27,8 +28,8 @@ export const DEVICE_NAME = "Erkdek";
 const COMMANDS = { tare: 1, calibrate: 2, calReset: 3, setCalibration: 4 };
 const CAL_ERRORS = { 1: "badWeight", 2: "tooSmall", 3: "moving" };
 
-// Grams (0xFFFF = not measured) -> kg or null.
-function noiseKg(v, offset) {
+// u16 in thousandths (g -> kg, mV -> V); 0xFFFF = not measured -> null.
+function thousandths(v, offset) {
   const g = v.getUint16(offset, true);
   return g === 0xffff ? null : g / 1000;
 }
@@ -60,8 +61,9 @@ export function decodeStatus(bytes) {
     rate: v.getUint16(1, true) / 10,
     cpk: v.getFloat32(3, true),
     uptime: v.getUint32(7, true),
-    tareNoiseKg: noiseKg(v, 11),
-    tareNoisePpKg: noiseKg(v, 13),
+    tareNoiseKg: thousandths(v, 11),
+    tareNoisePpKg: thousandths(v, 13),
+    batteryV: thousandths(v, 15),
   };
 }
 
@@ -72,9 +74,9 @@ export function decodeEvent(bytes) {
     case 1:
       return { t: "tared" };
     case 2:
-      return { t: "calibrated", calibrated: v.getUint8(1) === 1, cpk: v.getFloat32(2, true), noiseKg: noiseKg(v, 6) };
+      return { t: "calibrated", calibrated: v.getUint8(1) === 1, cpk: v.getFloat32(2, true), noiseKg: thousandths(v, 6) };
     case 3:
-      return { t: "calError", reason: CAL_ERRORS[v.getUint8(1)] ?? "unknown", noiseKg: noiseKg(v, 2) };
+      return { t: "calError", reason: CAL_ERRORS[v.getUint8(1)] ?? "unknown", noiseKg: thousandths(v, 2) };
     default:
       return null;
   }

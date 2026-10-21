@@ -18,6 +18,10 @@ const TRUE_COUNTS_PER_KG = 16000;
 const RAW_ZERO = 52000; // raw reading with no load
 const NOISE_COUNTS = 900; // ~0.06 kg
 const CALIBRATION_KEY = "erkdek.simCalibration";
+// Simulated battery, so the app's battery display can be tried (the real sensor has
+// no battery reading yet): starts full and drains slowly.
+const BATTERY_FULL_V = 4.15;
+const BATTERY_DRAIN_V_PER_H = 0.1;
 // A calibration is refused when its readings spread more than this (firmware: calibration.h).
 const MOVING_RMS_KG = 0.15;
 const MOVING_RMS_SHARE = 0.005;
@@ -255,6 +259,7 @@ export class SimulatedTransport extends EventTarget {
       calibrated: s.calibrated,
       tareNoiseKg: grams(s.tareNoise?.rms / Math.abs(s.countsPerKg)),
       tareNoisePpKg: grams(s.tareNoise?.pp / Math.abs(s.countsPerKg)),
+      batteryV: Math.round((BATTERY_FULL_V - (BATTERY_DRAIN_V_PER_H * s.t) / 3600) * 1000) / 1000,
       cpk: s.countsPerKg,
       uptime: Math.round(s.t * 1000),
       mock: true,

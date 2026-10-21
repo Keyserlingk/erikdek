@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include "battery.h"
 #include "ble.h"
 #include "console_command.h"
 
@@ -82,9 +83,12 @@ static void statusReport() {
   lastCount = st.samplesRead;
   if (!statusOn) return;
 
-  Serial.printf("%6lu s  %5.1f Hz  raw %9ld  %7.2f kg  tared %s  cal %s (%.0f/kg)  app %s  dropped %u\n",
+  char battery[12] = "-";
+  float volts = batteryVolts();
+  if (!isnan(volts)) snprintf(battery, sizeof(battery), "%.2f V", volts);
+  Serial.printf("%6lu s  %5.1f Hz  raw %9ld  %7.2f kg  tared %s  cal %s (%.0f/kg)  app %s  batt %s  dropped %u\n",
                 (unsigned long)(now / 1000), hz, (long)st.lastRaw, st.lastKg, st.tared ? "yes" : "no",
-                st.calibrated ? "yes" : "no", st.countsPerKg, bleConnected() ? "connected" : "-",
+                st.calibrated ? "yes" : "no", st.countsPerKg, bleConnected() ? "connected" : "-", battery,
                 (unsigned)st.dropped);
   if (hz < 1.0f) {
     Serial.println("  ! no readings from the HX711: check VCC 3.3V, GND, DT -> GPIO16, SCK -> GPIO17");

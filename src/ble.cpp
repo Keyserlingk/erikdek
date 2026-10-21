@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
+#include "battery.h"
 #include "ble_protocol.h"
 #include "sensor.h"
 
@@ -70,7 +71,7 @@ static void updateStatus(bool notify) {
   SensorStatus st = sensorStatus();
   uint8_t buf[ble::kStatusSize];
   size_t n = ble::encodeStatus(buf, st.tared, st.calibrated, st.rateHz, st.countsPerKg, millis(), st.tareNoise.rmsKg,
-                               st.tareNoise.ppKg);
+                               st.tareNoise.ppKg, batteryVolts());
   statusChr->setValue(buf, n);
   if (notify && bleConnected()) statusChr->notify();
 }

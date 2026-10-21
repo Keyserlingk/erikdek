@@ -131,9 +131,10 @@ void test_ble_force_units_round_and_clamp() {
 }
 
 void test_ble_encode_status_and_events() {
-  uint8_t buf[16];
-  size_t n = ble::encodeStatus(buf, true, false, 80.04f, 16000.0f, 123456, 0.0124f, 0.041f);
-  const uint8_t status[] = {0x01, 0x20, 0x03, 0x00, 0x00, 0x7A, 0x46, 0x40, 0xE2, 0x01, 0x00, 0x0C, 0x00, 0x29, 0x00};
+  uint8_t buf[32];
+  size_t n = ble::encodeStatus(buf, true, false, 80.04f, 16000.0f, 123456, 0.0124f, 0.041f, 3.92f);
+  const uint8_t status[] = {0x01, 0x20, 0x03, 0x00, 0x00, 0x7A, 0x46, 0x40, 0xE2,
+                            0x01, 0x00, 0x0C, 0x00, 0x29, 0x00, 0x50, 0x0F};  // 3920 mV
   TEST_ASSERT_EQUAL(sizeof(status), n);
   TEST_ASSERT_EQUAL_HEX8_ARRAY(status, buf, n);
 
@@ -147,6 +148,8 @@ void test_ble_encode_status_and_events() {
 
   TEST_ASSERT_EQUAL_HEX16(0xFFFF, ble::noiseGrams(NAN));
   TEST_ASSERT_EQUAL_HEX16(0xFFFE, ble::noiseGrams(1000.0f));
+  TEST_ASSERT_EQUAL_HEX16(0xFFFF, ble::batteryMillivolts(NAN));  // no battery reading
+  TEST_ASSERT_EQUAL_UINT16(4200, ble::batteryMillivolts(4.2f));
 
   TEST_ASSERT_EQUAL(1u, ble::encodeTared(buf));
   TEST_ASSERT_EQUAL_HEX8(0x01, buf[0]);

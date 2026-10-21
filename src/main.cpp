@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+#include "battery.h"
 #include "ble.h"
 #include "console.h"
 #include "sensor.h"
@@ -23,6 +24,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\nErkdek starting");
   storageBegin();
+  batteryBegin();
   sensorBegin(kHxDoutPin, kHxSckPin, storageLoadCalibration());
   bleBegin();
   consoleBegin();

@@ -25,6 +25,7 @@ const sensorEl = {
   modes: document.querySelectorAll("#sensorMode button"),
   modeGroup: document.getElementById("sensorMode"),
   state: document.getElementById("sensorState"),
+  battery: document.getElementById("sensorBattery"),
   choose: document.getElementById("sensorChoose"),
 };
 
@@ -48,6 +49,14 @@ function renderSensor() {
   }
   sensorEl.state.textContent = parts.join(" · ");
   sensorEl.choose.hidden = mode !== "ble";
+  renderBattery();
+}
+
+// Shown only when the sensor measures its battery.
+function renderBattery() {
+  const v = device.connected ? device.status?.batteryV : null;
+  sensorEl.battery.hidden = v === null || v === undefined;
+  if (!sensorEl.battery.hidden) sensorEl.battery.textContent = `Battery ${v.toFixed(2)} V`;
 }
 
 function initSensor() {
@@ -60,6 +69,7 @@ function initSensor() {
   }
   sensorEl.choose.addEventListener("click", () => device.transport.chooseSensor());
   device.on("connection", renderSensor);
+  device.on("status", renderBattery);
   renderSensor();
 }
 
