@@ -369,22 +369,26 @@ body #trainRun .run-row[data-grip="true"] .countdown { font-size: clamp(56px, 17
 .grip-label { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
 .grip-list { font-size: 18px; font-weight: 700; line-height: 1.35; }
 .grip-next { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-/* The next grip on the graph during rests (both layouts): above the curve, on a panel. */
-.chart-grip {
+/* Getting ready / resting: a panel over the whole graph (which shows through, dimmed)
+   with the phase, the countdown and the next hang. */
+.rest-overlay {
   position: absolute;
-  top: 10px;
-  left: calc(50% + 20px); /* centre of the plot area (the y axis takes ~40 px) */
-  transform: translateX(-50%);
+  inset: 0;
   z-index: 2;
-  padding: 6px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   text-align: center;
-  font-size: 20px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  white-space: nowrap;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
   pointer-events: none;
 }
+.rest-overlay[hidden] { display: none; }
+.rest-overlay .countdown { font-size: clamp(72px, 24vw, 120px); }
+.rest-overlay .grip-list { font-size: 22px; margin-top: 6px; }
+.rest-overlay[data-phase="rest"] .phase-label, .rest-overlay[data-phase="setRest"] .phase-label { color: var(--rest); }
+.rest-overlay[data-phase="prep"] .phase-label { color: var(--warn); }
 .next { font-size: 13px; }
 
 .run-force { border-width: 2px; }

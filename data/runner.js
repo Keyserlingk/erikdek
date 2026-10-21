@@ -47,7 +47,10 @@ const el = {
   gripCard: $("runGripCard"),
   gripLabel: $("runGripLabel"),
   grip: $("runGrip"),
-  chartGrip: $("runChartGrip"),
+  restOverlay: $("runRestOverlay"),
+  restPhase: $("runRestPhase"),
+  restCountdown: $("runRestCountdown"),
+  restNext: $("runRestNext"),
   chart: $("runChart"),
   pause: $("runPause"),
   skip: $("runSkip"),
@@ -259,6 +262,12 @@ function tick() {
   el.kg.textContent = device.connected ? formatKg(kg) : "–";
   el.kg.dataset.status = targetStatus(kg, run.target) ?? "";
   renderHeld(phase);
+  // Getting ready or resting: a panel over the (dimmed) graph with the countdown and
+  // what comes next.
+  el.restOverlay.hidden = phase.type === PHASE.WORK;
+  el.restOverlay.dataset.phase = phase.type;
+  el.restPhase.textContent = el.phase.textContent;
+  el.restCountdown.textContent = el.countdown.textContent;
   // The same, for the layout with the number behind the graph (see display.js).
   el.chartKg.textContent = el.kg.textContent;
   el.chartKg.dataset.status = el.kg.dataset.status;
@@ -268,7 +277,7 @@ function tick() {
 
 // Hand, hold and grip, one per line: of the hang now (during a hang) or of the next hang
 // (while getting ready or resting). In their own card left of the countdown, and while
-// not hanging also on the graph.
+// not hanging also on the rest panel over the graph.
 function renderGrip(index) {
   const current = run.phases[index];
   const isWork = current.type === PHASE.WORK;
@@ -276,7 +285,10 @@ function renderGrip(index) {
   // Tests have one hand for the whole run (chosen at setup); routines per hang.
   const hand = hang && hang.hand && hang.hand !== "both" ? hang.hand : run.hand;
   const parts = hang ? [hand && hand !== "both" ? HANDS[hand] : "", run.routine.holdType, run.routine.grip].filter(Boolean) : [];
-  const key = `${isWork}|${parts.join("|")}`;
+  // Without grip info the rest panel says what comes next instead ("Hang 7 s").
+  const nextPhase = run.phases[index + 1];
+  const fallback = nextPhase ? phaseName(nextPhase.type) + (nextPhase.durS === null ? "" : ` ${formatDuration(nextPhase.durS)}`) : "";
+  const key = `${index}|${isWork}|${parts.join("|")}`;
   if (key === run.gripKey) return; // unchanged: don't rebuild the list every tick
   run.gripKey = key;
   const lines = () => parts.map((text) => create("div", { textContent: text }));
@@ -284,8 +296,8 @@ function renderGrip(index) {
   el.row.dataset.grip = String(parts.length > 0);
   el.gripLabel.textContent = isWork ? "Now" : "Next";
   el.grip.replaceChildren(...lines());
-  el.chartGrip.hidden = isWork || !parts.length;
-  el.chartGrip.replaceChildren(create("div", { className: "grip-next", textContent: "Next" }), ...lines());
+  const restLines = parts.length ? lines() : fallback ? [create("div", { textContent: fallback })] : [];
+  el.restNext.replaceChildren(...(restLines.length ? [create("div", { className: "grip-next", textContent: "Next" }), ...restLines] : []));
 }
 
 const round2 = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
