@@ -166,17 +166,18 @@ export class LiveChart {
           return vals.map((v) => `${Math.round(v - end)}s`);
         },
       },
+      // The kg axis draws the horizontal grid lines; the % BW axis only labels them.
       this.bodyweightKg
         ? {
             scale: "pct",
             stroke: text,
-            grid: { stroke: grid, width: 1 },
+            grid: { show: false },
             ticks: { show: false },
             size: 40,
             values: (u, vals) => vals.map((v) => `${Math.round(v)}`),
           }
-        : { scale: "kg", stroke: text, grid: { stroke: grid, width: 1 }, ticks: { show: false }, size: 40 },
-      { scale: "kg", side: 1, stroke: text, grid: { show: false }, ticks: { show: false }, size: 40 },
+        : { scale: "kg", stroke: text, grid: { show: false }, ticks: { show: false }, size: 40 },
+      { scale: "kg", side: 1, stroke: text, grid: { stroke: grid, width: 1 }, ticks: { show: false }, size: 40 },
     ];
 
     this.plot = new uPlot(
