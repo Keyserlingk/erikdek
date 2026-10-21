@@ -10,6 +10,13 @@ struct Sample {
   float kg;
 };
 
+// Every reading with its raw value, for the serial console's fast mode.
+struct RawSample {
+  uint32_t ms;
+  int32_t raw;
+  float kg;
+};
+
 struct SensorStatus {
   float rateHz;
   bool tared;
@@ -41,4 +48,7 @@ bool sensorSetCalibration(float countsPerKg);
 // Copies up to max buffered samples into out; returns the count.
 size_t sensorDrain(Sample* out, size_t max);
 bool sensorPollEvent(SensorEvent& out);
+// Fast mode: when on, every reading is also kept for sensorDrainMonitor().
+void sensorSetMonitor(bool on);
+size_t sensorDrainMonitor(RawSample* out, size_t max);
 SensorStatus sensorStatus();

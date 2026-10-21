@@ -2,6 +2,7 @@
 
 #include "ble_protocol.h"
 #include "calibration.h"
+#include "console_command.h"
 #include "rate_meter.h"
 #include "ring_buffer.h"
 
@@ -169,6 +170,31 @@ void test_ble_parse_commands() {
   TEST_ASSERT_FALSE(ble::parseCommand(unknown, 0, cmd));
 }
 
+void test_console_parses_commands() {
+  TEST_ASSERT_TRUE(parseConsoleLine("t").op == ConsoleOp::Tare);
+  TEST_ASSERT_TRUE(parseConsoleLine("  T \r").op == ConsoleOp::Tare);
+  TEST_ASSERT_TRUE(parseConsoleLine("r").op == ConsoleOp::CalReset);
+  TEST_ASSERT_TRUE(parseConsoleLine("f").op == ConsoleOp::Fast);
+  TEST_ASSERT_TRUE(parseConsoleLine("s").op == ConsoleOp::Status);
+  TEST_ASSERT_TRUE(parseConsoleLine("?").op == ConsoleOp::Help);
+  TEST_ASSERT_TRUE(parseConsoleLine("").op == ConsoleOp::None);
+  TEST_ASSERT_TRUE(parseConsoleLine("   ").op == ConsoleOp::None);
+  ConsoleCommand c = parseConsoleLine("c 20.5");
+  TEST_ASSERT_TRUE(c.op == ConsoleOp::Calibrate);
+  TEST_ASSERT_FLOAT_WITHIN(1e-4, 20.5f, c.kg);
+}
+
+void test_console_rejects_bad_input() {
+  TEST_ASSERT_TRUE(parseConsoleLine("c").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("c 0").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("c -5").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("c 20kg").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("c 400").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("t 5").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("tare").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("x").op == ConsoleOp::Invalid);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_ble_encode_samples);
@@ -185,5 +211,7 @@ int main() {
   RUN_TEST(test_rate_meter_measures_80hz);
   RUN_TEST(test_rate_meter_measures_10hz);
   RUN_TEST(test_ring_buffer_fifo_and_overflow);
+  RUN_TEST(test_console_parses_commands);
+  RUN_TEST(test_console_rejects_bad_input);
   return UNITY_END();
 }

@@ -13,6 +13,8 @@ static HX711 hx;
 static Calibration calibration;  // owned by the sensor task once started
 static RingBuffer<Sample, 256> samples;  // ~3 s at 80 Hz
 static RingBuffer<SensorEvent, 8> events;
+static RingBuffer<RawSample, 64> monitor;  // only filled in fast mode
+static volatile bool monitorOn = false;
 static RateMeter rateMeter;
 static RawAverager tareAverager;
 static RawAverager calAverager{0};
@@ -87,6 +89,7 @@ static void sensorTask(void*) {
     lastRaw = raw;
     lastKg = kg;
     samplesRead = samplesRead + 1;
+    if (monitorOn) monitor.push({now, raw, kg});
   }
 }
 
@@ -121,6 +124,14 @@ size_t sensorDrain(Sample* out, size_t max) {
 }
 
 bool sensorPollEvent(SensorEvent& out) { return events.pop(out); }
+
+void sensorSetMonitor(bool on) { monitorOn = on; }
+
+size_t sensorDrainMonitor(RawSample* out, size_t max) {
+  size_t n = 0;
+  while (n < max && monitor.pop(out[n])) n++;
+  return n;
+}
 
 SensorStatus sensorStatus() {
   return {rateMeter.rateHz(), tared, calibration.calibrated, calibration.countsPerKg,

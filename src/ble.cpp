@@ -5,7 +5,6 @@
 
 #include "ble_protocol.h"
 #include "sensor.h"
-#include "storage.h"
 
 #ifndef ERKDEK_VERSION
 #define ERKDEK_VERSION "unknown"  // set by tools/version.py
@@ -102,27 +101,22 @@ void bleBegin() {
   Serial.printf("BLE advertising as %s (firmware %s)\n", kDeviceName, ERKDEK_VERSION);
 }
 
-// Forwards tare/calibration results to the app and persists new calibrations.
-static void handleSensorEvents() {
-  SensorEvent ev;
-  while (sensorPollEvent(ev)) {
-    uint8_t buf[8];
-    size_t n = 0;
-    switch (ev.type) {
-      case SensorEvent::Tared:
-        n = ble::encodeTared(buf);
-        break;
-      case SensorEvent::Calibrated:
-        storageSaveCalibration(ev.calibration);
-        n = ble::encodeCalibrated(buf, ev.calibration.calibrated, ev.calibration.countsPerKg);
-        break;
-      case SensorEvent::CalibrationFailed:
-        n = ble::encodeCalError(buf, ev.result == CalResult::BadWeight ? ble::CalErrBadWeight : ble::CalErrTooSmall);
-        break;
-    }
-    if (bleConnected()) eventChr->notify(buf, n);
-    updateStatus(true);
+void bleSendEvent(const SensorEvent& ev) {
+  uint8_t buf[8];
+  size_t n = 0;
+  switch (ev.type) {
+    case SensorEvent::Tared:
+      n = ble::encodeTared(buf);
+      break;
+    case SensorEvent::Calibrated:
+      n = ble::encodeCalibrated(buf, ev.calibration.calibrated, ev.calibration.countsPerKg);
+      break;
+    case SensorEvent::CalibrationFailed:
+      n = ble::encodeCalError(buf, ev.result == CalResult::BadWeight ? ble::CalErrBadWeight : ble::CalErrTooSmall);
+      break;
   }
+  if (bleConnected()) eventChr->notify(buf, n);
+  updateStatus(true);
 }
 
 // Sends the buffered samples in as few notifications as the MTU allows.
@@ -152,7 +146,6 @@ void bleLoop() {
   static uint32_t lastStatus = 0;
   uint32_t now = millis();
 
-  handleSensorEvents();
   if (now - lastSamples >= kSamplePushMs) {
     lastSamples = now;
     sendSamples();
