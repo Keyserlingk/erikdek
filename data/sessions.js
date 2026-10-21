@@ -41,11 +41,19 @@ class SessionStore extends EventTarget {
   }
 
   async remove(id) {
-    await db.write([
-      { store: "sessions", key: id, value: undefined },
-      { store: "sessionIndex", key: id, value: undefined },
-    ]);
-    this.index = this.index.filter((s) => s.id !== id);
+    return this.removeMany([id]);
+  }
+
+  // Deletes several sessions in one write.
+  async removeMany(ids) {
+    const gone = new Set(ids);
+    await db.write(
+      ids.flatMap((id) => [
+        { store: "sessions", key: id, value: undefined },
+        { store: "sessionIndex", key: id, value: undefined },
+      ]),
+    );
+    this.index = this.index.filter((s) => !gone.has(s.id));
     this.dispatchEvent(new Event("change"));
   }
 

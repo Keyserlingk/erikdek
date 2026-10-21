@@ -340,9 +340,27 @@
           <div id="histChart" class="chart progress-chart"></div>
           <p id="histChartEmpty" class="muted empty" hidden>Save at least two sessions to see progress.</p>
         </div>
-        <h2 class="section">Sessions</h2>
+        <div class="section-head">
+          <h2 class="section">Sessions</h2>
+          <span class="spacer"></span>
+          <button id="histSelect" class="pill-button" type="button">Select</button>
+        </div>
         <div id="histList"></div>
         <button id="histCsv" class="secondary" type="button">Download all sessions (CSV)</button>
+        <div id="histSelectBar" class="select-bar" hidden>
+          <div class="select-bar-row">
+            <strong id="histSelectCount">0 selected</strong>
+            <button id="histSelectAll" class="pill-button" type="button">All</button>
+            <button id="histSelectNone" class="pill-button" type="button">None</button>
+            <span class="spacer"></span>
+            <button id="histSelectDone" class="pill-button" type="button">Done</button>
+          </div>
+          <div class="select-bar-row">
+            <button id="histSelJson" class="secondary" type="button">Download</button>
+            <button id="histSelCsv" class="secondary" type="button">CSV</button>
+            <button id="histSelDelete" class="secondary danger" type="button">Delete</button>
+          </div>
+        </div>
       </div>
       <div id="historyDetail" hidden>
         <button id="histBack" class="link" type="button">‹ Back to history</button>

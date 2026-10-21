@@ -1,6 +1,6 @@
 import { downloadCsv, downloadJson } from "./download.js";
 import { formatBytes } from "./format.js";
-import { fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCsv } from "./export.js";
+import { buildBackup, fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
 import { HANDS, KINDS, TEST_IDS, metricPoints, metricsFor } from "./tests.js";
@@ -40,7 +40,22 @@ const el = {
   detailCsv: $("histDetailCsv"),
   detailRepsCsv: $("histDetailRepsCsv"),
   detailJson: $("histDetailJson"),
+  select: $("histSelect"),
+  selectBar: $("histSelectBar"),
+  selectCount: $("histSelectCount"),
+  selectAll: $("histSelectAll"),
+  selectNone: $("histSelectNone"),
+  selectDone: $("histSelectDone"),
+  selJson: $("histSelJson"),
+  selCsv: $("histSelCsv"),
+  selDelete: $("histSelDelete"),
 };
+
+// Select mode: tapping a session ticks it instead of opening it; the bar at the bottom
+// downloads or deletes the ticked ones.
+let selecting = false;
+const selected = new Set(); // session ids
+let visibleIds = []; // sessions in the list now (after the filters)
 
 let progressChart = null;
 let detailChart = null;
@@ -249,10 +264,69 @@ function renderList(list, metric) {
         ]),
         create("span", { className: "session-metric", textContent: formatPoints(s, metric) }),
       ]);
-      row.addEventListener("click", () => openDetail(s.id));
+      if (selecting) {
+        const on = selected.has(s.id);
+        row.classList.add("selectable");
+        row.classList.toggle("selected", on);
+        row.setAttribute("aria-pressed", String(on));
+        row.prepend(create("span", { className: "tick", textContent: on ? "✓" : "" }));
+      }
+      row.addEventListener("click", () => (selecting ? toggleSelected(s.id) : openDetail(s.id)));
       return row;
     }),
   );
+}
+
+// ---------------------------------------------------------------- select mode
+
+function setSelecting(on) {
+  selecting = on;
+  selected.clear();
+  el.select.hidden = on;
+  el.csv.hidden = on;
+  render();
+}
+
+function toggleSelected(id) {
+  if (selected.has(id)) selected.delete(id);
+  else selected.add(id);
+  render();
+}
+
+function renderSelectBar() {
+  el.selectBar.hidden = !selecting;
+  if (!selecting) return;
+  // Only what the filters show can stay selected.
+  for (const id of [...selected]) if (!visibleIds.includes(id)) selected.delete(id);
+  const n = selected.size;
+  el.selectCount.textContent = `${n} selected`;
+  for (const b of [el.selJson, el.selCsv, el.selDelete]) b.disabled = n === 0;
+}
+
+const selectedIndex = () => sessions.index.filter((s) => selected.has(s.id));
+
+// Selected sessions as a backup file (sessions only): can be restored under Settings.
+async function downloadSelectedJson() {
+  try {
+    const full = [];
+    for (const s of selectedIndex()) full.push(await sessions.get(s.id));
+    const backup = buildBackup({ settings: null, calibration: null, routines: [], workouts: [], holdTypes: [], grips: [], sessions: full });
+    await downloadJson(`erkdek-sessions-${fileDate()}.json`, backup);
+  } catch (e) {
+    showError(el.error, e.message);
+  }
+}
+
+async function deleteSelected() {
+  const n = selected.size;
+  if (!confirm(`Delete ${n} session${n === 1 ? "" : "s"}? This cannot be undone.`)) return;
+  try {
+    await sessions.removeMany([...selected]);
+    setSelecting(false);
+    renderStorage();
+  } catch (e) {
+    showError(el.error, e.message);
+  }
 }
 
 async function renderStorage() {
@@ -272,7 +346,9 @@ function render() {
   const metric = currentMetric();
   renderBests(list, metric);
   renderProgress(list, metric);
+  visibleIds = list.map((s) => s.id);
   renderList(list, metric);
+  renderSelectBar();
 }
 
 // ---------------------------------------------------------------- detail
@@ -332,6 +408,19 @@ export function initHistory() {
   });
   el.remove.addEventListener("click", deleteOpen);
   el.csv.addEventListener("click", () => downloadCsv(`erkdek-history-${fileDate()}.csv`, historyCsv(sessions.index)));
+  el.select.addEventListener("click", () => setSelecting(true));
+  el.selectDone.addEventListener("click", () => setSelecting(false));
+  el.selectAll.addEventListener("click", () => {
+    for (const id of visibleIds) selected.add(id);
+    render();
+  });
+  el.selectNone.addEventListener("click", () => {
+    selected.clear();
+    render();
+  });
+  el.selJson.addEventListener("click", downloadSelectedJson);
+  el.selCsv.addEventListener("click", () => downloadCsv(`erkdek-history-${fileDate()}.csv`, historyCsv(selectedIndex())));
+  el.selDelete.addEventListener("click", deleteSelected);
   const detailName = (s) => `erkdek-${s.type}-${fileDate(new Date(s.startedAt))}-${s.id}`;
   el.detailCsv.addEventListener("click", () => {
     if (openSession?.curve) downloadCsv(`${detailName(openSession)}.csv`, storedCurveCsv(openSession.curve));

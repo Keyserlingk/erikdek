@@ -557,6 +557,39 @@ label.pill-button { display: inline-flex; align-items: center; cursor: pointer; 
 .session-main span { font-size: 13px; }
 .session-metric { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #historyDetail .link { margin-bottom: 8px; }
+/* History select mode */
+.session-row .tick {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-text);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+}
+.session-row.selected { border-color: var(--accent); }
+.session-row.selected .tick { background: var(--accent); border-color: var(--accent); }
+.select-bar {
+  position: sticky;
+  bottom: calc(var(--tabs-h) + var(--inset-bottom) + 8px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+.select-bar[hidden] { display: none; }
+.select-bar-row { display: flex; align-items: center; gap: 8px; }
+.select-bar-row button.secondary { padding: 10px; font-size: 15px; }
+button.secondary.danger { color: var(--bad); }
 .warning a { color: inherit; font-weight: 600; }
 .downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 #histCsv { margin-top: 6px; }
