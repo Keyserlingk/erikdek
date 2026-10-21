@@ -41,6 +41,8 @@ const el = {
   target: $("runTarget"),
   held: $("runHeld"),
   repInfo: $("runRepInfo"),
+  chartKg: $("runChartKg"),
+  chartSub: $("runChartSub"),
   chart: $("runChart"),
   pause: $("runPause"),
   skip: $("runSkip"),
@@ -252,6 +254,10 @@ function tick() {
   el.kg.textContent = device.connected ? formatKg(kg) : "–";
   el.kg.dataset.status = targetStatus(kg, run.target) ?? "";
   renderHeld(phase);
+  // The same, for the layout with the number behind the graph (see live.js).
+  el.chartKg.textContent = el.kg.textContent;
+  el.chartKg.dataset.status = el.kg.dataset.status;
+  el.chartSub.textContent = [el.target.textContent, el.repInfo.hidden ? "" : el.repInfo.textContent].filter(Boolean).join(" · ");
   chart.render();
 }
 

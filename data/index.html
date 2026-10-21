@@ -217,7 +217,15 @@
 
       <div id="trainRun" hidden data-sensor="true">
         <div id="runInstruction" class="card run-instruction" hidden></div>
-        <div class="card chart-card"><div id="runChart" class="chart small"></div></div>
+        <div class="card chart-card">
+          <div class="chart-wrap">
+            <div class="chart-number" aria-hidden="true">
+              <span id="runChartKg" class="chart-kg">–</span>
+              <span id="runChartSub" class="chart-sub"></span>
+            </div>
+            <div id="runChart" class="chart small"></div>
+          </div>
+        </div>
         <div class="run-row">
           <div id="runPhaseCard" class="card phase-card" data-phase="prep">
             <div id="runPhase" class="phase-label">Get ready</div>

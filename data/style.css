@@ -186,9 +186,14 @@ main {
 .chart-wrap { position: relative; }
 .chart-wrap .chart { position: relative; z-index: 1; } /* the plot draws over the number */
 .chart-number { display: none; }
-/* Live, "number in the graph": a taller graph with the current weight behind the curve. */
-#view-live[data-layout="graph"] .chart { height: min(58vh, 480px); }
-#view-live[data-layout="graph"] .chart-number {
+/* "Number in the graph" (body[data-number-layout=graph], see live.js): a taller graph
+   with the current force behind the curve, on Live and on the run screen. */
+body[data-number-layout="graph"] #liveReadout { display: none; }
+body[data-number-layout="graph"] #view-live .chart { height: min(58vh, 480px); }
+body[data-number-layout="graph"] #trainRun .chart { height: min(48vh, 420px); }
+body[data-number-layout="graph"] #trainRun .run-force { display: none; }
+body[data-number-layout="graph"] #trainRun .run-row { grid-template-columns: 1fr; }
+body[data-number-layout="graph"] .chart-number {
   position: absolute;
   inset: 0 0 28px 40px; /* leave the axes free */
   display: flex;

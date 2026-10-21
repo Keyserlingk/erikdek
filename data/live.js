@@ -9,7 +9,9 @@ const SMOOTHING_TAU_S = 0.15; // time constant for the big number; raw data is u
 const alpha = 1 - Math.exp(-1 / (SAMPLE_RATE_HZ * SMOOTHING_TAU_S));
 const WINDOW_KEY = "erkdek.chartWindow";
 const TARGET_KEY = "erkdek.liveTarget";
-const LAYOUT_KEY = "erkdek.liveLayout"; // "above" (default) or "graph": the number behind the graph
+// "above" (default) or "graph": the force number behind the graph, on Live and on the
+// Train/Tests run screen. Set on <body> as data-number-layout; style.css does the rest.
+const LAYOUT_KEY = "erkdek.numberLayout";
 const MIN_TARGET_KG = 0.5;
 
 const el = {
@@ -29,8 +31,6 @@ const el = {
   targetInfo: document.getElementById("targetInfo"),
   targetKg: document.getElementById("targetKg"),
   removeTarget: document.getElementById("removeTarget"),
-  view: document.getElementById("view-live"),
-  readout: document.getElementById("liveReadout"),
   chartKg: document.getElementById("chartKg"),
   chartSub: document.getElementById("chartSub"),
   layout: document.getElementById("liveLayout"),
@@ -88,8 +88,7 @@ function resetPeak() {
 
 // Trial: the current weight as the background of the graph instead of above it.
 function setLayout(layout) {
-  el.view.dataset.layout = layout;
-  el.readout.hidden = layout === "graph";
+  document.body.dataset.numberLayout = layout;
   el.layout.textContent = layout === "graph" ? "Show the number above the graph" : "Show the number in the graph";
   try {
     localStorage.setItem(LAYOUT_KEY, layout);
@@ -186,6 +185,6 @@ export function initLive() {
     // keep default
   }
   setLayout(layout);
-  el.layout.addEventListener("click", () => setLayout(el.view.dataset.layout === "graph" ? "above" : "graph"));
+  el.layout.addEventListener("click", () => setLayout(document.body.dataset.numberLayout === "graph" ? "above" : "graph"));
   requestAnimationFrame(render);
 }
