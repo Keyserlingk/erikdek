@@ -99,3 +99,15 @@ test("all templates are valid and belong to a category", async () => {
   assert.equal(new Set(BUILTIN_ROUTINES.map((r) => r.id)).size, BUILTIN_ROUTINES.length);
   for (const c of TEMPLATE_CATEGORIES) assert.ok(BUILTIN_ROUTINES.some((r) => r.category === c), c);
 });
+
+test("a test in a routine file keeps its protocol's timing", () => {
+  const test = { ...mine, name: "My max pull", test: "maxPull", hands: "alternate", sets: 9, workS: 60 };
+  const { routines, skipped } = parseRoutineFile(JSON.stringify(buildRoutineFile([test])));
+  assert.equal(skipped, 0);
+  assert.equal(routines[0].test, "maxPull");
+  assert.equal(routines[0].sets, 3);
+  assert.equal(routines[0].workS, 5);
+  assert.equal(routines[0].hands, "alternate");
+  const cf = { ...mine, name: "CF", test: "criticalForce", hands: "alternate" };
+  assert.equal(parseRoutineFile(JSON.stringify(buildRoutineFile([cf]))).skipped, 1); // no alternating CF
+});

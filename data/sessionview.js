@@ -17,7 +17,8 @@ function el(tag, props = {}, children = []) {
 }
 
 export function sessionTitle(s) {
-  const name = s.type === "workout" ? s.name : KINDS[s.type].name;
+  // Routines and saved tests by their name; older test sessions by the test's name.
+  const name = s.type === "workout" || s.routine ? s.name : KINDS[s.type].name;
   return s.stopped ? `${name} (stopped)` : name;
 }
 

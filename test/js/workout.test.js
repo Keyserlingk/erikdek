@@ -243,3 +243,24 @@ test("pausing freezes the stopwatch of an open-ended rep; finishRep is ignored i
   engine.resume(100);
   assert.equal(engine.update(101).inPhaseS, 6);
 });
+
+test("each hand in turn: all sets left, a rest between hands, then all right", () => {
+  const r = { sets: 2, reps: 1, workS: 5, restS: 10, setRestS: 90, prepS: 5, hands: "each", handRestS: 600 };
+  const phases = buildPhases(r);
+  assert.deepEqual(
+    phases.map((p) => [p.type, p.durS, p.hand]),
+    [
+      ["prep", 5, "left"],
+      ["work", 5, "left"],
+      ["setRest", 90, "left"],
+      ["work", 5, "left"],
+      ["setRest", 600, "right"],
+      ["work", 5, "right"],
+      ["setRest", 90, "right"],
+      ["work", 5, "right"],
+    ],
+  );
+  assert.equal(phases[4].handChange, true);
+  // Without handRestS (training routines) the rest between sets is used.
+  assert.equal(buildPhases({ ...r, handRestS: undefined })[4].durS, 90);
+});

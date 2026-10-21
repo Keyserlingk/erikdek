@@ -103,7 +103,8 @@
             <span>Name</span>
             <input id="editName" type="text" maxlength="40" placeholder="My repeaters">
           </label>
-          <label class="field stacked">
+          <p id="editProtocol" class="muted protocol-note" hidden></p>
+          <label id="editTypeRow" class="field stacked">
             <span>Type</span>
             <select id="editType">
               <option value="hangboard">Hangboard (with the sensor)</option>
@@ -116,7 +117,7 @@
             <span>Instruction</span>
             <textarea id="editInstruction" rows="2" maxlength="200" placeholder="e.g. 1-3-5-7 ladders on medium rungs"></textarea>
           </label>
-          <label class="check"><input id="editPerSet" type="checkbox"> Different instruction per set</label>
+          <label id="editPerSetRow" class="check"><input id="editPerSet" type="checkbox"> Different instruction per set</label>
           <div id="editSetInstructions" class="set-instructions" hidden></div>
           <div id="editWeightBlock" hidden>
             <label class="check"><input id="editUseWeight" type="checkbox"> Log added weight</label>
@@ -127,7 +128,7 @@
           </div>
           <div id="editHold"></div>
           <div id="editGrip"></div>
-          <div class="grid2">
+          <div id="editTiming" class="grid2">
             <label class="field stacked"><span>Sets</span><input id="editSets" type="number" min="1" max="20" step="1" inputmode="numeric"></label>
             <label class="field stacked"><span id="editRepsLabel">Reps per set</span><input id="editReps" type="number" min="1" max="50" step="1" inputmode="numeric"></label>
             <label id="editWorkField" class="field stacked"><span id="editWorkLabel">Hang (s)</span><input id="editWork" type="number" min="1" max="600" step="1" inputmode="numeric"></label>
@@ -142,6 +143,7 @@
               <option value="left">Left hand</option>
               <option value="right">Right hand</option>
               <option value="alternate">Alternating (left, right, …)</option>
+              <option value="each">Each hand in turn (all left, then all right)</option>
             </select>
           </label>
           <label id="editTargetBlock" class="field stacked">
@@ -297,31 +299,11 @@
     <section id="view-tests" hidden>
       <div id="testsMain">
         <h1>Tests</h1>
-        <p class="muted">Standard tests to track your strength over time. Results are saved to History.</p>
+        <p class="muted">Standard tests to track your strength over time, set up the same way every time. Results are saved to History.</p>
         <div id="testsNotice" class="notice" hidden></div>
         <div id="testList"></div>
       </div>
 
-      <div id="trainSetup" hidden>
-        <h1 id="setupTitle">Test</h1>
-        <p id="setupDescription" class="muted"></p>
-        <div class="card">
-          <div class="field stacked">
-            <span>Hand</span>
-            <div id="setupHand" class="segmented wide" role="group" aria-label="Hand">
-              <button type="button" data-hand="both">Both</button>
-              <button type="button" data-hand="left">Left</button>
-              <button type="button" data-hand="right">Right</button>
-            </div>
-          </div>
-          <div id="setupHold"></div>
-          <div id="setupGrip"></div>
-          <div class="actions">
-            <button id="setupCancel" class="secondary" type="button">Cancel</button>
-            <button id="setupStart" class="primary" type="button">Start</button>
-          </div>
-        </div>
-      </div>
     </section>
 
     <section id="view-history" hidden>
@@ -338,7 +320,7 @@
             <label class="field stacked"><span>Hold</span><select id="histHold"></select></label>
             <label class="field stacked"><span>Grip</span><select id="histGrip"></select></label>
           </div>
-          <label id="histRoutineRow" class="field stacked" hidden><span>Routine</span><select id="histRoutine"></select></label>
+          <label id="histRoutineRow" class="field stacked" hidden><span id="histRoutineLabel">Routine</span><select id="histRoutine"></select></label>
           <label id="histMetricRow" class="field stacked" hidden><span>Compare by</span><select id="histMetric"></select></label>
         </div>
         <h2 class="section">Personal bests</h2>

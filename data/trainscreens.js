@@ -1,5 +1,5 @@
-// Screens of the Train and Tests tabs. Run and summary are shared and moved into the
-// tab the run was started from (runHost).
+// Screens of the Train and Tests tabs. The routine editor, the run and the summary are
+// shared: they are moved into the tab they are opened from (editHost, runHost).
 
 import { $ } from "./ui.js";
 
@@ -10,22 +10,27 @@ const screens = {
   workoutEdit: $("trainWorkoutEdit"),
   between: $("trainBetween"),
   workoutSummary: $("trainWorkoutSummary"),
-  setup: $("trainSetup"),
   run: $("trainRun"),
   summary: $("trainSummary"),
 };
 const notices = { list: $("trainListNotice"), tests: $("testsNotice") };
 
-// Screens per tab; run and summary belong to the tab they are mounted in.
-const GROUPS = { train: ["list", "edit", "workoutEdit", "between", "workoutSummary"], tests: ["tests", "setup"] };
+// Screens per tab, plus the shared ones mounted in it.
+const GROUPS = { train: ["list", "workoutEdit", "between", "workoutSummary"], tests: ["tests"] };
 export const HOME = { train: "list", tests: "tests" };
 let runHost = "train";
+let editHost = "train";
 
 export const getRunHost = () => runHost;
 
+function groupOfScreen(screen) {
+  if (screen === "edit") return editHost;
+  return Object.keys(GROUPS).find((g) => GROUPS[g].includes(screen)) ?? runHost;
+}
+
 export function show(screen) {
-  const group = Object.keys(GROUPS).find((g) => GROUPS[g].includes(screen)) ?? runHost;
-  const names = [...GROUPS[group], ...(group === runHost ? ["run", "summary"] : [])];
+  const group = groupOfScreen(screen);
+  const names = [...GROUPS[group], ...(group === runHost ? ["run", "summary"] : []), ...(group === editHost ? ["edit"] : [])];
   for (const name of names) screens[name].hidden = name !== screen;
   window.scrollTo(0, 0);
 }
@@ -38,13 +43,17 @@ export function mountRunScreens(group) {
   runHost = group;
 }
 
-export function groupOf(kind) {
-  return kind === "workout" ? "train" : "tests";
+// Moves the editor into the tab it is opened from (routines: Train, tests: Tests).
+export function mountEditor(group) {
+  if (group === editHost) return;
+  if (!screens.edit.hidden) show(HOME[editHost]);
+  $(`view-${group}`).append(screens.edit);
+  editHost = group;
 }
 
-// Home screen of the tab a run started from.
-export function homeOf(kind) {
-  return HOME[groupOf(kind)];
+// The tab a session kind belongs to: routines in Train, tests in Tests.
+export function groupOf(kind) {
+  return kind === "workout" ? "train" : "tests";
 }
 
 export function showNotice(home, text) {

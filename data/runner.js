@@ -82,14 +82,15 @@ export const isRunning = () => run !== null;
 // and the user declined). Options:
 //   onEnd(session, stopped, raw)  called instead of showing the summary
 //   workout: { id, name, index, count }  the workout this routine is part of
-export async function startRun(kind, routine, hand, { onEnd = null, workout = null } = {}) {
+//   group: the tab to run in (default: Train for routines, Tests for tests)
+export async function startRun(kind, routine, hand, { onEnd = null, workout = null, group = groupOf(kind) } = {}) {
   // Tests always use the sensor; routines only when they are hangboard routines.
   const sensor = kind !== "workout" || usesSensor(routine);
   if (sensor && !device.connected && !confirm(`"${routine.name}" uses the sensor, which isn't connected. Start anyway?`)) {
     return false;
   }
   unlockAudio();
-  mountRunScreens(groupOf(kind));
+  mountRunScreens(group);
   const target = targetKg(routine, settings.values.bodyweightKg);
   const phases = buildPhases(routine);
   run = {
@@ -231,7 +232,9 @@ function changeLoggedWeight(value) {
   el.setLogWeight.value = run.nextWeightKg;
 }
 
-function phaseName(type) {
+function phaseName(p) {
+  const type = p.type;
+  if (p.handChange) return "Change hand"; // between the hands of "each hand in turn"
   if (type === PHASE.WORK && !run.sensor) return run.routine.type === "selfpaced" ? "Go" : "Work";
   if (type === PHASE.WORK) return KINDS[run.kind].workLabel;
   if (type === PHASE.REST && run.routine.hands === "alternate") return "Change hand";
@@ -254,7 +257,7 @@ function tick() {
   const r = run.routine;
   el.card.dataset.phase = phase.type;
   const waiting = state.waitingForLoad;
-  el.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type) + (waiting ? " to start" : "");
+  el.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase) + (waiting ? " to start" : "");
   renderGrip(state.index);
   // Countdown, or a stopwatch while a self-paced rep waits for Done.
   el.countdown.textContent = remainingS === null ? formatClock(inPhaseS) : Math.ceil(remainingS);
@@ -266,7 +269,7 @@ function tick() {
   el.progress.textContent =
     r.reps * hangsPerRep(r) > 1 ? `Set ${phase.set}/${r.sets} · Rep ${phase.rep}/${r.reps}` : `Attempt ${phase.set}/${r.sets}`;
   const nextTime = (p) => (p.durS === null ? "" : ` ${formatDuration(p.durS)}`);
-  el.next.textContent = next ? `Next: ${phaseName(next.type)}${nextTime(next)}` : "Last one!";
+  el.next.textContent = next ? `Next: ${phaseName(next)}${nextTime(next)}` : "Last one!";
 
   if (!run.sensor) return;
   const kg = run.smoothed ?? 0;
@@ -282,7 +285,7 @@ function tick() {
   el.chartKg.dataset.status = targetStatus(kg, run.target) ?? "";
   el.chartKg.classList.toggle("pulse", phase.type === PHASE.WORK && !waiting && remainingS !== null && remainingS <= PULSE_S);
   el.chartSub.textContent = waiting
-    ? `${phaseName(phase.type)} to start the countdown`
+    ? `${phaseName(phase)} to start the countdown`
     : [run.targetText, repInfo].filter(Boolean).join(" · ");
   chart.render();
 }
@@ -294,12 +297,12 @@ function renderGrip(index) {
   const current = run.phases[index];
   const isWork = current.type === PHASE.WORK;
   const hang = isWork ? current : run.phases.slice(index + 1).find((p) => p.type === PHASE.WORK);
-  // Tests have one hand for the whole run (chosen at setup); routines per hang.
+  // Phases carry the hand; "both" falls back to the run's hand.
   const hand = hang && hang.hand && hang.hand !== "both" ? hang.hand : run.hand;
   const parts = hang ? [hand && hand !== "both" ? HANDS[hand] : "", run.routine.holdType, run.routine.grip].filter(Boolean) : [];
   // Without grip info the rest panel says what comes next instead ("Hang 7 s").
   const nextPhase = run.phases[index + 1];
-  const fallback = nextPhase ? phaseName(nextPhase.type) + (nextPhase.durS === null ? "" : ` ${formatDuration(nextPhase.durS)}`) : "";
+  const fallback = nextPhase ? phaseName(nextPhase) + (nextPhase.durS === null ? "" : ` ${formatDuration(nextPhase.durS)}`) : "";
   const key = `${index}|${isWork}|${parts.join("|")}`;
   if (key === run.gripKey) return; // unchanged: don't rebuild the list every tick
   run.gripKey = key;
@@ -343,11 +346,13 @@ function buildSession(stopped) {
   else session.curve = compressCurve(run.curve, 1 / dtS, { minKg: CURVE_MIN_KG, maxPoints: CURVE_MAX_POINTS });
   // Each rep's own curve, for comparing reps in History.
   if (!noForce && run.attempts.length === reps.length && reps.length) session.repCurves = compressRepCurves(run.attempts, 1 / dtS);
-  if (run.kind === "workout") {
-    const { name, type, instruction, setInstructions, addedWeightKg, holdType, grip, hands } = r;
+  // The routine or test as it was run (tests: their setup, for History's filters).
+  {
+    const { name, type, instruction, setInstructions, addedWeightKg, holdType, grip, hands, test, handRestS } = r;
     const { sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;
     session.routine = {
       id: r.id,
+      ...(test ? { test, handRestS } : {}),
       name,
       type: type || "hangboard",
       instruction,
@@ -364,7 +369,7 @@ function buildSession(stopped) {
       prepS,
       target,
     };
-    if (!run.sensor) session.sets = run.sets.map((x) => ({ ...x }));
+    if (run.kind === "workout" && !run.sensor) session.sets = run.sets.map((x) => ({ ...x }));
   }
   if (stopped) session.stopped = true;
   if (run.workout) session.workout = { ...run.workout };

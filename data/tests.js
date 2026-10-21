@@ -2,10 +2,13 @@
 // summarise a recorded run, which metric shows progress, and how to present a session.
 // No DOM access, so it runs under node --test too.
 
-import { CF_LAST_REPS, criticalForceSummary, forceRetention, maxPullSummary, rfdSummary } from "./analysis.js";
+import { criticalForceSummary, forceRetention, maxPullSummary, rfdSummary } from "./analysis.js";
 import { formatDuration, formatKg } from "./format.js";
+import { PROTOCOLS, TEST_IDS } from "./protocols.js";
 import { usesSensor } from "./routines.js";
-import { hangsPerRep } from "./workout.js";
+import { isTwoHanded, totalHangs } from "./workout.js";
+
+export { TEST_IDS };
 
 const kg = (v) => (v === null || v === undefined ? "–" : `${formatKg(v)} kg`);
 const kgPerS = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)} kg/s`);
@@ -44,6 +47,23 @@ const INFO = {
 
 const handInitial = (hand) => (hand === "left" ? " L" : hand === "right" ? " R" : "");
 
+// A test done with both hands (alternating or one after the other): the summary also
+// gets byHand { left, right }, each made by summarize(pick) with pick(list) keeping the
+// items of that hand (list is in the order of reps).
+function withHands(summary, reps, summarize) {
+  const hands = new Set(reps.map((r) => r.hand));
+  if (!hands.has("left") || !hands.has("right")) return { ...summary, byHand: null };
+  const of = (hand) => summarize((list) => list.filter((_, i) => reps[i]?.hand === hand));
+  return { ...summary, byHand: { left: of("left"), right: of("right") } };
+}
+
+// Test tiles: once for the whole test, or per hand ("· left") when done with both.
+function handTiles(s, tilesOf) {
+  const byHand = s.summary.byHand;
+  if (!byHand) return tilesOf(s.summary, "");
+  return [...tilesOf(byHand.left, " · left"), ...tilesOf(byHand.right, " · right")];
+}
+
 // Workout summary of `reps` against `planned` hangs: per-rep values are averaged over
 // all planned hangs, so skipped ones count as 0.
 function summarizeReps(reps, planned, target) {
@@ -68,7 +88,7 @@ export function summarizeTraining(reps, sets, routine) {
   const weights = sets.filter((s) => typeof s.addedWeightKg === "number" && repsInSet(s.set) > 0);
   return {
     repsDone: reps.length,
-    totalReps: routine.sets * routine.reps * hangsPerRep(routine),
+    totalReps: totalHangs(routine),
     setsDone: new Set(reps.map((r) => r.set)).size,
     workTimeS: reps.reduce((sum, r) => sum + r.durationS, 0),
     avgRpe: rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : null,
@@ -260,10 +280,10 @@ export const KINDS = {
     // Alternating sessions also get the same summary per hand in byHand.
     analyze({ reps, routine, target, sets = [] }) {
       if (!usesSensor(routine)) return summarizeTraining(reps, sets, routine);
-      const planned = routine.sets * routine.reps * hangsPerRep(routine);
+      const planned = totalHangs(routine);
       const summary = summarizeReps(reps, planned, target);
       summary.byHand =
-        routine.hands === "alternate"
+        isTwoHanded(routine)
           ? Object.fromEntries(
               ["left", "right"].map((h) => [h, summarizeReps(reps.filter((r) => r.hand === h), planned / 2, target)]),
             )
@@ -277,70 +297,86 @@ export const KINDS = {
 
 
   maxPull: {
-    name: "Max pull",
-    description: "3 all-out pulls of 5 s with 90 s rest. Measures your strongest pull.",
+    name: PROTOCOLS.maxPull.name,
+    description: PROTOCOLS.maxPull.description,
     workLabel: "Pull",
-    routine: { sets: 3, reps: 1, workS: 5, restS: 0, setRestS: 90, prepS: 5 },
-    metrics: [summaryMetric("peakKg", "Peak force", kg, `${INFO.peakForce} Your strongest pull in each test.`)],
-    analyze: ({ attempts, dtS }) => maxPullSummary(attempts, dtS),
-    tiles: (s) => [
-      [kg(s.summary.peakKg), `peak force${pctBw(s.summary.peakKg, s.bodyweightKg)}`, INFO.peakForce],
-      [kg(s.summary.best1sKg), "best 1 s average", INFO.best1s],
+    routine: PROTOCOLS.maxPull.timing,
+    metrics: [
+      summaryMetric("peakKg", "Peak force", kg, `${INFO.peakForce} Your strongest pull in each test.`),
+      summaryMetric("best1sKg", "Best 1 s average", kg, INFO.best1s),
     ],
+    analyze: ({ attempts, dtS, reps }) =>
+      withHands(maxPullSummary(attempts, dtS), reps, (pick) => maxPullSummary(pick(attempts), dtS)),
+    tiles: (s) =>
+      handTiles(s, (sum, label) => [
+        [kg(sum.peakKg), `peak force${label}${pctBw(sum.peakKg, s.bodyweightKg)}`, INFO.peakForce],
+        [kg(sum.best1sKg), `best 1 s average${label}`, INFO.best1s],
+      ]),
     table: (s) => ({
       head: ["Attempt", "Peak", "Avg"],
-      rows: s.reps.map((r, i) => [`${i + 1}`, formatKg(r.peakKg), formatKg(r.meanKg)]),
+      rows: s.reps.map((r, i) => [`${i + 1}${handInitial(r.hand)}`, formatKg(r.peakKg), formatKg(r.meanKg)]),
     }),
   },
 
   criticalForce: {
-    name: "Critical force",
-    description: `24 all-out pulls of 7 s with 3 s rest. Critical force is the average of the last ${CF_LAST_REPS} reps: the load you can sustain.`,
+    name: PROTOCOLS.criticalForce.name,
+    description: PROTOCOLS.criticalForce.description,
     workLabel: "Pull",
-    routine: { sets: 1, reps: 24, workS: 7, restS: 3, setRestS: 0, prepS: 5 },
-    metrics: [summaryMetric("cfKg", "Critical force", kg, INFO.cf)],
+    routine: PROTOCOLS.criticalForce.timing,
+    metrics: [summaryMetric("cfKg", "Critical force", kg, INFO.cf), summaryMetric("peakKg", "Peak force", kg, INFO.cfPeak)],
     analyze({ reps, routine }) {
-      const cf = criticalForceSummary(
-        reps.map((r) => r.meanKg),
-        reps.map((r) => r.peakKg),
-        routine.workS,
-      );
-      return cf ?? { cfKg: null, peakKg: Math.max(0, ...reps.map((r) => r.peakKg)), cfShareOfPeak: null, wPrimeKgS: null };
+      const cfOf = (list) =>
+        criticalForceSummary(
+          list.map((r) => r.meanKg),
+          list.map((r) => r.peakKg),
+          routine.workS,
+        ) ?? { cfKg: null, peakKg: Math.max(0, ...list.map((r) => r.peakKg)), cfShareOfPeak: null, wPrimeKgS: null };
+      // Both hands in one test: critical force only means something per hand.
+      return withHands(cfOf(reps), reps, (pick) => cfOf(pick(reps)));
     },
-    tiles: (s) => [
-      [kg(s.summary.cfKg), `critical force${pctBw(s.summary.cfKg, s.bodyweightKg)}`, INFO.cf],
-      [s.summary.cfShareOfPeak ? `${Math.round(s.summary.cfShareOfPeak * 100)} %` : "–", "of peak force", INFO.cfShare],
-      [kg(s.summary.peakKg), "peak force", INFO.cfPeak],
-      [s.summary.wPrimeKgS !== null ? `${Math.round(s.summary.wPrimeKgS)} kg·s` : "–", "W′ (work above CF)", INFO.wPrime],
-    ],
+    tiles: (s) =>
+      handTiles(s, (sum, label) => [
+        [kg(sum.cfKg), `critical force${label}${pctBw(sum.cfKg, s.bodyweightKg)}`, INFO.cf],
+        [sum.cfShareOfPeak ? `${Math.round(sum.cfShareOfPeak * 100)} %` : "–", `of peak force${label}`, INFO.cfShare],
+        [kg(sum.peakKg), `peak force${label}`, INFO.cfPeak],
+        [sum.wPrimeKgS !== null ? `${Math.round(sum.wPrimeKgS)} kg·s` : "–", `W′ (work above CF)${label}`, INFO.wPrime],
+      ]),
     table: (s) => ({
       head: ["Rep", "Peak", "Avg"],
-      rows: s.reps.map((r, i) => [`${i + 1}`, formatKg(r.peakKg), formatKg(r.meanKg)]),
+      rows: s.reps.map((r, i) => [`${r.rep ?? i + 1}${handInitial(r.hand)}`, formatKg(r.peakKg), formatKg(r.meanKg)]),
     }),
   },
 
   rfd: {
-    name: "Rate of force development",
+    name: PROTOCOLS.rfd.name,
     shortName: "RFD",
-    description: "3 explosive pulls of 3 s with 30 s rest. Pull as fast and hard as you can from a relaxed hang.",
+    description: PROTOCOLS.rfd.description,
     workLabel: "Pull",
-    routine: { sets: 3, reps: 1, workS: 3, restS: 0, setRestS: 30, prepS: 5 },
+    routine: PROTOCOLS.rfd.timing,
     metrics: [summaryMetric("rfdKgS", "RFD 0–200 ms", kgPerS, INFO.rfd)],
-    analyze: ({ attempts, dtS }) =>
-      rfdSummary(attempts, dtS) ?? { rfdKgS: null, peakRfdKgS: null, timeToPeakS: null, peakKg: null, attemptRfdKgS: [] },
-    tiles: (s) => [
-      [kgPerS(s.summary.rfdKgS), "RFD 0–200 ms", INFO.rfd],
-      [kgPerS(s.summary.peakRfdKgS), "peak RFD", INFO.peakRfd],
-      [s.summary.timeToPeakS !== null ? `${Math.round(s.summary.timeToPeakS * 1000)} ms` : "–", "time to peak", INFO.timeToPeak],
-      [kg(s.summary.peakKg), "peak force", INFO.peakForce],
-    ],
+    analyze: ({ attempts, dtS, reps }) => {
+      const rfdOf = (list) =>
+        rfdSummary(list, dtS) ?? { rfdKgS: null, peakRfdKgS: null, timeToPeakS: null, peakKg: null, attemptRfdKgS: [] };
+      return withHands(rfdOf(attempts), reps, (pick) => rfdOf(pick(attempts)));
+    },
+    tiles: (s) =>
+      handTiles(s, (sum, label) => [
+        [kgPerS(sum.rfdKgS), `RFD 0–200 ms${label}`, INFO.rfd],
+        [kgPerS(sum.peakRfdKgS), `peak RFD${label}`, INFO.peakRfd],
+        [sum.timeToPeakS !== null ? `${Math.round(sum.timeToPeakS * 1000)} ms` : "–", `time to peak${label}`, INFO.timeToPeak],
+        [kg(sum.peakKg), `peak force${label}`, INFO.peakForce],
+      ]),
     table: (s) => ({
       head: ["Attempt", "Peak", "RFD 0–200 ms"],
-      rows: s.reps.map((r, i) => [`${i + 1}`, formatKg(r.peakKg), kgPerS(s.summary.attemptRfdKgS?.[i] ?? null)]),
+      rows: s.reps.map((r, i) => [`${i + 1}${handInitial(r.hand)}`, formatKg(r.peakKg), kgPerS(s.summary.attemptRfdKgS?.[i] ?? null)]),
     }),
   },
 };
 
-export const TEST_IDS = ["maxPull", "criticalForce", "rfd"];
-
-export const HANDS = { both: "Both hands", left: "Left hand", right: "Right hand", alternate: "Alternating hands" };
+export const HANDS = {
+  both: "Both hands",
+  left: "Left hand",
+  right: "Right hand",
+  alternate: "Alternating hands",
+  each: "Each hand in turn",
+};

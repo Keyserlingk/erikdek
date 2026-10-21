@@ -1,16 +1,21 @@
 // Train tab: the routine editor (new routine, edit, copy of a template).
 
 import { downloadJson } from "./download.js";
+import { PROTOCOLS, applyProtocol } from "./protocols.js";
 import { BUILTIN_ROUTINES, ROUTINE_TYPES, buildRoutineFile, newRoutineId, routines, validateRoutine } from "./routines.js";
 import { routineDuration, routineFileName } from "./routinetext.js";
 import { TagSelect, grips, holdTypes } from "./tags.js";
-import { show } from "./trainscreens.js";
+import { mountEditor, show } from "./trainscreens.js";
 import { $, create } from "./ui.js";
 
 const el = {
   screen: $("trainEdit"),
   title: $("editTitle"),
   name: $("editName"),
+  protocol: $("editProtocol"),
+  typeRow: $("editTypeRow"),
+  perSetRow: $("editPerSetRow"),
+  timing: $("editTiming"),
   sets: $("editSets"),
   reps: $("editReps"),
   workS: $("editWork"),
@@ -48,6 +53,10 @@ let editing = null; // routine being edited (copy)
 let selects = null; // TagSelects: hold, grip
 let onSaved = () => {};
 
+// Tests (routines with a protocol) are edited in the Tests tab, routines in Train.
+const isTest = () => Boolean(editing?.test);
+const home = () => (isTest() ? "tests" : "list");
+
 // One text field per set when "Different instruction per set" is on; texts are kept
 // while the number of sets changes.
 let editSetTexts = [];
@@ -58,8 +67,20 @@ export function openEditor(r) {
     ? structuredClone({ ...r, id: r.builtin ? newRoutineId() : r.id, builtin: false })
     : { ...structuredClone(BUILTIN_ROUTINES[0]), id: newRoutineId(), name: "", builtin: false };
   if (r && r.builtin) editing.name = `${r.name} (copy)`;
+  mountEditor(isTest() ? "tests" : "train");
 
-  el.title.textContent = isNew ? "New routine" : "Edit routine";
+  const noun = isTest() ? "test" : "routine";
+  el.title.textContent = isNew ? `New ${noun}` : `Edit ${noun}`;
+  el.download.textContent = `Download ${noun}`;
+  el.remove.textContent = `Delete ${noun}`;
+  // A test: name, instruction, hold, grip and the hands its protocol allows; its timing
+  // is fixed. The fields for that are hidden.
+  const protocol = PROTOCOLS[editing.test];
+  el.protocol.hidden = !protocol;
+  if (protocol) el.protocol.textContent = `${protocol.name}: ${protocol.description} The timing is fixed so your results compare over time.`;
+  for (const node of [el.typeRow, el.typeHint, el.perSetRow, el.timing]) node.hidden = Boolean(protocol);
+  el.instruction.placeholder = protocol ? "e.g. Feet on the floor, arms straight, pull up the edge" : "e.g. 1-3-5-7 ladders on medium rungs";
+  for (const option of el.hands.options) option.hidden = option.disabled = protocol ? !protocol.hands.includes(option.value) : false;
   el.name.value = editing.name;
   selects.hold.value = editing.holdType || "";
   selects.grip.value = editing.grip || "";
@@ -82,6 +103,17 @@ export function openEditor(r) {
 }
 
 function readEditor() {
+  if (isTest()) {
+    return applyProtocol({
+      id: editing.id,
+      test: editing.test,
+      name: el.name.value.trim(),
+      instruction: el.instruction.value.trim(),
+      holdType: selects.hold.value,
+      grip: selects.grip.value,
+      hands: el.hands.value,
+    });
+  }
   const int = (input) => (input.value.trim() === "" ? NaN : Number(input.value));
   const routineType = el.type.value;
   const sensor = ROUTINE_TYPES[routineType].sensor;
@@ -131,6 +163,12 @@ const TYPE_HINTS = {
 };
 
 function updateEditorDerived() {
+  if (isTest()) {
+    for (const node of [el.targetBlock, el.targetRow, el.weightBlock, el.setInstructions]) node.hidden = true;
+    const r = readEditor();
+    el.duration.textContent = validateRoutine(r) ? "" : `Total time ${routineDuration(r)}`;
+    return;
+  }
   const routineType = el.type.value;
   const sensor = ROUTINE_TYPES[routineType].sensor;
   el.typeHint.textContent = TYPE_HINTS[routineType];
@@ -157,8 +195,7 @@ async function saveEditor() {
   if (error) return;
   try {
     await routines.save(r);
-    onSaved();
-    show("list");
+    onSaved(r); // goes back to the list it came from
   } catch (err) {
     el.error.textContent = err.message;
     el.error.hidden = false;
@@ -169,7 +206,7 @@ async function deleteEditing() {
   if (!confirm(`Delete "${editing.name}"?`)) return;
   try {
     await routines.remove(editing.id);
-    show("list");
+    show(home());
   } catch (err) {
     el.error.textContent = err.message;
     el.error.hidden = false;
@@ -187,7 +224,7 @@ function downloadEditing() {
   downloadJson(routineFileName(r.name), buildRoutineFile([r]));
 }
 
-// saved: called after a routine is saved (before going back to the list).
+// saved(routine): called after a routine or test is saved; shows where to go next.
 export function initRoutineEditor({ saved }) {
   onSaved = saved;
   selects = {
@@ -200,7 +237,7 @@ export function initRoutineEditor({ saved }) {
   });
   el.sets.addEventListener("input", renderSetInstructions);
   el.instruction.addEventListener("input", renderSetInstructions);
-  el.cancel.addEventListener("click", () => show("list"));
+  el.cancel.addEventListener("click", () => show(home()));
   el.save.addEventListener("click", saveEditor);
   el.remove.addEventListener("click", deleteEditing);
   el.download.addEventListener("click", downloadEditing);

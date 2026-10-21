@@ -2,6 +2,7 @@
 // No DOM access, so it runs under node --test too.
 
 import { formatDuration, formatKg } from "./format.js";
+import { PROTOCOLS } from "./protocols.js";
 import { ROUTINE_TYPES } from "./routines.js";
 import { HANDS } from "./tests.js";
 import { isOpenEnded, totalDurationS } from "./workout.js";
@@ -24,7 +25,7 @@ export function workoutDuration(w, allRoutines) {
 export function describe(r) {
   const alternate = r.hands === "alternate";
   const type = r.type || "hangboard";
-  const parts = [`${r.sets} × ${r.reps}${alternate ? " per hand" : ""}`];
+  const parts = [`${r.sets} × ${r.reps}${alternate || r.hands === "each" ? " per hand" : ""}`];
   if (type !== "selfpaced") parts.push(`${r.workS} s on`);
   if (alternate) parts.push(`${r.restS} s hand change`);
   else if (r.reps > 1) parts.push(`${r.restS} s off`);
@@ -34,7 +35,8 @@ export function describe(r) {
   if (r.addedWeightKg !== null && r.addedWeightKg !== undefined) {
     parts.push(`${r.addedWeightKg >= 0 ? "+" : "−"}${formatKg(Math.abs(r.addedWeightKg))} kg`);
   }
-  const typeLabel = type === "hangboard" ? "" : ROUTINE_TYPES[type].label;
+  // Tests are named after their protocol; other routines after their type.
+  const typeLabel = r.test ? PROTOCOLS[r.test].name : type === "hangboard" ? "" : ROUTINE_TYPES[type].label;
   const tags = [typeLabel, r.holdType, r.grip, r.hands && r.hands !== "both" ? HANDS[r.hands] : ""].filter(Boolean);
   return [...tags, ...parts].join(" · ");
 }

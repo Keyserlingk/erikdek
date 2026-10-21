@@ -5,7 +5,7 @@ import { curveCsv, fileDate, hasCurveData, repsCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { renderSession } from "./sessionview.js";
 import { summarizeTraining } from "./tests.js";
-import { homeOf, show, showNotice } from "./trainscreens.js";
+import { HOME, getRunHost, show, showNotice } from "./trainscreens.js";
 import { $, create } from "./ui.js";
 
 const el = {
@@ -83,7 +83,7 @@ async function saveResult() {
   el.save.disabled = true;
   try {
     await sessions.save(result);
-    const home = homeOf(result.type);
+    const home = HOME[getRunHost()]; // the tab the run was in
     result = null;
     resultRaw = null;
     show(home);
@@ -97,7 +97,7 @@ async function saveResult() {
 
 function discardResult() {
   if (!confirm("Discard this session? It will not be saved.")) return;
-  const home = homeOf(result.type);
+  const home = HOME[getRunHost()]; // the tab the run was in
   result = null;
   resultRaw = null;
   show(home);

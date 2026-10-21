@@ -137,3 +137,27 @@ test("sensor routine without force data shows reps and time, no effort or force 
   assert.deepEqual(KINDS.workout.strips(s), []);
   assert.deepEqual(metricPoints(metric("workout", "holdPct"), s), [{ hand: "both", value: null }]);
 });
+
+test("tests done with both hands get results per hand", () => {
+  const pull = (kg) => Array.from({ length: 80 }, () => kg);
+  const reps = [{ hand: "left" }, { hand: "right" }, { hand: "left" }, { hand: "right" }];
+  const max = KINDS.maxPull.analyze({ attempts: [pull(40), pull(35), pull(42), pull(36)], dtS: 1 / 80, reps });
+  assert.equal(max.peakKg, 42);
+  assert.equal(max.byHand.left.peakKg, 42);
+  assert.equal(max.byHand.right.peakKg, 36);
+  assert.deepEqual(metricPoints(metric("maxPull", "peakKg"), { summary: max }), [
+    { hand: "left", value: 42 },
+    { hand: "right", value: 36 },
+  ]);
+  assert.equal(KINDS.maxPull.analyze({ attempts: [pull(40)], dtS: 1 / 80, reps: [{ hand: "left" }] }).byHand, null);
+
+  // Critical force, each hand in turn: 24 reps left, then 24 right.
+  const cfReps = [
+    ...Array.from({ length: 24 }, () => ({ hand: "left", meanKg: 20, peakKg: 30 })),
+    ...Array.from({ length: 24 }, () => ({ hand: "right", meanKg: 18, peakKg: 28 })),
+  ];
+  const cf = KINDS.criticalForce.analyze({ reps: cfReps, routine: { workS: 7 } });
+  assert.equal(cf.byHand.left.cfKg, 20);
+  assert.equal(cf.byHand.right.cfKg, 18);
+  assert.equal(KINDS.maxPull.tiles({ summary: max, bodyweightKg: 0 })[0][1], "peak force · left");
+});

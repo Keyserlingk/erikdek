@@ -6,7 +6,7 @@ import { initRoutineList, renderList, setListView, showListError } from "./routi
 import { initRunner, isRunning } from "./runner.js";
 import { hasResult, initSummary } from "./runsummary.js";
 import { grips, holdTypes } from "./tags.js";
-import { initTestSetup } from "./testsetup.js";
+import { initTestList } from "./testlist.js";
 import { HOME, getRunHost, show, showNotice } from "./trainscreens.js";
 import { initWorkouts, isWorkoutActive } from "./workoutflow.js";
 import { workouts } from "./workouts.js";
@@ -22,10 +22,17 @@ export function goHome(group) {
 export function initTrain() {
   initRunner();
   initSummary();
-  initRoutineEditor({ saved: () => setListView("mine") }); // a copied template lands under My routines
+  initRoutineEditor({
+    // Back to the list it came from; a copied routine template lands under My routines.
+    saved: (r) => {
+      if (r.test) return show("tests");
+      setListView("mine");
+      show("list");
+    },
+  });
   initRoutineList();
   initWorkouts();
-  initTestSetup();
+  initTestList();
 
   routines.addEventListener("change", renderList);
   workouts.addEventListener("change", renderList);

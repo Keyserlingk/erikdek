@@ -7,11 +7,23 @@ export const COMPLETE_SHARE = 0.9;
 // Target band around the target load.
 export const TARGET_TOLERANCE = 0.05;
 
-export const HAND_OPTIONS = ["both", "left", "right", "alternate"];
+// "alternate": every rep left then right. "each": all sets with the left hand, then all
+// with the right (a rest of handRestS, else setRestS, in between).
+export const HAND_OPTIONS = ["both", "left", "right", "alternate", "each"];
 
 // Hangs in one set: with alternating hands each rep is a left and a right hang.
 export function hangsPerRep(r) {
   return r.hands === "alternate" ? 2 : 1;
+}
+
+// All hangs of the routine (both hands count with "alternate" and "each").
+export function totalHangs(r) {
+  return r.sets * r.reps * (r.hands === "alternate" || r.hands === "each" ? 2 : 1);
+}
+
+// True when the routine is done with both hands, one at a time.
+export function isTwoHanded(r) {
+  return r.hands === "alternate" || r.hands === "each";
 }
 
 // Expands a routine into the timed phases it consists of. Rests and get-ready carry
@@ -20,6 +32,13 @@ export function hangsPerRep(r) {
 // Self-paced routines have work phases without a duration (durS null): the climber
 // ends each one.
 export function buildPhases(r) {
+  if (r.hands === "each") {
+    const restS = r.handRestS ?? r.setRestS;
+    const right = buildPhases({ ...r, hands: "right", prepS: 0 });
+    // The rest between the hands carries the first right-hand hang, like other rests.
+    const change = restS > 0 ? [{ ...right[0], type: PHASE.SET_REST, durS: restS, handChange: true }] : [];
+    return [...buildPhases({ ...r, hands: "left" }), ...change, ...right];
+  }
   const hands = r.hands === "alternate" ? ["left", "right"] : [r.hands === "left" || r.hands === "right" ? r.hands : "both"];
   const hangs = []; // per set: { rep, hand }
   for (let rep = 1; rep <= r.reps; rep++) for (const hand of hands) hangs.push({ rep, hand });

@@ -49,7 +49,7 @@ export function setListView(view) {
 }
 
 export function renderList() {
-  const view = listView ?? (routines.custom.length ? "mine" : "templates");
+  const view = listView ?? (routines.training.length ? "mine" : "templates");
   for (const b of el.tabs) {
     const active = b.dataset.list === view;
     b.classList.toggle("active", active);
@@ -61,12 +61,12 @@ export function renderList() {
   el.workoutList.hidden = !isWorkouts;
   el.list.hidden = isWorkouts;
   if (isWorkouts) renderWorkouts();
-  const list = view === "mine" ? routines.custom : view === "templates" ? BUILTIN_ROUTINES : [];
+  const list = view === "mine" ? routines.training : view === "templates" ? BUILTIN_ROUTINES : [];
   el.empty.hidden = view !== "mine" || list.length > 0;
   el.templatesNote.hidden = view !== "templates";
   el.newRoutine.hidden = view !== "mine";
   el.fileActions.hidden = view !== "mine";
-  el.download.hidden = !routines.custom.length;
+  el.download.hidden = !routines.training.length;
   if (view !== "mine") showFileMessage("");
   if (view === "templates") {
     // Templates under their category headings.
@@ -81,7 +81,8 @@ export function renderList() {
   }
 }
 
-function routineCard(r) {
+// A routine or test: what it is, and Edit (Copy & edit for templates) and Start.
+export function routineCard(r) {
   return create("div", { className: "card routine" }, [
     create("div", { className: "routine-head" }, [
       create("h2", { textContent: r.name }),
@@ -91,7 +92,7 @@ function routineCard(r) {
     ...(r.instruction ? [create("p", { className: "muted instruction", textContent: r.instruction })] : []),
     create("div", { className: "actions" }, [
       button("secondary", r.builtin ? "Copy & edit" : "Edit", () => openEditor(r)),
-      button("primary", "Start", () => startRun("workout", r, r.hands || "both")),
+      button("primary", "Start", () => startRun(r.test || "workout", r, r.hands || "both")),
     ]),
   ]);
 }
@@ -131,7 +132,7 @@ export function initRoutineList() {
   el.newRoutine.addEventListener("click", () => openEditor(null));
   for (const b of el.tabs) b.addEventListener("click", () => setListView(b.dataset.list));
   el.download.addEventListener("click", () =>
-    downloadJson(`erkdek-routines-${fileDate()}.json`, buildRoutineFile(routines.custom)),
+    downloadJson(`erkdek-routines-${fileDate()}.json`, buildRoutineFile(routines.training)),
   );
   el.import.addEventListener("change", importRoutines);
 }

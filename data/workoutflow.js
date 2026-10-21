@@ -3,11 +3,11 @@
 // the routine summary; between routines a screen shows the result and what's next.
 
 import { formatDuration, formatKg } from "./format.js";
-import { BUILTIN_ROUTINES, TEMPLATE_CATEGORIES, routines } from "./routines.js";
+import { BUILTIN_ROUTINES, BUILTIN_TESTS, TEMPLATE_CATEGORIES, routines } from "./routines.js";
 import { describe, routineDuration, workoutDuration } from "./routinetext.js";
 import { startRun } from "./runner.js";
 import { sessions } from "./sessions.js";
-import { summarizeTraining } from "./tests.js";
+import { KINDS, metricPoints, summarizeTraining } from "./tests.js";
 import { show, showNotice } from "./trainscreens.js";
 import { $, button, create } from "./ui.js";
 import { moveItem, newWorkoutId, resolveRoutines, validateWorkout, workouts } from "./workouts.js";
@@ -91,10 +91,12 @@ function renderWorkoutAddOptions() {
   const group = (label, list) =>
     create("optgroup", { label }, list.map((r) => create("option", { value: r.id, textContent: r.name })));
   const groups = [];
-  if (routines.custom.length) groups.push(group("My routines", routines.custom));
+  if (routines.training.length) groups.push(group("My routines", routines.training));
+  if (routines.tests.length) groups.push(group("My tests", routines.tests));
   for (const category of TEMPLATE_CATEGORIES) {
     groups.push(group(`Templates · ${category}`, BUILTIN_ROUTINES.filter((r) => r.category === category)));
   }
+  groups.push(group("Test protocols", BUILTIN_TESTS));
   el.edit.add.replaceChildren(...groups);
 }
 
@@ -170,13 +172,23 @@ async function startWorkoutRoutine() {
   const { workout, routines: items, index } = workoutRun;
   const r = items[index];
   const info = { id: workout.id, name: workout.name, index: index + 1, count: items.length };
-  if (await startRun("workout", r, r.hands || "both", { onEnd: workoutRoutineDone, workout: info })) return;
+  // Tests in a workout run as tests (their analysis), but in the Train tab.
+  const options = { onEnd: workoutRoutineDone, workout: info, group: "train" };
+  if (await startRun(r.test || "workout", r, r.hands || "both", options)) return;
   // Declined to start without the sensor: end the workout here.
   if (workoutRun.sessions.length) showWorkoutSummary();
   else workoutRun = null;
 }
 
 function shortResult(s) {
+  if (s.type !== "workout" && !s.noForce) {
+    // A test: its main number (per hand when done with both).
+    const m = KINDS[s.type].metrics[0];
+    const points = metricPoints(m, s).filter((p) => p.value !== null);
+    if (!points.length) return "–";
+    if (points.length === 1) return `${m.label} ${m.format(points[0].value)}`;
+    return `${m.label} ${points.map((p) => `${p.hand[0].toUpperCase()} ${m.format(p.value)}`).join(" · ")}`;
+  }
   if (s.sets || s.noForce) {
     // Without the sensor: reps, effort, weight.
     const t = s.summary;

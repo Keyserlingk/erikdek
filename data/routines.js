@@ -1,8 +1,11 @@
 import { loadList, saveList } from "./db.js";
+import { PROTOCOLS, TEST_IDS, applyProtocol } from "./protocols.js";
 import { MAX_TAG_LENGTH } from "./tags.js";
 import { HAND_OPTIONS } from "./workout.js";
 
 // Built-in routines ship with the app; custom ones are stored in the app (see RoutineStore).
+// Tests are routines too: `test` names their protocol (protocols.js), which fixes the
+// timing; the rest (name, hold, grip, hands) is the climber's.
 
 export const TEMPLATE_CATEGORIES = ["Hangboard", "Campus board", "Pull-ups & lock-offs"];
 
@@ -123,6 +126,22 @@ export const BUILTIN_ROUTINES = [
   }),
 ];
 
+// Test templates: one per protocol, both hands, no hold or grip yet.
+export const BUILTIN_TESTS = TEST_IDS.map((id) =>
+  applyProtocol({
+    id: `builtin-test-${id}`,
+    builtin: true,
+    test: id,
+    name: PROTOCOLS[id].name,
+    instruction: "",
+    holdType: "",
+    grip: "",
+    hands: "both",
+  }),
+);
+
+export const isTest = (r) => Boolean(r?.test);
+
 // Routine types. Only hangboard routines use the sensor; the others are timed by the
 // clock (timed) or by the climber tapping Done (self-paced).
 export const ROUTINE_TYPES = {
@@ -159,6 +178,13 @@ export function validateRoutine(r) {
   if (r.name.length > 40) return "Name is too long (max 40 characters).";
   if (!ROUTINE_TYPES[r.type]) return "Choose a routine type.";
   if (!HAND_OPTIONS.includes(r.hands)) return "Choose which hands to use.";
+  if (r.test !== undefined && r.test !== null) {
+    if (!PROTOCOLS[r.test]) return "Unknown test.";
+    if (!PROTOCOLS[r.test].hands.includes(r.hands)) return "This test can't be done with these hands.";
+  }
+  if (r.handRestS !== undefined && !(Number.isInteger(r.handRestS) && r.handRestS >= 0 && r.handRestS <= 1800)) {
+    return "Invalid rest between hands.";
+  }
   if (typeof r.instruction !== "string" || r.instruction.length > MAX_INSTRUCTION_LENGTH) {
     return `Instruction is too long (max ${MAX_INSTRUCTION_LENGTH} characters).`;
   }
@@ -208,8 +234,18 @@ class RoutineStore extends EventTarget {
     this.custom = [];
   }
 
+  // Everything a workout can contain: templates, test templates and own ones.
   get all() {
-    return [...BUILTIN_ROUTINES, ...this.custom];
+    return [...BUILTIN_ROUTINES, ...BUILTIN_TESTS, ...this.custom];
+  }
+
+  // Own routines without the tests (Train), and own tests (Tests).
+  get training() {
+    return this.custom.filter((r) => !isTest(r));
+  }
+
+  get tests() {
+    return this.custom.filter(isTest);
   }
 
   find(id) {
@@ -269,10 +305,12 @@ const ROUTINE_FIELDS = [
   "setRestS",
   "prepS",
   "target",
+  "test",
+  "handRestS",
 ];
 
 function pickRoutine(r) {
-  return Object.fromEntries(ROUTINE_FIELDS.map((k) => [k, r[k]]));
+  return Object.fromEntries(ROUTINE_FIELDS.filter((k) => r[k] !== undefined).map((k) => [k, r[k]]));
 }
 
 export function buildRoutineFile(list) {
@@ -296,7 +334,9 @@ export function parseRoutineFile(text, existingNames = []) {
   const routines = [];
   let skipped = 0;
   for (const raw of data.routines) {
-    const r = { ...pickRoutine(raw || {}), holdType: raw?.holdType ?? "", grip: raw?.grip ?? "" };
+    const picked = { ...pickRoutine(raw || {}), holdType: raw?.holdType ?? "", grip: raw?.grip ?? "" };
+    // A test always gets its protocol's timing, whatever the file says.
+    const r = PROTOCOLS[picked.test] ? applyProtocol(picked) : picked;
     if (typeof r.name !== "string" || !r.target || typeof r.target.type !== "string" || validateRoutine(r)) {
       skipped++;
       continue;

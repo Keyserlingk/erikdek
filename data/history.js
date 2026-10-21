@@ -23,6 +23,7 @@ const el = {
   grip: $("histGrip"),
   routineRow: $("histRoutineRow"),
   routine: $("histRoutine"),
+  routineLabel: $("histRoutineLabel"),
   metricRow: $("histMetricRow"),
   metric: $("histMetric"),
   bests: $("histBests"),
@@ -109,7 +110,7 @@ function filtered() {
       s.type === kind &&
       (el.hold.value === ALL || s.holdType === el.hold.value) &&
       (el.grip.value === ALL || s.grip === el.grip.value) &&
-      (kind !== "workout" || el.routine.value === ALL || s.name === el.routine.value),
+      (el.routine.value === ALL || s.name === el.routine.value),
   );
 }
 
@@ -156,8 +157,11 @@ function renderFilters() {
   const ofKind = sessions.index.filter((s) => s.type === el.kind.value);
   fillSelect(el.hold, "All holds", distinct(ofKind, "holdType"));
   fillSelect(el.grip, "All grips", distinct(ofKind, "grip"));
-  fillSelect(el.routine, "All routines", distinct(ofKind, "name"));
-  el.routineRow.hidden = el.kind.value !== "workout";
+  // Routines by name, and tests by their saved name (e.g. "Max pull 20 mm L/R").
+  const isRoutine = el.kind.value === "workout";
+  fillSelect(el.routine, isRoutine ? "All routines" : "All tests", distinct(ofKind, "name"));
+  el.routineLabel.textContent = isRoutine ? "Routine" : "Test";
+  el.routineRow.hidden = distinct(ofKind, "name").length < 2;
 
   if (metricKind !== el.kind.value) el.metric.value = ""; // new kind: start fresh
   renderMetricPicker();
@@ -260,10 +264,10 @@ function renderList(list, metric) {
     ...sorted.map((s) => {
       const row = create("button", { type: "button", className: "card session-row" }, [
         create("div", { className: "session-main" }, [
-          create("strong", { textContent: s.type === "workout" ? sessionTitle(s) : formatDateTime(s.startedAt) }),
+          create("strong", { textContent: s.type === "workout" || s.routine ? sessionTitle(s) : formatDateTime(s.startedAt) }),
           create("span", {
             className: "muted",
-            textContent: [s.type === "workout" ? formatDateTime(s.startedAt) : null, ...sessionTags(s), s.stopped ? "stopped" : null, s.noForce ? "no force data" : null]
+            textContent: [s.type === "workout" || s.routine ? formatDateTime(s.startedAt) : null, ...sessionTags(s), s.stopped ? "stopped" : null, s.noForce ? "no force data" : null]
               .filter(Boolean)
               .join(" · "),
           }),
