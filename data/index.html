@@ -209,12 +209,14 @@
       <div id="trainWorkoutSummary" hidden>
         <h1 id="wSumTitle">Workout done</h1>
         <p id="wSumMeta" class="muted"></p>
-        <div class="actions top-actions">
-          <button id="wSumDiscard" class="secondary" type="button">Discard</button>
-          <button id="wSumSave" class="primary" type="button">Save all to history</button>
-        </div>
-        <div id="wSumError" class="error" hidden></div>
         <div id="wSumList"></div>
+        <div class="sticky-actions">
+          <div id="wSumError" class="error" hidden></div>
+          <div class="actions">
+            <button id="wSumDiscard" class="secondary" type="button">Discard</button>
+            <button id="wSumSave" class="primary" type="button">Save all to history</button>
+          </div>
+        </div>
       </div>
 
       <div id="trainRun" hidden data-sensor="true">
@@ -271,11 +273,6 @@
       </div>
 
       <div id="trainSummary" hidden>
-        <div class="actions top-actions">
-          <button id="sumDiscard" class="secondary" type="button">Discard</button>
-          <button id="sumSave" class="primary" type="button">Save to history</button>
-        </div>
-        <div id="sumError" class="error" hidden></div>
         <div id="sumView"></div>
         <div id="sumSets" class="card" hidden>
           <h2>Effort and weight per set</h2>
@@ -286,6 +283,13 @@
           <button id="sumRawCsv" class="pill-button" type="button">Download raw data (CSV)</button>
           <button id="sumRepsCsv" class="pill-button" type="button">Download reps (CSV)</button>
           <button id="sumJson" class="pill-button" type="button">Download JSON</button>
+        </div>
+        <div class="sticky-actions">
+          <div id="sumError" class="error" hidden></div>
+          <div class="actions">
+            <button id="sumDiscard" class="secondary" type="button">Discard</button>
+            <button id="sumSave" class="primary" type="button">Save to history</button>
+          </div>
         </div>
       </div>
     </section>

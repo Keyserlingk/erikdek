@@ -168,7 +168,20 @@ main {
 }
 
 .actions { display: flex; gap: 12px; }
-.top-actions { margin-bottom: 16px; }
+/* Save/Discard on the summaries: at the bottom of the screen (thumb reach), above the
+   tabs, while the summary scrolls behind. */
+.sticky-actions {
+  position: sticky;
+  bottom: calc(var(--tabs-h) + var(--inset-bottom) + 8px);
+  z-index: 5;
+  margin-top: 16px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+.sticky-actions .error { margin: 0 0 8px; }
 
 .chart-card { padding: 10px 6px 4px 0; }
 .chart { height: 220px; }
