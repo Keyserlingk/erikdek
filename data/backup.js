@@ -3,6 +3,7 @@
 import { device } from "./device.js";
 import { downloadJson } from "./download.js";
 import { buildBackup, fileDate, mergeBy, parseBackup } from "./export.js";
+import { profiles } from "./profiles.js";
 import { routines } from "./routines.js";
 import { sessions } from "./sessions.js";
 import { settings } from "./settingsstore.js";
@@ -45,13 +46,15 @@ async function createBackup() {
   try {
     await sessions.load();
     const full = [];
-    for (const [i, s] of sessions.index.entries()) {
-      showMessage(`Collecting sessions ${i + 1}/${sessions.index.length}…`);
+    // Everyone's sessions and settings (all profiles).
+    for (const [i, s] of sessions.all.entries()) {
+      showMessage(`Collecting sessions ${i + 1}/${sessions.all.length}…`);
       full.push(await sessions.get(s.id));
     }
     const st = device.status;
     const backup = buildBackup({
-      settings: settings.values,
+      profiles: profiles.list,
+      settings: await settings.byProfile(),
       calibration: st?.calibrated ? { cpk: st.cpk, calibrated: true } : null,
       routines: routines.custom,
       workouts: workouts.list,
@@ -84,6 +87,7 @@ async function openFile() {
   const tags = b.holdTypes.length + b.grips.length;
   el.summary.textContent =
     `Backup from ${b.exportedAt ? formatDateTime(b.exportedAt) : "unknown date"}: ` +
+    `${b.profiles.length ? `${b.profiles.length} profiles, ` : ""}` +
     `${b.sessions.length} sessions, ${b.routines.length} routines, ${b.workouts.length} workouts, ${tags} own holds/grips` +
     `${b.calibration ? ", calibration" : ""}.`;
   el.options.settings.checked = !!b.settings;
@@ -102,16 +106,17 @@ async function restore() {
   const done = [];
   setBusy(true);
   try {
+    // Profiles first: restored settings and sessions belong to them.
+    if ((o.settings.checked || o.sessions.checked) && b.profiles.length) await profiles.merge(b.profiles);
     if (o.settings.checked && b.settings) {
-      const { bodyweightKg, repThresholdKg, startOnForce, startPct, recordRelease } = b.settings;
-      await settings.save({
-        bodyweightKg,
-        repThresholdKg,
-        ...(typeof startOnForce === "boolean" ? { startOnForce } : {}),
-        ...(Number.isInteger(startPct) ? { startPct } : {}),
-        ...(typeof recordRelease === "boolean" ? { recordRelease } : {}),
-      });
-      done.push("settings");
+      let count = 0;
+      for (const [profileId, values] of Object.entries(b.settings)) {
+        if (!profiles.find(profileId)) continue;
+        const { bodyweightKg, repThresholdKg, startOnForce, startPct, recordRelease } = values;
+        await settings.saveFor(profileId, { bodyweightKg, repThresholdKg, startOnForce, startPct, recordRelease });
+        count++;
+      }
+      done.push(`settings of ${count} profile${count === 1 ? "" : "s"}`);
     }
     if (o.routines.checked) {
       await routines.replaceAll(mergeBy(routines.custom, b.routines, (r) => r.id));
@@ -122,7 +127,7 @@ async function restore() {
     }
     if (o.sessions.checked) {
       await sessions.load();
-      const existing = new Set(sessions.index.map((s) => s.id));
+      const existing = new Set(sessions.all.map((s) => s.id));
       const missing = b.sessions.filter((s) => !existing.has(s.id));
       for (const [i, s] of missing.entries()) {
         showMessage(`Restoring sessions ${i + 1}/${missing.length}…`);

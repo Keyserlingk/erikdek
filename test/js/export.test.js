@@ -44,7 +44,8 @@ test("historyCsv has one sorted row per session and a column per scalar metric",
 
 test("backup round trip and validation", () => {
   const backup = buildBackup({
-    settings: { bodyweightKg: 70 },
+    profiles: [{ id: "me", name: "Me" }, { id: "p1", name: "Anna" }],
+    settings: { me: { bodyweightKg: 70 }, p1: { bodyweightKg: 55 }, bad: 3 },
     calibration: { cpk: 16000, calibrated: true },
     routines: [{ id: "r1" }],
     workouts: [{ id: "w1", name: "W", routineIds: ["r1"] }],
@@ -60,6 +61,8 @@ test("backup round trip and validation", () => {
   assert.equal(parsed.workouts[0].id, "w1");
   assert.equal(parsed.calibration.cpk, 16000);
   assert.equal(parsed.sessions.length, 1);
+  assert.deepEqual(parsed.profiles.map((p) => p.name), ["Me", "Anna"]);
+  assert.deepEqual(Object.keys(parsed.settings), ["me", "p1"]); // non-objects dropped
 
   assert.throws(() => parseBackup("{nope"), /not JSON/);
   assert.throws(() => parseBackup('{"format":"other"}'), /not an Erkdek backup/);

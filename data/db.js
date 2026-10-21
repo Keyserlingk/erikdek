@@ -45,6 +45,7 @@ class IdbBackend {
 
   // Applies [{ store, key, value }] (value undefined = delete) in one transaction.
   async write(ops) {
+    if (!ops.length) return; // IndexedDB rejects a transaction without stores
     const db = await this.open();
     const tx = db.transaction([...new Set(ops.map((op) => op.store))], "readwrite");
     for (const { store, key, value } of ops) {

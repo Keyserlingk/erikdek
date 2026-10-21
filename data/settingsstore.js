@@ -1,8 +1,12 @@
-// Settings stored in the app: bodyweight, rep threshold and whether hangs start on
-// force (db "kv" → "settings").
+// Settings stored in the app, per profile (db "kv" → "settings:<profile id>"): bodyweight,
+// rep threshold and how hangs with the sensor start and end. The store holds the active
+// profile's settings and reloads when another profile becomes active.
 // No DOM access, so it runs under node --test too.
 
 import { db } from "./db.js";
+import { profiles } from "./profiles.js";
+
+export const settingsKey = (profileId) => `settings:${profileId}`;
 
 export const MIN_BODYWEIGHT_KG = 20;
 export const MAX_BODYWEIGHT_KG = 250;
@@ -32,23 +36,51 @@ export function validateSettings(v) {
   return null;
 }
 
-// Settings stored in the app (db "kv" → "settings"). Fires "change" after load/save.
+// Fires "change" after load/save (and after switching profile).
 class SettingsStore extends EventTarget {
   constructor() {
     super();
     this.values = { ...DEFAULTS };
+    profiles.addEventListener("change", () => {
+      if (profiles.activeId !== this.profileId) this.load().catch(() => {});
+    });
   }
 
   async load() {
-    this._set({ ...DEFAULTS, ...((await db.get("kv", "settings")) ?? {}) });
+    this.profileId = profiles.activeId;
+    this.values = { ...DEFAULTS }; // nothing carried over from the previous profile
+    this._set({ ...DEFAULTS, ...((await db.get("kv", settingsKey(this.profileId))) ?? {}) });
   }
 
   async save(changes) {
-    const next = { ...this.values, ...changes };
+    await this.saveFor(profiles.activeId, { ...this.values, ...changes });
+  }
+
+  // Stores a profile's complete settings (restoring a backup, or the active one's).
+  async saveFor(profileId, values) {
+    // Missing values (e.g. an older backup) get the defaults.
+    const given = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined));
+    const next = { ...DEFAULTS, ...given };
     const error = validateSettings(next);
     if (error) throw new Error(error);
-    await db.write([{ store: "kv", key: "settings", value: next }]);
-    this._set(next);
+    await db.write([{ store: "kv", key: settingsKey(profileId), value: next }]);
+    if (profileId === this.profileId) this._set(next);
+  }
+
+  // All profiles' settings, for the backup: { profileId: values }.
+  async byProfile() {
+    const out = {};
+    for (const p of profiles.list) {
+      const stored = await db.get("kv", settingsKey(p.id));
+      if (stored) out[p.id] = { ...DEFAULTS, ...stored };
+    }
+    return out;
+  }
+
+  // Forgets a profile's settings (deleting it, or clearing the guest's data).
+  async removeFor(profileId) {
+    await db.write([{ store: "kv", key: settingsKey(profileId), value: undefined }]);
+    if (profileId === this.profileId) this._set({ ...DEFAULTS });
   }
 
   _set(values) {

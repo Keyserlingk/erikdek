@@ -1,8 +1,11 @@
 // Saved sessions, stored in the app: the full session in db "sessions" and the same
 // without reps and curve in "sessionIndex". The index is kept in memory for History;
-// full sessions are read on demand. Fires "change" when the index changes.
+// full sessions are read on demand. Each session belongs to a profile: `index` holds the
+// active profile's sessions only, `all` everyone's (backup). Fires "change" when the
+// index changes, also when another profile becomes active.
 
 import { db } from "./db.js";
+import { profileOf, profiles } from "./profiles.js";
 
 const DETAIL_ONLY = ["reps", "curve", "repCurves"];
 const SESSION_ID = /^[a-z0-9]{1,16}$/;
@@ -14,11 +17,17 @@ export function indexEntry(session) {
 class SessionStore extends EventTarget {
   constructor() {
     super();
-    this.index = [];
+    this.all = [];
+    profiles.addEventListener("change", () => this.dispatchEvent(new Event("change")));
+  }
+
+  // The active profile's sessions.
+  get index() {
+    return this.all.filter((s) => profileOf(s) === profiles.activeId);
   }
 
   async load() {
-    this.index = await db.getAll("sessionIndex");
+    this.all = await db.getAll("sessionIndex");
     this.dispatchEvent(new Event("change"));
   }
 
@@ -28,7 +37,9 @@ class SessionStore extends EventTarget {
     return session;
   }
 
-  async save(session) {
+  // A new session goes to the active profile; a restored one keeps its profile.
+  async save(newSession) {
+    const session = { profile: profiles.activeId, ...newSession };
     if (typeof session?.id !== "string" || !SESSION_ID.test(session.id)) throw new Error("Invalid session id.");
     if (await db.get("sessionIndex", session.id)) throw new Error("This session is already saved.");
     const entry = indexEntry(session);
@@ -36,7 +47,7 @@ class SessionStore extends EventTarget {
       { store: "sessions", key: session.id, value: session },
       { store: "sessionIndex", key: session.id, value: entry },
     ]);
-    this.index.push(entry);
+    this.all.push(entry);
     this.dispatchEvent(new Event("change"));
   }
 
@@ -53,16 +64,23 @@ class SessionStore extends EventTarget {
         { store: "sessionIndex", key: id, value: undefined },
       ]),
     );
-    this.index = this.index.filter((s) => !gone.has(s.id));
+    this.all = this.all.filter((s) => !gone.has(s.id));
     this.dispatchEvent(new Event("change"));
   }
 
+  // Deletes all sessions of a profile (deleting it, or clearing the guest's data).
+  async removeProfile(profileId) {
+    await this.removeMany(this.all.filter((s) => profileOf(s) === profileId).map((s) => s.id));
+  }
+
   // Bytes the app's data takes (as JSON), plus the browser's own estimate when available.
-  async storage() {
+  // sessionsBytes: the active profile's sessions, or everyone's with { all: true }.
+  async storage({ all = false } = {}) {
     const size = (v) => (v === undefined ? 0 : new Blob([JSON.stringify(v)]).size);
-    const sessionsBytes = (await db.getAll("sessions")).reduce((sum, s) => sum + size(s), 0);
-    let listsBytes = 0;
-    for (const key of ["settings", "routines", "workouts", "holdtypes", "grips"]) listsBytes += size(await db.get("kv", key));
+    const mine = (s) => all || profileOf(s) === profiles.activeId;
+    const sessionsBytes = (await db.getAll("sessions")).filter(mine).reduce((sum, s) => sum + size(s), 0);
+    // Settings (per profile), profiles and lists: everything in "kv".
+    const listsBytes = (await db.getAll("kv")).reduce((sum, v) => sum + size(v), 0);
     const estimate = (await globalThis.navigator?.storage?.estimate?.().catch(() => null)) ?? null;
     return {
       sessionsBytes,

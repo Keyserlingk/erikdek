@@ -135,8 +135,8 @@ export async function showAbout() {
   const build = buildInfo();
   about.web.textContent = build.variant === "release" ? build.version : `${build.version} (${build.variant})`;
   try {
-    const st = await sessions.storage();
-    about.sessions.textContent = `${formatBytes(st.sessionsBytes)} (${sessions.index.length})`;
+    const st = await sessions.storage({ all: true }); // all profiles
+    about.sessions.textContent = `${formatBytes(st.sessionsBytes)} (${sessions.all.length})`;
     about.lists.textContent = formatBytes(st.listsBytes);
     // The browser's estimate for the whole app (data plus its own overhead).
     about.used.textContent = st.usedBytes === null ? "–" : formatBytes(st.usedBytes);

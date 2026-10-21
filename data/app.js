@@ -5,8 +5,10 @@ import { device } from "./device.js";
 import { initHistory, showHistory } from "./history.js";
 import { initLive } from "./live.js";
 import { initMock } from "./mock.js";
+import { initProfiles } from "./profileui.js";
+import { profiles } from "./profiles.js";
 import { initSettings, showAbout } from "./settings.js";
-import { goHome, initTrain } from "./train.js";
+import { goHome, initTrain, isBusy } from "./train.js";
 
 const LOW_RATE_HZ = 60; // below this the HX711 RATE pin is probably still at 10 Hz
 const VIEWS = ["live", "train", "tests", "history", "calibrate", "settings"];
@@ -83,6 +85,10 @@ el.mute.addEventListener("click", () => {
 });
 renderMute();
 
+// Profiles first: settings and History follow the active profile (they reload when it
+// changes, so starting before this finishes is fine).
+profiles.load().catch(() => {});
+initProfiles({ busy: isBusy });
 initLive();
 initCalibrate();
 initMock();

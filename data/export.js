@@ -1,7 +1,8 @@
 // CSV/JSON export and backup format. No DOM access, so it runs under node --test too.
 
 export const BACKUP_FORMAT = "erkdek-backup";
-export const BACKUP_VERSION = 1;
+// Version 2: profiles, and settings per profile ({ profileId: values }).
+export const BACKUP_VERSION = 2;
 
 export function csvEscape(value) {
   if (value === null || value === undefined) return "";
@@ -88,11 +89,22 @@ export function historyCsv(index) {
   return toCsv([head, ...rows]);
 }
 
-export function buildBackup({ settings, calibration, routines, workouts, holdTypes, grips, sessions, exportedAt = new Date() }) {
+export function buildBackup({
+  profiles = [],
+  settings,
+  calibration,
+  routines,
+  workouts,
+  holdTypes,
+  grips,
+  sessions,
+  exportedAt = new Date(),
+}) {
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     exportedAt: exportedAt.toISOString(),
+    profiles,
     settings,
     calibration,
     routines,
@@ -113,13 +125,18 @@ export function parseBackup(text) {
   }
   if (!data || data.format !== BACKUP_FORMAT) throw new Error("This is not an Erkdek backup file.");
   if (data.version > BACKUP_VERSION) throw new Error("This backup was made by a newer version of the app.");
-  const arrays = ["routines", "workouts", "holdTypes", "grips", "sessions"];
+  const arrays = ["profiles", "routines", "workouts", "holdTypes", "grips", "sessions"];
   for (const key of arrays) {
     if (data[key] !== undefined && !Array.isArray(data[key])) throw new Error(`Backup is damaged (${key}).`);
   }
   return {
     exportedAt: data.exportedAt,
-    settings: data.settings && typeof data.settings === "object" ? data.settings : null,
+    profiles: (data.profiles || []).filter((p) => p && typeof p.id === "string" && typeof p.name === "string"),
+    // { profileId: values }; only entries that are objects.
+    settings:
+      data.settings && typeof data.settings === "object"
+        ? Object.fromEntries(Object.entries(data.settings).filter(([, v]) => v && typeof v === "object"))
+        : null,
     calibration: data.calibration && typeof data.calibration.cpk === "number" ? data.calibration : null,
     routines: data.routines || [],
     workouts: (data.workouts || []).filter((w) => w && typeof w.id === "string"),

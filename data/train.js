@@ -19,6 +19,12 @@ export function goHome(group) {
   window.scrollTo(0, 0);
 }
 
+// True while a run or an unsaved summary (or workout) is open: nothing may change the
+// profile the session will be saved to.
+export function isBusy() {
+  return isRunning() || hasResult() || isWorkoutActive();
+}
+
 export function initTrain() {
   initRunner();
   initSummary();

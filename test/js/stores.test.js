@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
 import { MemoryBackend, db, useBackend } from "../../data/db.js";
+import { GUEST_PROFILE, profiles } from "../../data/profiles.js";
 import { routines } from "../../data/routines.js";
 import { sessions } from "../../data/sessions.js";
 import { settings, validateSettings } from "../../data/settingsstore.js";
 import { holdTypes } from "../../data/tags.js";
 import { workouts } from "../../data/workouts.js";
 
-beforeEach(() => useBackend(new MemoryBackend()));
+beforeEach(async () => {
+  useBackend(new MemoryBackend());
+  await profiles.load(); // fresh defaults: "Me" active
+});
 
 test("settings: defaults, save, validation and reload", async () => {
   await settings.load();
@@ -54,8 +58,8 @@ test("sessions: save keeps reps and curve out of the index; get, duplicate, remo
   const s = { id: "s1", type: "maxPull", summary: { peakKg: 40 }, reps: [{ peakKg: 40 }], curve: { hz: 10, segments: [] } };
   await sessions.load();
   await sessions.save(s);
-  assert.deepEqual(sessions.index, [{ id: "s1", type: "maxPull", summary: { peakKg: 40 } }]);
-  assert.deepEqual(await sessions.get("s1"), s);
+  assert.deepEqual(sessions.index, [{ profile: "me", id: "s1", type: "maxPull", summary: { peakKg: 40 } }]);
+  assert.deepEqual(await sessions.get("s1"), { profile: "me", ...s });
   await assert.rejects(sessions.save(s), /already saved/);
   await assert.rejects(sessions.save({ ...s, id: "BAD!" }), /Invalid session id/);
 
@@ -69,4 +73,46 @@ test("sessions: save keeps reps and curve out of the index; get, duplicate, remo
   await assert.rejects(sessions.get("s1"), /no longer exists/);
   await sessions.load();
   assert.equal(sessions.index.length, 0);
+});
+
+test("profiles: sessions and settings are kept apart; delete and clear guest", async () => {
+  assert.deepEqual(profiles.list.map((p) => p.name), ["Me", "Guest"]);
+  await settings.load();
+  await settings.save({ bodyweightKg: 72 });
+  await sessions.load();
+  await sessions.save({ id: "a1", type: "maxPull", summary: {} });
+
+  const anna = await profiles.add("Anna");
+  await assert.rejects(profiles.add("anna"), /already exists/);
+  await profiles.setActive(anna.id);
+  await settings.load();
+  assert.equal(settings.values.bodyweightKg, 0); // Anna's own settings
+  assert.equal(sessions.index.length, 0); // Me's session isn't hers
+  await sessions.save({ id: "b1", type: "maxPull", summary: {} });
+  await settings.save({ bodyweightKg: 55 });
+  assert.deepEqual(Object.fromEntries(Object.entries(await settings.byProfile()).map(([k, v]) => [k, v.bodyweightKg])), {
+    me: 72,
+    [anna.id]: 55,
+  });
+
+  await profiles.setActive("me");
+  await settings.load();
+  assert.equal(settings.values.bodyweightKg, 72);
+  assert.deepEqual(sessions.index.map((s) => s.id), ["a1"]);
+  assert.equal(sessions.all.length, 2);
+  // A restored session keeps its own profile.
+  await sessions.save({ id: "b2", profile: anna.id, type: "maxPull", summary: {} });
+  assert.deepEqual(sessions.index.map((s) => s.id), ["a1"]);
+
+  await assert.rejects(profiles.remove("me"), /can't be deleted/);
+  await sessions.removeProfile(anna.id);
+  await settings.removeFor(anna.id);
+  await profiles.remove(anna.id);
+  assert.deepEqual(sessions.all.map((s) => s.id), ["a1"]);
+  assert.equal(profiles.find(anna.id), null);
+
+  await profiles.setActive(GUEST_PROFILE);
+  await sessions.save({ id: "g1", type: "maxPull", summary: {} });
+  await sessions.removeProfile(GUEST_PROFILE); // "Clear guest data"
+  assert.deepEqual(sessions.all.map((s) => s.id), ["a1"]);
 });
