@@ -2,6 +2,7 @@ import { downloadCsv, downloadJson } from "./download.js";
 import { formatBytes } from "./format.js";
 import { buildBackup, fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCsv } from "./export.js";
 import { sessions } from "./sessions.js";
+import { MAX_COMPARE, renderCompare } from "./sessioncompare.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
 import { HANDS, KINDS, TEST_IDS, metricPoints, metricsFor } from "./tests.js";
 
@@ -46,6 +47,10 @@ const el = {
   selectAll: $("histSelectAll"),
   selectNone: $("histSelectNone"),
   selectDone: $("histSelectDone"),
+  selCompare: $("histSelCompare"),
+  compare: $("historyCompare"),
+  compareBack: $("histCompareBack"),
+  compareView: $("histCompareView"),
   selJson: $("histSelJson"),
   selCsv: $("histSelCsv"),
   selDelete: $("histSelDelete"),
@@ -56,6 +61,7 @@ const el = {
 let selecting = false;
 const selected = new Set(); // session ids
 let visibleIds = []; // sessions in the list now (after the filters)
+let compareChart = null;
 
 let progressChart = null;
 let detailChart = null;
@@ -299,8 +305,9 @@ function renderSelectBar() {
   // Only what the filters show can stay selected.
   for (const id of [...selected]) if (!visibleIds.includes(id)) selected.delete(id);
   const n = selected.size;
-  el.selectCount.textContent = `${n} selected`;
+  el.selectCount.textContent = n > MAX_COMPARE ? `${n} selected (compare up to ${MAX_COMPARE})` : `${n} selected`;
   for (const b of [el.selJson, el.selCsv, el.selDelete]) b.disabled = n === 0;
+  el.selCompare.disabled = n < 2 || n > MAX_COMPARE;
 }
 
 const selectedIndex = () => sessions.index.filter((s) => selected.has(s.id));
@@ -315,6 +322,30 @@ async function downloadSelectedJson() {
   } catch (e) {
     showError(el.error, e.message);
   }
+}
+
+// The selected sessions side by side (oldest first), on their own screen.
+async function openCompare() {
+  showError(el.error, "");
+  try {
+    const list = [];
+    for (const s of selectedIndex().sort((a, b) => a.startedAt.localeCompare(b.startedAt))) list.push(await sessions.get(s.id));
+    el.main.hidden = true;
+    el.compare.hidden = false;
+    window.scrollTo(0, 0);
+    compareChart?.destroy();
+    compareChart = renderCompare(el.compareView, list);
+  } catch (e) {
+    showError(el.error, e.message);
+  }
+}
+
+function closeCompare() {
+  compareChart?.destroy();
+  compareChart = null;
+  el.compare.hidden = true;
+  el.main.hidden = false;
+  render(); // still in select mode, with the same sessions ticked
 }
 
 async function deleteSelected() {
@@ -419,6 +450,8 @@ export function initHistory() {
     render();
   });
   el.selJson.addEventListener("click", downloadSelectedJson);
+  el.selCompare.addEventListener("click", openCompare);
+  el.compareBack.addEventListener("click", closeCompare);
   el.selCsv.addEventListener("click", () => downloadCsv(`erkdek-history-${fileDate()}.csv`, historyCsv(selectedIndex())));
   el.selDelete.addEventListener("click", deleteSelected);
   const detailName = (s) => `erkdek-${s.type}-${fileDate(new Date(s.startedAt))}-${s.id}`;
@@ -434,7 +467,7 @@ export function initHistory() {
 
   sessions.addEventListener("change", () => {
     if (!isVisible()) return;
-    if (el.detail.hidden) render();
+    if (el.detail.hidden && el.compare.hidden) render();
     renderStorage();
   });
   sessions.load().catch((e) => showError(el.error, e.message));
@@ -446,6 +479,7 @@ export function initHistory() {
 // Called when the History tab becomes visible: back to the overview, freshly rendered.
 export function showHistory() {
   if (!el.detail.hidden) closeDetail();
+  else if (!el.compare.hidden) closeCompare();
   else render();
   renderStorage();
 }

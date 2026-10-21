@@ -17,6 +17,14 @@
   /* Reps compared (History): first rep → last rep, one hue light → dark. */
   --rep-first: #93c5fd;
   --rep-last: #1e3a8a;
+  /* Compared sessions: categorical slots in fixed order (checked with the dataviz
+     palette validator against both surfaces). */
+  --cmp-1: #2a78d6;
+  --cmp-2: #eb6834;
+  --cmp-3: #1baf7a;
+  --cmp-4: #eda100;
+  --cmp-5: #e87ba4;
+  --cmp-6: #008300;
   --tabs-h: 60px;
   /* Space taken by Android's status bar (top) and navigation bar (bottom) when the app
      draws edge-to-edge: Capacitor sets --safe-area-inset-*, newer WebViews env(). */
@@ -46,6 +54,12 @@
     --series-right: #0d9488;
     --rep-first: #1e40af;
     --rep-last: #bfdbfe;
+    --cmp-1: #3987e5;
+    --cmp-2: #d95926;
+    --cmp-3: #199e70;
+    --cmp-4: #c98500;
+    --cmp-5: #d55181;
+    --cmp-6: #008300;
 }
 
 * { box-sizing: border-box; }
@@ -603,7 +617,7 @@ label.pill-button { display: inline-flex; align-items: center; cursor: pointer; 
 }
 .select-bar[hidden] { display: none; }
 .select-bar-row { display: flex; align-items: center; gap: 8px; }
-.select-bar-row button.secondary { padding: 10px; font-size: 15px; }
+.select-bar-row button.secondary, .select-bar-row button.primary { padding: 10px 6px; font-size: 15px; }
 button.secondary.danger { color: var(--bad); }
 .warning a { color: inherit; font-weight: 600; }
 .downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -686,3 +700,18 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
 .rep-key { display: inline-flex; align-items: center; gap: 6px; }
 .rep-detail { margin: 8px 0 0; font-size: 14px; line-height: 1.5; }
 .rep-compare > .pill-button { margin-top: 8px; }
+
+/* Compare sessions (History) */
+#historyCompare .link { margin-bottom: 8px; }
+.cmp-swatch { display: inline-block; flex: none; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.cmp-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cmp-legend li { display: flex; align-items: center; gap: 4px; }
+.cmp-legend li > span:last-child { display: flex; flex-direction: column; font-size: 14px; }
+.cmp-legend li .muted { font-size: 13px; }
+.cmp-table-wrap { overflow-x: auto; margin: 0 -4px; }
+.cmp-table { border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.cmp-table th, .cmp-table td { padding: 6px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+.cmp-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; }
+.cmp-table tbody th { text-align: left; font-weight: 400; color: var(--muted); }
+.cmp-table td.best { font-weight: 700; }
+.cmp-table tbody th, .cmp-table thead th:first-child { position: sticky; left: 0; background: var(--surface); }

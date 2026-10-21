@@ -15,6 +15,8 @@ import {
   compressRepCurves,
   meanCurve,
   repOnset,
+  representativeCurve,
+  resample,
 } from "../../data/analysis.js";
 
 const DT = 1 / 80;
@@ -137,4 +139,19 @@ test("alignRepCurves lines reps up at their force onset; meanCurve where half ha
   assert.deepEqual(meanCurve(ys), [0, 0, 0, 10, 20, 20, 20]);
   assert.deepEqual(meanCurve([[1, null], [3, null], [5, 7]]), [3, null]); // 1 of 3 isn't half
   assert.equal(repOnset([0, 0, 0]), 0);
+});
+
+test("representativeCurve: average of the reps, or the best one", () => {
+  const rc = { hz: 10, reps: [[0, 10, 20], [0, 0, 20, 30]] };
+  const avg = representativeCurve(rc);
+  assert.deepEqual(avg.x, [-0.1, 0, 0.1, 0.2]);
+  assert.deepEqual(avg.y, [0, 0, 15, 25]);
+  const best = representativeCurve(rc, "best");
+  assert.deepEqual(best.y, [0, 0, 20, 30]);
+  assert.equal(representativeCurve({ hz: 10, reps: [] }), null);
+});
+
+test("resample interpolates onto a common time grid", () => {
+  assert.deepEqual(resample([0, 0.1, 0.2], [0, 10, 20], [-0.05, 0, 0.05, 0.2, 0.3]), [null, 0, 5, 20, null]);
+  assert.deepEqual(resample([0, 0.1, 0.2], [0, null, 20], [0, 0.05, 0.2]), [0, null, 20]);
 });

@@ -199,3 +199,31 @@ export function meanCurve(ys) {
     return values.length >= need ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100 : null;
   });
 }
+
+// One rep curve standing for a whole session, for comparing sessions: the average of
+// its reps (aligned at onset), or its best rep (highest peak). -> { x, y } or null.
+export function representativeCurve(repCurves, mode = "average") {
+  if (!repCurves?.reps.length) return null;
+  if (mode === "best") {
+    const peaks = repCurves.reps.map((kg) => Math.max(0, ...kg));
+    const best = repCurves.reps[peaks.indexOf(Math.max(...peaks))];
+    const { x, ys } = alignRepCurves([best], repCurves.hz);
+    return { x, y: ys[0] };
+  }
+  const { x, ys } = alignRepCurves(repCurves.reps, repCurves.hz);
+  return { x, y: meanCurve(ys) };
+}
+
+// Linear interpolation of the curve (x ascending, y with nulls) at each grid time; null
+// outside it or next to a gap.
+export function resample(x, y, grid) {
+  let j = 0;
+  return grid.map((t) => {
+    while (j < x.length - 2 && x[j + 1] < t) j++;
+    if (!x.length || t < x[0] || t > x[x.length - 1]) return null;
+    if (x.length === 1) return t === x[0] ? y[0] : null;
+    const [x0, x1, y0, y1] = [x[j], x[j + 1], y[j], y[j + 1]];
+    if (y0 === null || y1 === null) return t === x0 ? y0 : t === x1 ? y1 : null;
+    return Math.round((y0 + ((y1 - y0) * (t - x0)) / (x1 - x0)) * 100) / 100;
+  });
+}
