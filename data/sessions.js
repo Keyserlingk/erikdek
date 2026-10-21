@@ -10,6 +10,20 @@ import { profileOf, profiles } from "./profiles.js";
 const DETAIL_ONLY = ["reps", "curve", "repCurves"];
 const SESSION_ID = /^[a-z0-9]{1,16}$/;
 
+export const MAX_NOTE_LENGTH = 500;
+export const MAX_TAGS = 10;
+export const MAX_SESSION_TAG_LENGTH = 30;
+
+// A session's note and tags: { note: string, tags: [string] }. Error message or null.
+export function validateNotes({ note, tags }) {
+  if (typeof note !== "string" || note.length > MAX_NOTE_LENGTH) return `Notes can be at most ${MAX_NOTE_LENGTH} characters.`;
+  if (!Array.isArray(tags) || tags.length > MAX_TAGS) return `At most ${MAX_TAGS} tags.`;
+  if (tags.some((t) => typeof t !== "string" || !t.trim() || t.length > MAX_SESSION_TAG_LENGTH)) {
+    return `Tags can be at most ${MAX_SESSION_TAG_LENGTH} characters.`;
+  }
+  return null;
+}
+
 export function indexEntry(session) {
   return Object.fromEntries(Object.entries(session).filter(([key]) => !DETAIL_ONLY.includes(key)));
 }
@@ -48,6 +62,20 @@ class SessionStore extends EventTarget {
       { store: "sessionIndex", key: session.id, value: entry },
     ]);
     this.all.push(entry);
+    this.dispatchEvent(new Event("change"));
+  }
+
+  // Changes a saved session's note and tags (in History).
+  async update(id, { note, tags }) {
+    const error = validateNotes({ note, tags });
+    if (error) throw new Error(error);
+    const session = { ...(await this.get(id)), note, tags };
+    const entry = indexEntry(session);
+    await db.write([
+      { store: "sessions", key: id, value: session },
+      { store: "sessionIndex", key: id, value: entry },
+    ]);
+    this.all = this.all.map((s) => (s.id === id ? entry : s));
     this.dispatchEvent(new Event("change"));
   }
 

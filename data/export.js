@@ -67,13 +67,19 @@ export function repsCsv(session) {
   return toCsv([head, ...rows]);
 }
 
-// One row per session with all scalar summary metrics as columns.
+// One row per session with all scalar summary metrics as columns, then tags and note.
 export function historyCsv(index) {
   const sorted = [...index].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   const metricKeys = [
-    ...new Set(sorted.flatMap((s) => Object.entries(s.summary || {}).filter(([, v]) => !Array.isArray(v)).map(([k]) => k))),
+    ...new Set(
+      sorted.flatMap((s) =>
+        Object.entries(s.summary || {})
+          .filter(([, v]) => v === null || typeof v !== "object") // not per-hand or per-attempt lists
+          .map(([k]) => k),
+      ),
+    ),
   ].sort();
-  const head = ["date", "type", "name", "hold", "grip", "hand", "bodyweight_kg", "duration_s", "stopped", ...metricKeys];
+  const head = ["date", "type", "name", "hold", "grip", "hand", "bodyweight_kg", "duration_s", "stopped", ...metricKeys, "tags", "note"];
   const rows = sorted.map((s) => [
     s.startedAt,
     s.type,
@@ -85,6 +91,8 @@ export function historyCsv(index) {
     s.durationS,
     s.stopped ? "yes" : "",
     ...metricKeys.map((k) => round(s.summary?.[k], 3) ?? ""),
+    (s.tags ?? []).join("; "),
+    s.note ?? "",
   ]);
   return toCsv([head, ...rows]);
 }

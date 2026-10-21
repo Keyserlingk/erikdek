@@ -5,7 +5,7 @@ import { MemoryBackend, db, useBackend } from "../../data/db.js";
 import { GUEST_PROFILE, profiles } from "../../data/profiles.js";
 import { routines } from "../../data/routines.js";
 import { sessions } from "../../data/sessions.js";
-import { settings, validateSettings } from "../../data/settingsstore.js";
+import { bodyweightOn, dayOf, settings, validateSettings } from "../../data/settingsstore.js";
 import { holdTypes } from "../../data/tags.js";
 import { workouts } from "../../data/workouts.js";
 
@@ -16,13 +16,27 @@ beforeEach(async () => {
 
 test("settings: defaults, save, validation and reload", async () => {
   await settings.load();
-  assert.deepEqual(settings.values, { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true, startPct: 30, recordRelease: true });
+  assert.deepEqual(settings.values, {
+    bodyweightKg: 0,
+    bodyweightLog: [],
+    repThresholdKg: 2,
+    startOnForce: true,
+    startPct: 30,
+    recordRelease: true,
+  });
   await settings.save({ bodyweightKg: 72 });
   await settings.save({ startOnForce: false });
   await settings.load();
-  assert.deepEqual(settings.values, { bodyweightKg: 72, repThresholdKg: 2, startOnForce: false, startPct: 30, recordRelease: true });
+  assert.deepEqual(settings.values, {
+    bodyweightKg: 72,
+    bodyweightLog: [],
+    repThresholdKg: 2,
+    startOnForce: false,
+    startPct: 30,
+    recordRelease: true,
+  });
   await assert.rejects(settings.save({ bodyweightKg: 300 }), /Bodyweight/);
-  const ok = { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true, startPct: 30, recordRelease: true };
+  const ok = { bodyweightKg: 0, bodyweightLog: [], repThresholdKg: 2, startOnForce: true, startPct: 30, recordRelease: true };
   assert.equal(validateSettings(ok), null);
   assert.match(validateSettings({ ...ok, repThresholdKg: 0.1 }), /Rep threshold/);
   assert.match(validateSettings({ ...ok, startOnForce: "yes" }), /start-on-force/);
@@ -115,4 +129,35 @@ test("profiles: sessions and settings are kept apart; delete and clear guest", a
   await sessions.save({ id: "g1", type: "maxPull", summary: {} });
   await sessions.removeProfile(GUEST_PROFILE); // "Clear guest data"
   assert.deepEqual(sessions.all.map((s) => s.id), ["a1"]);
+});
+
+test("bodyweight log: newest is current; sessions use the weight of their day", async () => {
+  await settings.load();
+  await settings.logBodyweight(74, "2026-09-01");
+  await settings.logBodyweight(72, "2026-10-01");
+  await settings.logBodyweight(71.5, "2026-10-01"); // same day: replaced
+  assert.deepEqual(settings.values.bodyweightLog, [
+    { date: "2026-09-01", kg: 74 },
+    { date: "2026-10-01", kg: 71.5 },
+  ]);
+  assert.equal(settings.values.bodyweightKg, 71.5);
+  assert.equal(bodyweightOn(settings.values.bodyweightLog, "2026-09-15T12:00:00"), 74);
+  assert.equal(bodyweightOn(settings.values.bodyweightLog, "2026-08-15T12:00:00"), null);
+  assert.equal(settings.withBodyweight({ startedAt: "2026-09-20T12:00:00", bodyweightKg: 0 }).bodyweightKg, 74);
+  assert.equal(settings.withBodyweight({ startedAt: "2026-08-20T12:00:00", bodyweightKg: 69 }).bodyweightKg, 69);
+  await settings.removeBodyweightEntry("2026-10-01");
+  assert.equal(settings.values.bodyweightKg, 74);
+  assert.equal(dayOf("2026-10-21T12:00:00").length, 10);
+  assert.match(validateSettings({ ...settings.values, bodyweightLog: [{ date: "x", kg: 70 }] }), /bodyweight entry/);
+});
+
+test("sessions: notes and tags can be updated", async () => {
+  await sessions.load();
+  await sessions.save({ id: "n1", type: "maxPull", summary: {}, reps: [{ peakKg: 1 }] });
+  await sessions.update("n1", { note: "Felt strong", tags: ["Good skin", "Gym"] });
+  assert.deepEqual(sessions.index[0].tags, ["Good skin", "Gym"]);
+  assert.equal((await sessions.get("n1")).note, "Felt strong");
+  assert.deepEqual((await sessions.get("n1")).reps, [{ peakKg: 1 }]); // the rest is kept
+  await assert.rejects(sessions.update("n1", { note: "x".repeat(501), tags: [] }), /Notes/);
+  await assert.rejects(sessions.update("n1", { note: "", tags: [""] }), /Tags/);
 });

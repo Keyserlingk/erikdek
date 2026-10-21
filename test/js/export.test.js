@@ -34,12 +34,12 @@ test("curveCsv writes time and force, with optional phase columns", () => {
 test("historyCsv has one sorted row per session and a column per scalar metric", () => {
   const csv = historyCsv([
     { startedAt: "2026-10-02T10:00:00Z", type: "rfd", name: "RFD", holdType: "", grip: "", hand: "both", durationS: 80, summary: { rfdKgS: 250.123, attemptRfdKgS: [1, 2] } },
-    { startedAt: "2026-10-01T10:00:00Z", type: "maxPull", name: "Max pull", holdType: "20 mm edge", grip: "Half crimp", hand: "left", bodyweightKg: 70, durationS: 205, summary: { peakKg: 40 } },
+    { startedAt: "2026-10-01T10:00:00Z", type: "maxPull", name: "Max pull", holdType: "20 mm edge", grip: "Half crimp", hand: "left", bodyweightKg: 70, durationS: 205, summary: { peakKg: 40, byHand: { left: { peakKg: 40 } } }, tags: ["Gym", "Tired"], note: "Cold, bad skin" },
   ]);
   const lines = csv.trim().split("\n");
-  assert.equal(lines[0], "date,type,name,hold,grip,hand,bodyweight_kg,duration_s,stopped,peakKg,rfdKgS");
-  assert.equal(lines[1], "2026-10-01T10:00:00Z,maxPull,Max pull,20 mm edge,Half crimp,left,70,205,,40,");
-  assert.equal(lines[2], "2026-10-02T10:00:00Z,rfd,RFD,,,both,,80,,,250.123");
+  assert.equal(lines[0], "date,type,name,hold,grip,hand,bodyweight_kg,duration_s,stopped,peakKg,rfdKgS,tags,note");
+  assert.equal(lines[1], '2026-10-01T10:00:00Z,maxPull,Max pull,20 mm edge,Half crimp,left,70,205,,40,,Gym; Tired,"Cold, bad skin"');
+  assert.equal(lines[2], "2026-10-02T10:00:00Z,rfd,RFD,,,both,,80,,,250.123,,");
 });
 
 test("backup round trip and validation", () => {

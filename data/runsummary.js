@@ -4,6 +4,7 @@ import { downloadCsv, downloadJson } from "./download.js";
 import { curveCsv, fileDate, hasCurveData, repsCsv } from "./export.js";
 import { sessions } from "./sessions.js";
 import { renderSession } from "./sessionview.js";
+import { notesCard } from "./sessionnotes.js";
 import { summarizeTraining } from "./tests.js";
 import { HOME, getRunHost, show, showNotice } from "./trainscreens.js";
 import { $, create } from "./ui.js";
@@ -16,6 +17,7 @@ const el = {
   discard: $("sumDiscard"),
   save: $("sumSave"),
   rawCsv: $("sumRawCsv"),
+  notes: $("sumNotes"),
   repsCsv: $("sumRepsCsv"),
   json: $("sumJson"),
 };
@@ -38,6 +40,13 @@ export function showResult(session, raw) {
   show("summary");
   summaryChart = renderSession(el.view, result);
   renderSetEditor();
+  // Note and tags go into the session when it's saved.
+  el.notes.replaceChildren(
+    notesCard(result, ({ note, tags }) => {
+      result.note = note;
+      result.tags = tags;
+    }),
+  );
 }
 
 // Routines without the sensor: effort and weight per set can be filled in or corrected

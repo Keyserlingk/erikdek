@@ -14,10 +14,38 @@ export const MIN_REP_THRESHOLD_KG = 0.5;
 export const MAX_REP_THRESHOLD_KG = 50;
 export const START_PCT_RANGE = [5, 100];
 
+export const MAX_BODYWEIGHT_ENTRIES = 1000;
+
+// bodyweightKg: the current bodyweight (0 = not set); bodyweightLog: [{ date, kg }] by
+// date (YYYY-MM-DD), so sessions use the weight of their day (bodyweightOn).
 // startOnForce: with the sensor, a hang's countdown starts when force is applied, at
 // startPct % of the target (the rep threshold without a target).
 // recordRelease: after the last hang, keep recording until the climber lets go.
-const DEFAULTS = { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true, startPct: 30, recordRelease: true };
+const DEFAULTS = {
+  bodyweightKg: 0,
+  bodyweightLog: [],
+  repThresholdKg: 2,
+  startOnForce: true,
+  startPct: 30,
+  recordRelease: true,
+};
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// The local date of a timestamp as YYYY-MM-DD.
+export function dayOf(iso = new Date().toISOString()) {
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// The weight logged on or before the day of `iso`, or null.
+export function bodyweightOn(log, iso) {
+  const day = dayOf(iso);
+  let found = null;
+  for (const e of log) if (e.date <= day && (!found || e.date > found.date)) found = e;
+  return found ? found.kg : null;
+}
 
 // Returns an error message, or null when the settings are valid.
 export function validateSettings(v) {
@@ -26,6 +54,10 @@ export function validateSettings(v) {
   }
   if (!(v.repThresholdKg >= MIN_REP_THRESHOLD_KG && v.repThresholdKg <= MAX_REP_THRESHOLD_KG)) {
     return `Rep threshold must be between ${MIN_REP_THRESHOLD_KG} and ${MAX_REP_THRESHOLD_KG} kg.`;
+  }
+  if (!Array.isArray(v.bodyweightLog) || v.bodyweightLog.length > MAX_BODYWEIGHT_ENTRIES) return "Invalid bodyweight log.";
+  for (const e of v.bodyweightLog) {
+    if (!e || !DATE.test(e.date) || !(e.kg >= MIN_BODYWEIGHT_KG && e.kg <= MAX_BODYWEIGHT_KG)) return "Invalid bodyweight entry.";
   }
   if (typeof v.startOnForce !== "boolean") return "Invalid start-on-force setting.";
   if (typeof v.recordRelease !== "boolean") return "Invalid record-release setting.";
@@ -65,6 +97,27 @@ class SettingsStore extends EventTarget {
     if (error) throw new Error(error);
     await db.write([{ store: "kv", key: settingsKey(profileId), value: next }]);
     if (profileId === this.profileId) this._set(next);
+  }
+
+  // Logs a weight for a day (replacing that day's entry). The newest entry is the
+  // current bodyweight.
+  async logBodyweight(kg, date = dayOf()) {
+    const log = [...this.values.bodyweightLog.filter((e) => e.date !== date), { date, kg }].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+    await this.save({ bodyweightLog: log, bodyweightKg: log.at(-1).kg });
+  }
+
+  async removeBodyweightEntry(date) {
+    const log = this.values.bodyweightLog.filter((e) => e.date !== date);
+    await this.save({ bodyweightLog: log, ...(log.length ? { bodyweightKg: log.at(-1).kg } : {}) });
+  }
+
+  // A session with the bodyweight of its day (from the log), else the one it was
+  // saved with. Sessions are always the active profile's here.
+  withBodyweight(session) {
+    const logged = bodyweightOn(this.values.bodyweightLog, session.startedAt);
+    return logged ? { ...session, bodyweightKg: logged } : session;
   }
 
   // All profiles' settings, for the backup: { profileId: values }.

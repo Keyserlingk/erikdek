@@ -271,6 +271,7 @@
 
       <div id="trainSummary" hidden>
         <div id="sumView"></div>
+        <div id="sumNotes"></div>
         <div id="sumSets" class="card" hidden>
           <h2>Effort and weight per set</h2>
           <p class="muted">Fill in or correct before saving.</p>
@@ -314,6 +315,9 @@
           <div class="grid2">
             <label class="field stacked"><span>Hold</span><select id="histHold"></select></label>
             <label class="field stacked"><span>Grip</span><select id="histGrip"></select></label>
+          </div>
+          <div class="grid2">
+            <label id="histTagRow" class="field stacked"><span>Tag</span><select id="histTag"></select></label>
           </div>
           <label id="histRoutineRow" class="field stacked" hidden><span id="histRoutineLabel">Routine</span><select id="histRoutine"></select></label>
           <label id="histMetricRow" class="field stacked" hidden><span>Compare by</span><select id="histMetric"></select></label>
@@ -360,6 +364,7 @@
       <div id="historyDetail" hidden>
         <button id="histBack" class="link" type="button">‹ Back to history</button>
         <div id="histDetailView"></div>
+        <div id="histDetailNotes"></div>
         <div id="histDetailError" class="error" hidden></div>
         <div class="downloads">
           <button id="histDetailCsv" class="pill-button" type="button">Download curve (CSV)</button>
@@ -460,12 +465,22 @@
       </div>
       <div class="card">
         <h2>Bodyweight</h2>
-        <p class="muted">Used to show force as % of bodyweight. Leave empty to hide.</p>
+        <p class="muted">Used to show force as % of bodyweight. Saving logs it for today; each session uses the weight of its day. Leave empty to hide.</p>
         <label class="field">
           <span>Bodyweight</span>
           <input id="setBodyweight" type="number" min="20" max="250" step="0.1" inputmode="decimal" placeholder="70.0">
           <span>kg</span>
         </label>
+        <details id="bwLogBlock" class="bw-log">
+          <summary id="bwLogSummary">Bodyweight log</summary>
+          <ul id="bwLog" class="bw-log-list"></ul>
+          <div class="field">
+            <input id="bwLogDate" type="date" aria-label="Date">
+            <input id="bwLogKg" type="number" min="20" max="250" step="0.1" inputmode="decimal" placeholder="kg" aria-label="Weight in kg">
+            <button id="bwLogAdd" class="secondary" type="button">Add</button>
+          </div>
+          <p id="bwLogMessage" class="message" aria-live="polite"></p>
+        </details>
         <h2 class="spaced">Rep threshold</h2>
         <p class="muted">During a routine without a target load, a rep counts as loaded while force is above this.</p>
         <label class="field">

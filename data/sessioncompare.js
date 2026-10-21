@@ -123,7 +123,7 @@ export function renderCompare(root, list) {
         swatch(i),
         el("span", {}, [
           el("strong", { textContent: formatDateTime(s.startedAt) }),
-          el("span", { className: "muted", textContent: [s.type === "workout" ? s.name : "", ...sessionTags(s)].filter(Boolean).join(" · ") }),
+          el("span", { className: "muted", textContent: [s.type === "workout" ? s.name : "", ...sessionTags(s), ...(s.tags ?? [])].filter(Boolean).join(" · ") }),
         ]),
       ]),
     ),

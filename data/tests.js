@@ -16,6 +16,9 @@ const pctBw = (v, bw) => (v && bw > 0 ? ` · ${Math.round((v / bw) * 100)} % BW`
 const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)} %`);
 const seconds = (v) => (v === null || v === undefined ? "–" : formatDuration(Math.round(v)));
 const num = (v) => (typeof v === "number" ? v : null);
+// A force as % of the session's bodyweight (the weight of its day, see settingsstore).
+const pctOfBw = (v, s) => (typeof v === "number" && s.bodyweightKg > 0 ? (100 * v) / s.bodyweightKg : null);
+const BW_INFO = "As a percentage of your bodyweight on the day of the session (Settings → Bodyweight log).";
 
 // One-line explanations shown behind the ⓘ buttons.
 const INFO = {
@@ -254,6 +257,7 @@ export const KINDS = {
       summaryMetric("tutS", "Time under tension", seconds, INFO.tut, SENSOR),
       summaryMetric("avgKg", "Average force", kg, INFO.avgForce, SENSOR),
       summaryMetric("peakKg", "Peak force", kg, "Highest force in the session.", SENSOR),
+      metric("peakPctBw", "Peak force % BW", pct, (summary, s) => pctOfBw(summary?.peakKg, s), `Highest force in the session. ${BW_INFO}`, SENSOR),
       metric(
         "targetKg",
         "Target load",
@@ -304,6 +308,7 @@ export const KINDS = {
     metrics: [
       summaryMetric("peakKg", "Peak force", kg, `${INFO.peakForce} Your strongest pull in each test.`),
       summaryMetric("best1sKg", "Best 1 s average", kg, INFO.best1s),
+      metric("peakPctBw", "Peak force % BW", pct, (summary, s) => pctOfBw(summary?.peakKg, s), `${INFO.peakForce} ${BW_INFO}`),
     ],
     analyze: ({ attempts, dtS, reps }) =>
       withHands(maxPullSummary(attempts, dtS), reps, (pick) => maxPullSummary(pick(attempts), dtS)),
@@ -323,7 +328,11 @@ export const KINDS = {
     description: PROTOCOLS.criticalForce.description,
     workLabel: "Pull",
     routine: PROTOCOLS.criticalForce.timing,
-    metrics: [summaryMetric("cfKg", "Critical force", kg, INFO.cf), summaryMetric("peakKg", "Peak force", kg, INFO.cfPeak)],
+    metrics: [
+      summaryMetric("cfKg", "Critical force", kg, INFO.cf),
+      metric("cfPctBw", "Critical force % BW", pct, (summary, s) => pctOfBw(summary?.cfKg, s), `${INFO.cf} ${BW_INFO}`),
+      summaryMetric("peakKg", "Peak force", kg, INFO.cfPeak),
+    ],
     analyze({ reps, routine }) {
       const cfOf = (list) =>
         criticalForceSummary(

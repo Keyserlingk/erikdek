@@ -742,3 +742,27 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
 .profile-info .muted { font-size: 13px; }
 .profile-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .pill-button.danger { color: var(--bad); }
+
+/* Bodyweight log (Settings) */
+.bw-log { margin: 4px 0 12px; }
+.bw-log summary { cursor: pointer; color: var(--accent); font-size: 14px; padding: 4px 0; }
+.bw-log-list { list-style: none; margin: 8px 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.bw-log-list li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.bw-log .field input[type="date"] { flex: 1.4; }
+
+/* Session notes and tags */
+.tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.tag-chip {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tag-chip.active { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
+.notes-card textarea { width: 100%; }
+.notes-card .message:empty { display: none; }
+.note-line { font-size: 13px; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

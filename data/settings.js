@@ -8,6 +8,7 @@ import {
   MAX_REP_THRESHOLD_KG,
   MIN_BODYWEIGHT_KG,
   MIN_REP_THRESHOLD_KG,
+  dayOf,
   settings,
 } from "./settingsstore.js";
 import { grips, holdTypes, initTagManager } from "./tags.js";
@@ -22,6 +23,12 @@ const el = {
   recordRelease: document.getElementById("setRecordRelease"),
   startMessage: document.getElementById("setStartMessage"),
   save: document.getElementById("setSave"),
+  bwLog: document.getElementById("bwLog"),
+  bwLogSummary: document.getElementById("bwLogSummary"),
+  bwLogDate: document.getElementById("bwLogDate"),
+  bwLogKg: document.getElementById("bwLogKg"),
+  bwLogAdd: document.getElementById("bwLogAdd"),
+  bwLogMessage: document.getElementById("bwLogMessage"),
   message: document.getElementById("setMessage"),
 };
 
@@ -156,6 +163,50 @@ export async function showAbout() {
   }
 }
 
+// ---------------------------------------------------------------- Bodyweight log
+
+function renderBodyweightLog(v) {
+  const log = [...v.bodyweightLog].reverse(); // newest first
+  el.bwLogSummary.textContent = `Bodyweight log (${log.length} entr${log.length === 1 ? "y" : "ies"})`;
+  el.bwLog.replaceChildren(
+    ...log.map((e) => {
+      const remove = create("button", { type: "button", className: "icon-button", textContent: "✕" });
+      remove.setAttribute("aria-label", `Delete ${e.date}`);
+      remove.addEventListener("click", () => settings.removeBodyweightEntry(e.date).catch((err) => bwMessage(err.message, true)));
+      const day = new Date(`${e.date}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+      return create("li", {}, [create("span", { textContent: day }), create("strong", { textContent: `${formatKg(e.kg)} kg` }), remove]);
+    }),
+  );
+  if (!el.bwLogDate.value) el.bwLogDate.value = dayOf();
+}
+
+function bwMessage(text, isError = false) {
+  el.bwLogMessage.textContent = text;
+  el.bwLogMessage.classList.toggle("error-text", isError);
+}
+
+async function addBodyweightEntry() {
+  const kg = parseFloat(el.bwLogKg.value);
+  const date = el.bwLogDate.value;
+  if (!date) return bwMessage("Choose a date.", true);
+  if (!(kg >= MIN_BODYWEIGHT_KG && kg <= MAX_BODYWEIGHT_KG)) {
+    return bwMessage(`Weight must be between ${MIN_BODYWEIGHT_KG} and ${MAX_BODYWEIGHT_KG} kg.`, true);
+  }
+  try {
+    await settings.logBodyweight(Math.round(kg * 10) / 10, date);
+    el.bwLogKg.value = "";
+    bwMessage("Added.");
+  } catch (e) {
+    bwMessage(e.message, true);
+  }
+}
+
+function create(tag, props = {}, children = []) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
 function showMessage(text, isError = false) {
   el.message.textContent = text;
   el.message.classList.toggle("error-text", isError);
@@ -166,6 +217,7 @@ export function initSettings() {
     el.bodyweight.value = v.bodyweightKg > 0 ? v.bodyweightKg : "";
     el.repThreshold.value = v.repThresholdKg;
     el.startOnForce.checked = v.startOnForce;
+    renderBodyweightLog(v);
     el.startPct.value = v.startPct;
     el.recordRelease.checked = v.recordRelease;
     el.startPctRow.hidden = !v.startOnForce;
@@ -213,6 +265,8 @@ export function initSettings() {
   el.startOnForce.addEventListener("change", () => saveStart({ startOnForce: el.startOnForce.checked }));
   el.startPct.addEventListener("change", () => saveStart({ startPct: Number(el.startPct.value) }));
 
+  el.bwLogAdd.addEventListener("click", addBodyweightEntry);
+
   el.save.addEventListener("click", async () => {
     const text = el.bodyweight.value.trim();
     const bw = text === "" ? 0 : parseFloat(text);
@@ -226,7 +280,10 @@ export function initSettings() {
       return;
     }
     try {
-      await settings.save({ bodyweightKg: bw, repThresholdKg: thr });
+      await settings.save({ repThresholdKg: thr });
+      // A new bodyweight goes into the log for today; empty hides % of bodyweight.
+      if (bw > 0 && bw !== settings.values.bodyweightKg) await settings.logBodyweight(bw);
+      else if (bw === 0) await settings.save({ bodyweightKg: 0 });
       showMessage("Saved.");
     } catch (e) {
       showMessage(e.message, true);

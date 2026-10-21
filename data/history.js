@@ -2,8 +2,10 @@ import { UNIT_PADDING, unitsPlugin } from "./chart.js";
 import { downloadCsv, downloadJson } from "./download.js";
 import { formatBytes } from "./format.js";
 import { buildBackup, fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCsv } from "./export.js";
+import { settings } from "./settingsstore.js";
 import { sessions } from "./sessions.js";
 import { MAX_COMPARE, renderCompare } from "./sessioncompare.js";
+import { notesCard } from "./sessionnotes.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
 import { HANDS, KINDS, TEST_IDS, metricPoints, metricsFor } from "./tests.js";
 
@@ -43,6 +45,9 @@ const el = {
   detailCsv: $("histDetailCsv"),
   detailRepsCsv: $("histDetailRepsCsv"),
   detailJson: $("histDetailJson"),
+  detailNotes: $("histDetailNotes"),
+  tag: $("histTag"),
+  tagRow: $("histTagRow"),
   select: $("histSelect"),
   selectBar: $("histSelectBar"),
   selectCount: $("histSelectCount"),
@@ -104,13 +109,19 @@ function distinct(list, key) {
   return [...new Set(list.map((s) => s[key]).filter(Boolean))].sort();
 }
 
+// The active profile's sessions, each with the bodyweight of its day (bodyweight log).
+function mySessions() {
+  return sessions.index.map((s) => settings.withBodyweight(s));
+}
+
 function filtered() {
   const kind = el.kind.value;
-  return sessions.index.filter(
+  return mySessions().filter(
     (s) =>
       s.type === kind &&
       (el.hold.value === ALL || s.holdType === el.hold.value) &&
       (el.grip.value === ALL || s.grip === el.grip.value) &&
+      (el.tag.value === ALL || (s.tags ?? []).includes(el.tag.value)) &&
       (el.routine.value === ALL || s.name === el.routine.value),
   );
 }
@@ -155,9 +166,12 @@ function pointsOf(s) {
 // ---------------------------------------------------------------- main view
 
 function renderFilters() {
-  const ofKind = sessions.index.filter((s) => s.type === el.kind.value);
+  const ofKind = mySessions().filter((s) => s.type === el.kind.value);
   fillSelect(el.hold, "All holds", distinct(ofKind, "holdType"));
   fillSelect(el.grip, "All grips", distinct(ofKind, "grip"));
+  const tags = [...new Set(ofKind.flatMap((s) => s.tags ?? []))].sort();
+  fillSelect(el.tag, "All tags", tags);
+  el.tagRow.hidden = !tags.length;
   // Routines by name, and tests by their saved name (e.g. "Max pull 20 mm L/R").
   const isRoutine = el.kind.value === "workout";
   fillSelect(el.routine, isRoutine ? "All routines" : "All tests", distinct(ofKind, "name"));
@@ -277,10 +291,11 @@ function renderList(list, metric) {
           create("strong", { textContent: s.type === "workout" || s.routine ? sessionTitle(s) : formatDateTime(s.startedAt) }),
           create("span", {
             className: "muted",
-            textContent: [s.type === "workout" || s.routine ? formatDateTime(s.startedAt) : null, ...sessionTags(s), s.stopped ? "stopped" : null, s.noForce ? "no force data" : null]
+            textContent: [s.type === "workout" || s.routine ? formatDateTime(s.startedAt) : null, ...sessionTags(s), s.stopped ? "stopped" : null, s.noForce ? "no force data" : null, ...(s.tags ?? [])]
               .filter(Boolean)
               .join(" · "),
           }),
+          ...(s.note ? [create("span", { className: "note-line", textContent: `“${s.note}”` })] : []),
         ]),
         create("span", { className: "session-metric", textContent: formatPoints(s, metric) }),
       ]);
@@ -324,7 +339,7 @@ function renderSelectBar() {
   el.selCompare.disabled = n < 2 || n > MAX_COMPARE;
 }
 
-const selectedIndex = () => sessions.index.filter((s) => selected.has(s.id));
+const selectedIndex = () => mySessions().filter((s) => selected.has(s.id));
 
 // Selected sessions as a backup file (sessions only): can be restored under Settings.
 async function downloadSelectedJson() {
@@ -348,7 +363,7 @@ async function openCompare() {
     el.compare.hidden = false;
     window.scrollTo(0, 0);
     compareChart?.destroy();
-    compareChart = renderCompare(el.compareView, list);
+    compareChart = renderCompare(el.compareView, list.map((s) => settings.withBodyweight(s)));
   } catch (e) {
     showError(el.error, e.message);
   }
@@ -413,7 +428,14 @@ async function openDetail(id) {
     el.detailCsv.hidden = !hasCurveData(s.curve);
     el.detailRepsCsv.hidden = !s.reps?.length;
     if (detailChart) detailChart.destroy();
-    detailChart = renderSession(el.detailView, s);
+    detailChart = renderSession(el.detailView, settings.withBodyweight(s));
+    // Note and tags are saved as they change.
+    el.detailNotes.replaceChildren(
+      notesCard(s, async (changes) => {
+        await sessions.update(s.id, changes);
+        Object.assign(openSession, changes);
+      }),
+    );
   } catch (e) {
     el.detailView.replaceChildren();
     showError(el.detailError, e.message);
@@ -445,14 +467,14 @@ export function initHistory() {
   el.kind.replaceChildren(
     ...KIND_ORDER.map((k) => create("option", { value: k, textContent: k === "workout" ? "Routines" : KINDS[k].name })),
   );
-  for (const select of [el.kind, el.hold, el.grip, el.routine, el.metric]) select.addEventListener("change", render);
+  for (const select of [el.kind, el.hold, el.grip, el.tag, el.routine, el.metric]) select.addEventListener("change", render);
   el.back.addEventListener("click", closeDetail);
   el.metricInfo.addEventListener("click", () => {
     el.metricInfoText.hidden = !el.metricInfoText.hidden;
     el.metricInfo.setAttribute("aria-expanded", String(!el.metricInfoText.hidden));
   });
   el.remove.addEventListener("click", deleteOpen);
-  el.csv.addEventListener("click", () => downloadCsv(`erkdek-history-${fileDate()}.csv`, historyCsv(sessions.index)));
+  el.csv.addEventListener("click", () => downloadCsv(`erkdek-history-${fileDate()}.csv`, historyCsv(mySessions())));
   el.select.addEventListener("click", () => setSelecting(true));
   el.selectDone.addEventListener("click", () => setSelecting(false));
   el.selectAll.addEventListener("click", () => {
@@ -485,6 +507,10 @@ export function initHistory() {
     renderStorage();
   });
   sessions.load().catch((e) => showError(el.error, e.message));
+  // The bodyweight log changes the % BW values.
+  settings.onChange(() => {
+    if (isVisible() && el.detail.hidden && el.compare.hidden) render();
+  });
   new ResizeObserver(() => {
     if (progressChart) progressChart.setSize({ width: el.chart.clientWidth, height: el.chart.clientHeight });
   }).observe(el.chart);

@@ -112,8 +112,8 @@ async function restore() {
       let count = 0;
       for (const [profileId, values] of Object.entries(b.settings)) {
         if (!profiles.find(profileId)) continue;
-        const { bodyweightKg, repThresholdKg, startOnForce, startPct, recordRelease } = values;
-        await settings.saveFor(profileId, { bodyweightKg, repThresholdKg, startOnForce, startPct, recordRelease });
+        const { bodyweightKg, bodyweightLog, repThresholdKg, startOnForce, startPct, recordRelease } = values;
+        await settings.saveFor(profileId, { bodyweightKg, bodyweightLog, repThresholdKg, startOnForce, startPct, recordRelease });
         count++;
       }
       done.push(`settings of ${count} profile${count === 1 ? "" : "s"}`);
