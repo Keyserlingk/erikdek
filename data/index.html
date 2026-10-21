@@ -67,7 +67,6 @@
         <button id="resetPeak" class="secondary" type="button">Reset peak</button>
         <button id="tare" class="primary" type="button">Tare</button>
       </div>
-      <button id="liveLayout" class="link" type="button"></button>
     </section>
 
     <section id="view-train" hidden>
@@ -230,6 +229,7 @@
           <div id="runPhaseCard" class="card phase-card" data-phase="prep">
             <div id="runPhase" class="phase-label">Get ready</div>
             <div id="runCountdown" class="countdown">10</div>
+            <div id="runGrip" class="grip-line" hidden></div>
             <div id="runProgress" class="progress"></div>
             <div id="runNext" class="muted next"></div>
             <div id="runHeld" class="held-count" hidden></div>
@@ -418,6 +418,21 @@
         <p id="setCalStatus" class="muted"></p>
         <p id="setNoise" class="muted" hidden></p>
         <a href="#calibrate" class="button-link secondary">Calibrate</a>
+      </div>
+      <div class="card">
+        <h2>Display</h2>
+        <p class="muted">Where the force is shown on Live and while training.</p>
+        <div id="displayLayout" class="segmented wide" role="group" aria-label="Force number">
+          <button type="button" data-layout="graph">In the graph</button>
+          <button type="button" data-layout="above">Above the graph</button>
+        </div>
+        <div id="displayOpacityRow">
+          <label class="field stacked">
+            <span>Strength of the number in the graph: <strong id="displayOpacityValue"></strong></span>
+            <input id="displayOpacity" type="range" min="5" max="100" step="1">
+          </label>
+          <div class="opacity-preview" aria-hidden="true"><span id="displayPreview" class="chart-kg">42.0</span></div>
+        </div>
       </div>
       <div class="card">
         <h2>Bodyweight</h2>

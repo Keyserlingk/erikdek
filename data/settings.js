@@ -1,4 +1,5 @@
 import { device } from "./device.js";
+import { applyDisplay, displayPrefs, setDisplayPrefs } from "./display.js";
 import { buildInfo, canChooseSensor, isNativeApp, sensorMode, setSensorMode } from "./platform.js";
 import { formatBytes } from "./format.js";
 import { sessions } from "./sessions.js";
@@ -73,6 +74,38 @@ function initSensor() {
   renderSensor();
 }
 
+// ---------------------------------------------------------------- Display
+
+const displayEl = {
+  layouts: document.querySelectorAll("#displayLayout button"),
+  opacityRow: document.getElementById("displayOpacityRow"),
+  opacity: document.getElementById("displayOpacity"),
+  opacityValue: document.getElementById("displayOpacityValue"),
+};
+
+function renderDisplay() {
+  const p = displayPrefs();
+  for (const b of displayEl.layouts) b.classList.toggle("active", b.dataset.layout === p.numberLayout);
+  displayEl.opacityRow.hidden = p.numberLayout !== "graph";
+  displayEl.opacity.value = Math.round(p.numberOpacity * 100);
+  displayEl.opacityValue.textContent = `${Math.round(p.numberOpacity * 100)} %`;
+}
+
+function initDisplay() {
+  applyDisplay();
+  for (const b of displayEl.layouts) {
+    b.addEventListener("click", () => {
+      setDisplayPrefs({ numberLayout: b.dataset.layout });
+      renderDisplay();
+    });
+  }
+  displayEl.opacity.addEventListener("input", () => {
+    setDisplayPrefs({ numberOpacity: Number(displayEl.opacity.value) / 100 });
+    renderDisplay();
+  });
+  renderDisplay();
+}
+
 // ---------------------------------------------------------------- About
 
 const about = {
@@ -116,6 +149,7 @@ export function initSettings() {
   });
   settings.load().catch((e) => showMessage(e.message, true));
   initSensor();
+  initDisplay();
 
   initTagManager(
     document.getElementById("manageHolds"),

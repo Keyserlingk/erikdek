@@ -208,13 +208,25 @@ body[data-number-layout="graph"] .chart-number {
   font-weight: 700;
   line-height: 1;
   color: var(--text);
-  opacity: 0.16;
+  opacity: var(--chart-number-opacity, 0.16); /* Settings → Display */
 }
-.chart-kg[data-status="on"] { color: var(--ok); opacity: 0.3; }
-.chart-kg[data-status="below"] { color: var(--warn); opacity: 0.3; }
-.chart-kg[data-status="above"] { color: var(--accent); opacity: 0.3; }
+/* With a target the colour carries meaning, so it is drawn a bit stronger. */
+.chart-kg[data-status] { opacity: min(1, calc(var(--chart-number-opacity, 0.16) * 1.8)); }
+.chart-kg[data-status=""] { opacity: var(--chart-number-opacity, 0.16); }
+.chart-kg[data-status="on"] { color: var(--ok); }
+.chart-kg[data-status="below"] { color: var(--warn); }
+.chart-kg[data-status="above"] { color: var(--accent); }
+.opacity-preview {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-image: repeating-linear-gradient(0deg, var(--border) 0 1px, transparent 1px 24px);
+}
+.opacity-preview .chart-kg { font-size: 72px; }
 .chart-sub { margin-top: 6px; font-size: 16px; color: var(--muted); opacity: 0.8; }
-#liveLayout { display: block; margin: 12px auto 0; }
+
 .chart-head {
   display: flex;
   justify-content: space-between;
@@ -347,6 +359,8 @@ h2.spaced { margin-top: 20px; }
   font-variant-numeric: tabular-nums;
 }
 .progress { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+/* Hand, hold and grip: of this hang, or of the next one during rests. */
+.grip-line { font-size: 18px; font-weight: 700; margin: 2px 0 6px; line-height: 1.3; }
 .next { font-size: 13px; }
 
 .run-force { border-width: 2px; }

@@ -43,6 +43,7 @@ const el = {
   repInfo: $("runRepInfo"),
   chartKg: $("runChartKg"),
   chartSub: $("runChartSub"),
+  grip: $("runGrip"),
   chart: $("runChart"),
   pause: $("runPause"),
   skip: $("runSkip"),
@@ -235,8 +236,8 @@ function tick() {
   const next = run.phases[state.index + 1];
   const r = run.routine;
   el.card.dataset.phase = phase.type;
-  const handLabel = (p) => (p.hand && p.hand !== "both" ? ` · ${p.hand}` : "");
-  el.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type) + (phase.type === PHASE.WORK ? handLabel(phase) : "");
+  el.phase.textContent = run.engine.paused ? "Paused" : phaseName(phase.type);
+  renderGrip(state.index);
   // Countdown, or a stopwatch while a self-paced rep waits for Done.
   el.countdown.textContent = remainingS === null ? formatClock(inPhaseS) : Math.ceil(remainingS);
   el.done.hidden = !run.engine.waitingForDone;
@@ -247,18 +248,32 @@ function tick() {
   el.progress.textContent =
     r.reps * hangsPerRep(r) > 1 ? `Set ${phase.set}/${r.sets} · Rep ${phase.rep}/${r.reps}` : `Attempt ${phase.set}/${r.sets}`;
   const nextTime = (p) => (p.durS === null ? "" : ` ${formatDuration(p.durS)}`);
-  el.next.textContent = next ? `Next: ${phaseName(next.type)}${nextTime(next)}${handLabel(next)}` : "Last one!";
+  el.next.textContent = next ? `Next: ${phaseName(next.type)}${nextTime(next)}` : "Last one!";
 
   if (!run.sensor) return;
   const kg = run.smoothed ?? 0;
   el.kg.textContent = device.connected ? formatKg(kg) : "–";
   el.kg.dataset.status = targetStatus(kg, run.target) ?? "";
   renderHeld(phase);
-  // The same, for the layout with the number behind the graph (see live.js).
+  // The same, for the layout with the number behind the graph (see display.js).
   el.chartKg.textContent = el.kg.textContent;
   el.chartKg.dataset.status = el.kg.dataset.status;
   el.chartSub.textContent = [el.target.textContent, el.repInfo.hidden ? "" : el.repInfo.textContent].filter(Boolean).join(" · ");
   chart.render();
+}
+
+// Hand, hold and grip of the hang now (during a hang) or of the next hang (while
+// getting ready or resting), e.g. "Next: Left hand · 20 mm edge · Half crimp".
+function renderGrip(index) {
+  const current = run.phases[index];
+  const isWork = current.type === PHASE.WORK;
+  const hang = isWork ? current : run.phases.slice(index + 1).find((p) => p.type === PHASE.WORK);
+  // Tests have one hand for the whole run (chosen at setup); routines per hang.
+  const hand = hang && hang.hand && hang.hand !== "both" ? hang.hand : run.hand;
+  const parts = hang ? [hand && hand !== "both" ? HANDS[hand] : "", run.routine.holdType, run.routine.grip].filter(Boolean) : [];
+  el.grip.hidden = !parts.length;
+  el.grip.dataset.next = String(!isWork);
+  el.grip.textContent = (isWork ? "" : "Next: ") + parts.join(" · ");
 }
 
 const round2 = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
