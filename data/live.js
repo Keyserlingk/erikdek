@@ -9,6 +9,7 @@ const SMOOTHING_TAU_S = 0.15; // time constant for the big number; raw data is u
 const alpha = 1 - Math.exp(-1 / (SAMPLE_RATE_HZ * SMOOTHING_TAU_S));
 const WINDOW_KEY = "erkdek.chartWindow";
 const TARGET_KEY = "erkdek.liveTarget";
+const LAYOUT_KEY = "erkdek.liveLayout"; // "above" (default) or "graph": the number behind the graph
 const MIN_TARGET_KG = 0.5;
 
 const el = {
@@ -28,6 +29,11 @@ const el = {
   targetInfo: document.getElementById("targetInfo"),
   targetKg: document.getElementById("targetKg"),
   removeTarget: document.getElementById("removeTarget"),
+  view: document.getElementById("view-live"),
+  readout: document.getElementById("liveReadout"),
+  chartKg: document.getElementById("chartKg"),
+  chartSub: document.getElementById("chartSub"),
+  layout: document.getElementById("liveLayout"),
 };
 
 const state = { smoothed: null, peak: 0, target: null, dirty: true };
@@ -44,6 +50,11 @@ function render() {
     const value = device.connected ? state.smoothed : null;
     el.kg.textContent = value !== null ? formatKg(value) : "–";
     el.kg.dataset.status = value !== null ? (targetStatus(value, state.target) ?? "") : "";
+    // The same number behind the graph (when that layout is on).
+    el.chartKg.textContent = el.kg.textContent;
+    el.chartKg.dataset.status = el.kg.dataset.status;
+    const bw = settings.values.bodyweightKg > 0 && value !== null ? `${percentOfBodyweight(value)} BW · ` : "";
+    el.chartSub.textContent = `${bw}Peak ${formatKg(state.peak)} kg`;
     el.bw.textContent = value !== null ? `${percentOfBodyweight(value)} of bodyweight` : "";
     el.bw.hidden = !(settings.values.bodyweightKg > 0);
     el.peakKg.textContent = formatKg(state.peak);
@@ -73,6 +84,18 @@ function setTarget(kg) {
 function resetPeak() {
   state.peak = 0;
   state.dirty = true;
+}
+
+// Trial: the current weight as the background of the graph instead of above it.
+function setLayout(layout) {
+  el.view.dataset.layout = layout;
+  el.readout.hidden = layout === "graph";
+  el.layout.textContent = layout === "graph" ? "Show the number above the graph" : "Show the number in the graph";
+  try {
+    localStorage.setItem(LAYOUT_KEY, layout);
+  } catch {
+    // not remembered
+  }
 }
 
 function setWindow(seconds) {
@@ -155,5 +178,14 @@ export function initLive() {
     // keep default
   }
   setWindow(saved);
+
+  let layout = "above";
+  try {
+    layout = localStorage.getItem(LAYOUT_KEY) === "graph" ? "graph" : "above";
+  } catch {
+    // keep default
+  }
+  setLayout(layout);
+  el.layout.addEventListener("click", () => setLayout(el.view.dataset.layout === "graph" ? "above" : "graph"));
   requestAnimationFrame(render);
 }

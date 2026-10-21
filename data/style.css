@@ -183,6 +183,33 @@ main {
 
 .chart-card { padding: 10px 6px 4px 0; }
 .chart { height: 220px; }
+.chart-wrap { position: relative; }
+.chart-wrap .chart { position: relative; z-index: 1; } /* the plot draws over the number */
+.chart-number { display: none; }
+/* Live, "number in the graph": a taller graph with the current weight behind the curve. */
+#view-live[data-layout="graph"] .chart { height: min(58vh, 480px); }
+#view-live[data-layout="graph"] .chart-number {
+  position: absolute;
+  inset: 0 0 28px 40px; /* leave the axes free */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.chart-kg {
+  font-size: clamp(88px, 30vw, 180px);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  opacity: 0.16;
+}
+.chart-kg[data-status="on"] { color: var(--ok); opacity: 0.3; }
+.chart-kg[data-status="below"] { color: var(--warn); opacity: 0.3; }
+.chart-kg[data-status="above"] { color: var(--accent); opacity: 0.3; }
+.chart-sub { margin-top: 6px; font-size: 16px; color: var(--muted); opacity: 0.8; }
+#liveLayout { display: block; margin: 12px auto 0; }
 .chart-head {
   display: flex;
   justify-content: space-between;

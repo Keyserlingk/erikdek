@@ -35,7 +35,7 @@
         <p id="liveConnectText"></p>
         <button id="liveConnectButton" class="primary" type="button">Connect sensor</button>
       </div>
-      <div class="card readout">
+      <div id="liveReadout" class="card readout">
         <div class="weight"><span id="kg">–</span><span class="unit">kg</span></div>
         <div id="bw" class="bw" hidden></div>
         <button id="peak" class="peak" type="button" title="Tap to reset peak">
@@ -55,12 +55,19 @@
             <button type="button" data-s="60">60 s</button>
           </div>
         </div>
-        <div id="chart" class="chart tappable"></div>
+        <div class="chart-wrap">
+          <div id="chartNumber" class="chart-number" aria-hidden="true">
+            <span id="chartKg" class="chart-kg">–</span>
+            <span id="chartSub" class="chart-sub"></span>
+          </div>
+          <div id="chart" class="chart tappable"></div>
+        </div>
       </div>
       <div class="actions">
         <button id="resetPeak" class="secondary" type="button">Reset peak</button>
         <button id="tare" class="primary" type="button">Tare</button>
       </div>
+      <button id="liveLayout" class="link" type="button"></button>
     </section>
 
     <section id="view-train" hidden>
