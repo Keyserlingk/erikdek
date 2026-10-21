@@ -570,6 +570,7 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
 .restore { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
 .check { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .check input { width: 20px; height: 20px; }
+.spaced-check { margin-top: 16px; }
 
 .reading {
   display: flex;

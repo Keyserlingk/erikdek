@@ -19,6 +19,7 @@ const el = {
   startPct: document.getElementById("setStartPct"),
   startPctRow: document.getElementById("setStartPctRow"),
   startInfo: document.getElementById("setStartInfo"),
+  recordRelease: document.getElementById("setRecordRelease"),
   startMessage: document.getElementById("setStartMessage"),
   save: document.getElementById("setSave"),
   message: document.getElementById("setMessage"),
@@ -148,6 +149,7 @@ export function initSettings() {
     el.repThreshold.value = v.repThresholdKg;
     el.startOnForce.checked = v.startOnForce;
     el.startPct.value = v.startPct;
+    el.recordRelease.checked = v.recordRelease;
     el.startPctRow.hidden = !v.startOnForce;
     el.startInfo.hidden = !v.startOnForce;
     el.startInfo.textContent =
@@ -186,8 +188,10 @@ export function initSettings() {
       el.startMessage.classList.add("error-text");
       el.startOnForce.checked = settings.values.startOnForce;
       el.startPct.value = settings.values.startPct;
+      el.recordRelease.checked = settings.values.recordRelease;
     }
   };
+  el.recordRelease.addEventListener("change", () => saveStart({ recordRelease: el.recordRelease.checked }));
   el.startOnForce.addEventListener("change", () => saveStart({ startOnForce: el.startOnForce.checked }));
   el.startPct.addEventListener("change", () => saveStart({ startPct: Number(el.startPct.value) }));
 

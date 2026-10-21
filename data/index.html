@@ -449,7 +449,7 @@
         <p id="setMessage" class="message" aria-live="polite"></p>
       </div>
       <div class="card">
-        <h2>Starting a hang</h2>
+        <h2>Hangs with the sensor</h2>
         <label class="check"><input id="setStartOnForce" type="checkbox"> Start the countdown when I pull</label>
         <p class="muted">With the sensor, each hang waits until the force goes over the start level, then the countdown starts. Off: hangs start on the clock.</p>
         <label id="setStartPctRow" class="field">
@@ -458,6 +458,8 @@
           <span>% of the target</span>
         </label>
         <p id="setStartInfo" class="muted"></p>
+        <label class="check spaced-check"><input id="setRecordRelease" type="checkbox"> Record the release after the last hang</label>
+        <p class="muted">The routine or test ends 0.5 s after you let go (force below the rep threshold), at most 5 s after the last hang, so the graph shows the release.</p>
         <p id="setStartMessage" class="message" aria-live="polite"></p>
       </div>
       <div class="card">

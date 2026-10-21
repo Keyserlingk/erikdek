@@ -12,7 +12,8 @@ export const START_PCT_RANGE = [5, 100];
 
 // startOnForce: with the sensor, a hang's countdown starts when force is applied, at
 // startPct % of the target (the rep threshold without a target).
-const DEFAULTS = { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true, startPct: 30 };
+// recordRelease: after the last hang, keep recording until the climber lets go.
+const DEFAULTS = { bodyweightKg: 0, repThresholdKg: 2, startOnForce: true, startPct: 30, recordRelease: true };
 
 // Returns an error message, or null when the settings are valid.
 export function validateSettings(v) {
@@ -23,6 +24,7 @@ export function validateSettings(v) {
     return `Rep threshold must be between ${MIN_REP_THRESHOLD_KG} and ${MAX_REP_THRESHOLD_KG} kg.`;
   }
   if (typeof v.startOnForce !== "boolean") return "Invalid start-on-force setting.";
+  if (typeof v.recordRelease !== "boolean") return "Invalid record-release setting.";
   const [minPct, maxPct] = START_PCT_RANGE;
   if (!(Number.isInteger(v.startPct) && v.startPct >= minPct && v.startPct <= maxPct)) {
     return `The start level must be a whole number from ${minPct} to ${maxPct} %.`;

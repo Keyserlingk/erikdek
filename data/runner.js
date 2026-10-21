@@ -34,6 +34,10 @@ const CURVE_MAX_POINTS = 1000;
 const PRE_LOAD_S = 0.25;
 // The force number pulses in the last seconds of a hang.
 const PULSE_S = 3;
+// After the last hang (Settings → recordRelease): keep recording until this long after
+// the climber let go, waiting at most RELEASE_MAX_WAIT_S.
+const RELEASE_TAIL_S = 0.5;
+const RELEASE_MAX_WAIT_S = 5;
 
 const el = {
   card: $("runPhaseCard"),
@@ -94,7 +98,7 @@ export async function startRun(kind, routine, hand, { onEnd = null, workout = nu
     hand,
     phases,
     // With the sensor connected each hang's countdown can start when force is applied
-    // (Settings → Starting a hang).
+    // (Settings → Hangs with the sensor).
     engine: new WorkoutEngine(phases, { waitForLoad: sensor && device.connected && settings.values.startOnForce }),
     target,
     threshold: loadThresholdKg(target, settings.values.repThresholdKg),
@@ -241,7 +245,7 @@ function tick() {
   // One beep per change (hang starts, rest starts, finished); not when starting.
   if (state.entered.some((i) => i > 0)) beep();
   if (state.done) {
-    endRun(false);
+    if (!lingerForRelease(now)) endRun(false);
     return;
   }
 
@@ -398,7 +402,36 @@ function endRun(stopped) {
   else showResult(session, raw);
 }
 
+// After the last hang: true while still recording the release (until RELEASE_TAIL_S
+// after the force dropped below the rep threshold, at most RELEASE_MAX_WAIT_S).
+function lingerForRelease(now) {
+  if (!run.finish) {
+    const linger = run.sensor && device.connected && settings.values.recordRelease;
+    run.finish = { linger, startS: now, releasedS: null };
+    if (linger) {
+      el.card.dataset.phase = "rest";
+      el.phase.textContent = "Let go";
+      el.countdown.textContent = "✓";
+      el.next.textContent = "Recording the release…";
+      el.restOverlay.hidden = true;
+      el.chartKg.classList.remove("pulse");
+      el.chartSub.textContent = "Done – let go";
+    }
+  }
+  const f = run.finish;
+  if (!f.linger || !device.connected) return false;
+  if (f.releasedS !== null && now >= f.releasedS + RELEASE_TAIL_S) return false;
+  if (now >= f.startS + RELEASE_MAX_WAIT_S) return false;
+  el.chartKg.textContent = formatKg(run.smoothed ?? 0);
+  chart.render();
+  return true;
+}
+
 function stopRun() {
+  if (run.finish) {
+    endRun(false); // already past the last hang: just finish
+    return;
+  }
   const message = run.workout
     ? "Stop this routine and end the workout? You can still save what you've done."
     : "Stop now? You can still save what you've done so far.";
@@ -422,6 +455,9 @@ export function initRunner() {
     chart.push(msg.ts, msg.te ?? msg.ts, msg.kg);
     for (const kg of msg.kg) run.smoothed = run.smoothed === null ? kg : run.smoothed + 0.08 * (kg - run.smoothed);
     if (run.engine.paused || run.index < 0) return; // not started yet (or paused)
+    if (run.finish && run.finish.releasedS === null && msg.kg.some((kg) => kg < settings.values.repThresholdKg)) {
+      run.finish.releasedS = performance.now() / 1000; // let go after the last hang
+    }
     run.curve.push(...msg.kg);
     for (let i = 0; i < msg.kg.length; i++) run.curvePhase.push(run.index);
     if (run.repSamples) {
