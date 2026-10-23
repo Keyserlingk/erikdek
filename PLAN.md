@@ -292,7 +292,7 @@ Next:
   campus board and pull-up/lock-off templates.
 - **E. Hardware bring-up:** flash, RATE check, calibrate, BLE range and latency test,
   real-world tuning.
-- **I. Firmware updates over Bluetooth (after E):** update the sensor from the app,
+- **I. Firmware updates over Bluetooth (built 2026-10-23; to test on the phone):** update the sensor from the app,
   no USB cable.
   - *Firmware:* an update service on the BLE GATT server: start (size + SHA-256),
     data packets (write without response, MTU 247), end. Written to the second OTA
