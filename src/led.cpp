@@ -15,7 +15,7 @@ static constexpr uint32_t kPwmHz = 5000;
 static constexpr uint8_t kPwmBits = 10;
 static constexpr uint32_t kMaxDuty = (1u << kPwmBits) - 1;
 
-static constexpr float kFullKg = 2.0f;         // force for full brightness
+static constexpr float kFullKg = 10.0f;        // force for full brightness
 static constexpr float kForceSmoothing = 0.1f; // per loop (~5 ms): about 0.05-0.1 s
 static constexpr uint32_t kBreathMs = 2000;    // period of the breathing: waiting for the app
 static constexpr float kBreathMax = 0.3f;      // its peak, so a force reading stands out

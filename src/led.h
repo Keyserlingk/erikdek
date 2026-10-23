@@ -4,7 +4,7 @@
 
 // Status LED (the board's user LED, GPIO2 on most ESP32 NodeMCU boards; see
 // ERKDEK_LED_PIN in platformio.ini):
-//   brightness         the force: 0 kg off .. 2 kg full (so the load cell can be checked
+//   brightness         the force: 0 kg off .. 10 kg full (so the load cell can be checked
 //                      without the phone), over a faint state signal:
 //     low breathing    waiting for the app (Bluetooth advertising)
 //     faint glow       the app is connected
