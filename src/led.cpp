@@ -9,7 +9,14 @@
 #define ERKDEK_LED_ACTIVE_LOW 0
 #endif
 
-static constexpr uint32_t kSlowMs = 500;       // half period: waiting for the app
+// PWM on an LEDC channel, so the LED can fade: calm states breathe, warnings blink.
+static constexpr uint8_t kChannel = 0;
+static constexpr uint32_t kPwmHz = 5000;
+static constexpr uint8_t kPwmBits = 10;
+static constexpr uint32_t kMaxDuty = (1u << kPwmBits) - 1;
+
+static constexpr uint32_t kBreathMs = 2000;    // period of the breathing: waiting for the app
+static constexpr float kConnectedLevel = 0.4f; // steady brightness while connected
 static constexpr uint32_t kFastMs = 100;       // half period: no HX711 readings
 static constexpr uint32_t kFlashMs = 120;      // one flash of the double flash
 static constexpr uint32_t kBurstMs = 1500;     // period of "3 blinks, pause"
@@ -20,10 +27,18 @@ static bool flashing = false;
 static uint32_t lastCount = 0;
 static uint32_t lastReadingMs = 0;
 
-static void write(bool on) { digitalWrite(ERKDEK_LED_PIN, (on != (bool)ERKDEK_LED_ACTIVE_LOW) ? HIGH : LOW); }
+// Brightness 0..1, through a gamma curve so fades look even to the eye.
+static void level(float b) {
+  b = b < 0 ? 0 : b > 1 ? 1 : b;
+  uint32_t duty = (uint32_t)(powf(b, 2.2f) * kMaxDuty + 0.5f);
+  ledcWrite(kChannel, ERKDEK_LED_ACTIVE_LOW ? kMaxDuty - duty : duty);
+}
+
+static void write(bool on) { level(on ? 1.0f : 0.0f); }
 
 void ledBegin() {
-  pinMode(ERKDEK_LED_PIN, OUTPUT);
+  ledcSetup(kChannel, kPwmHz, kPwmBits);
+  ledcAttachPin(ERKDEK_LED_PIN, kChannel);
   write(false);
 }
 
@@ -43,9 +58,7 @@ void ledLoop(bool appConnected, uint32_t samplesRead) {
   if (flashing) {
     uint32_t t = now - flashStart;
     if (t < 4 * kFlashMs) {
-      // Opposite of the current state, twice: visible whether the LED is on or off.
-      bool base = appConnected && readings;
-      write((t / kFlashMs) % 2 == 0 ? !base : base);
+      write((t / kFlashMs) % 2 == 0); // two full-brightness flashes
       return;
     }
     flashing = false;
@@ -57,8 +70,9 @@ void ledLoop(bool appConnected, uint32_t samplesRead) {
   } else if (!readings) {
     write((now / kFastMs) % 2 == 0);
   } else if (appConnected) {
-    write(true);
+    level(kConnectedLevel);
   } else {
-    write((now / kSlowMs) % 2 == 0);
+    // Breathing: a slow cosine fade up and down.
+    level((1.0f - cosf(2.0f * PI * (now % kBreathMs) / kBreathMs)) / 2.0f);
   }
 }
