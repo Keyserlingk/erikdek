@@ -301,8 +301,9 @@ Next:
     then restart. Packet layout in `lib/core` with native tests, mirrored in
     `data/bleprotocol.js`. Check the partition table (two app slots; firmware is
     ~46 % of one).
-  - *Protection:* only accepted while the BOOT button (GPIO0) is held, so nobody
-    nearby can flash it.
+  - *Protection:* first built with a BOOT-button window; removed on request (2026-10-23),
+    so any app in range can update it. Only a complete, SHA-256-verified image is
+    switched to, with rollback.
   - *Rollback:* check whether the Arduino/PlatformIO bootloader has
     `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`; if so, mark the new image valid once
     BLE is up, else USB stays the way back from a firmware that crashes on start.
