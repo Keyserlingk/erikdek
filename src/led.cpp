@@ -12,6 +12,7 @@
 static constexpr uint32_t kSlowMs = 500;       // half period: waiting for the app
 static constexpr uint32_t kFastMs = 100;       // half period: no HX711 readings
 static constexpr uint32_t kFlashMs = 120;      // one flash of the double flash
+static constexpr uint32_t kBurstMs = 1500;     // period of "3 blinks, pause"
 static constexpr uint32_t kRateWindowMs = 500; // no new reading for this long = no HX711
 
 static uint32_t flashStart = 0;
@@ -49,7 +50,15 @@ void ledLoop(bool appConnected, uint32_t samplesRead) {
     }
     flashing = false;
   }
-  if (!readings) write((now / kFastMs) % 2 == 0);
-  else if (appConnected) write(true);
-  else write((now / kSlowMs) % 2 == 0);
+  if (!readings && appConnected) {
+    // 3 blinks (100 ms on/off), then off for the rest of the 1.5 s period.
+    uint32_t t = now % kBurstMs;
+    write(t < 6 * kFastMs && (t / kFastMs) % 2 == 0);
+  } else if (!readings) {
+    write((now / kFastMs) % 2 == 0);
+  } else if (appConnected) {
+    write(true);
+  } else {
+    write((now / kSlowMs) % 2 == 0);
+  }
 }
