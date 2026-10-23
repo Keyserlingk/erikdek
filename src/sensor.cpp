@@ -99,6 +99,9 @@ static void sensorTask(void*) {
     lastKg = kg;
     samplesRead = samplesRead + 1;
     if (monitorOn) monitor.push({now, raw, kg});
+    // Always yield after a reading (the next one is 12.5 ms away at 80 Hz): if DOUT
+    // never goes high this task must not starve setup()/loop() on the same core.
+    vTaskDelay(1);
   }
 }
 

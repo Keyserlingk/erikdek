@@ -5,7 +5,9 @@ static portMUX_TYPE hxMux = portMUX_INITIALIZER_UNLOCKED;
 void HX711::begin(uint8_t doutPin, uint8_t sckPin) {
   dout_ = doutPin;
   sck_ = sckPin;
-  pinMode(dout_, INPUT);
+  // Pull-up: without an HX711 (or a loose DT wire) the pin reads "not ready" instead of
+  // floating low and looking like a reading is always waiting.
+  pinMode(dout_, INPUT_PULLUP);
   pinMode(sck_, OUTPUT);
   digitalWrite(sck_, LOW);  // SCK high for >60 us powers the HX711 down
 }
