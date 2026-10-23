@@ -3,6 +3,7 @@
 #include "battery.h"
 #include "ble.h"
 #include "console.h"
+#include "led.h"
 #include "sensor.h"
 #include "storage.h"
 
@@ -17,6 +18,7 @@ static void handleSensorEvents() {
     if (ev.type == SensorEvent::Calibrated) storageSaveCalibration(ev.calibration);
     bleSendEvent(ev);
     consoleLogEvent(ev);
+    if (ev.type != SensorEvent::CalibrationFailed) ledFlash();
   }
 }
 
@@ -28,11 +30,13 @@ void setup() {
   sensorBegin(kHxDoutPin, kHxSckPin, storageLoadCalibration());
   bleBegin();
   consoleBegin();
+  ledBegin();
 }
 
 void loop() {
   handleSensorEvents();
   bleLoop();
   consoleLoop();
+  ledLoop(bleConnected(), sensorStatus().samplesRead);
   delay(5);
 }
