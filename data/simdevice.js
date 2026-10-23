@@ -271,6 +271,20 @@ export class SimulatedTransport extends EventTarget {
     };
   }
 
+  // Pretends to update the firmware (for trying Settings → Sensor without hardware):
+  // progress over 2 s, then a restart (the connection drops and comes back).
+  async updateFirmware(image, { onProgress = () => {}, signal = null } = {}) {
+    if (this.state !== "open") throw new Error("The sensor isn't connected.");
+    for (let i = 1; i <= 20; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (signal?.aborted) throw new Error("Update cancelled. The sensor keeps its current firmware.");
+      onProgress(i / 20);
+    }
+    for (const timer of this.timers) clearInterval(timer);
+    this.setState("closed");
+    setTimeout(() => this.connect(), 1000);
+  }
+
   send(obj) {
     if (this.state !== "open") return false;
     for (const ev of this.sensor.handle(obj)) this.emitEvent(ev);

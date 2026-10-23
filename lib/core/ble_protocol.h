@@ -15,6 +15,7 @@
 //                      calibrated: 2 | calibrated u8 | countsPerKg f32 | noise rms u16 (g)
 //                      calError:   3 | reason u8 | noise rms u16 (g)
 // Noise values are 0xFFFF when not measured (e.g. a calibration reset).
+//   Update (write/notify): firmware update over Bluetooth, see OtaOp / OtaEvent below.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -152,6 +153,75 @@ inline bool parseCommand(const uint8_t* data, size_t len, ParsedCommand& out) {
     default:
       return false;
   }
+}
+
+// ---------------------------------------------------------------- firmware update
+// Writes to the update characteristic (with response):
+//   start  0x01 | size u32 | sha256 [32]   needs the BOOT button pressed in the last 30 s
+//   data   0x02 | offset u32 | bytes...    in order, offset = bytes received so far
+//   end    0x03                            verify, switch to the new firmware, restart
+//   abort  0x04
+// Notifications: event u8 | code u8 | value u32
+//   ready 1 (value: size), progress 2 (value: bytes received), done 3, error 4 (code)
+
+enum OtaOp : uint8_t { OtaStart = 1, OtaData = 2, OtaEnd = 3, OtaAbort = 4 };
+enum OtaEvent : uint8_t { OtaReady = 1, OtaProgress = 2, OtaDone = 3, OtaError = 4 };
+enum OtaErrorCode : uint8_t {
+  OtaOk = 0,
+  OtaNotArmed = 1,     // BOOT button not pressed
+  OtaBadSize = 2,      // too large, or end before all bytes arrived
+  OtaBeginFailed = 3,  // couldn't prepare the update slot
+  OtaWriteFailed = 4,
+  OtaBadOffset = 5,    // data out of order
+  OtaBadChecksum = 6,  // SHA-256 doesn't match
+  OtaEndFailed = 7,    // not a valid firmware image
+  OtaNoSession = 8,    // data/end without start
+  OtaBusy = 9,         // an update is already running
+};
+static constexpr size_t kOtaShaSize = 32;
+static constexpr size_t kOtaEventSize = 6;
+static constexpr size_t kOtaDataHeader = 5;
+
+struct OtaCommand {
+  OtaOp op;
+  uint32_t size;  // start
+  uint8_t sha256[kOtaShaSize];
+  uint32_t offset;  // data
+  const uint8_t* data;
+  size_t length;
+};
+
+// Parses a write to the update characteristic; false when malformed.
+inline bool parseOta(const uint8_t* in, size_t len, OtaCommand& out) {
+  if (len < 1) return false;
+  out.op = (OtaOp)in[0];
+  out.data = nullptr;
+  out.length = 0;
+  switch (out.op) {
+    case OtaStart:
+      if (len != 1 + 4 + kOtaShaSize) return false;
+      out.size = getU32(in + 1);
+      memcpy(out.sha256, in + 5, kOtaShaSize);
+      return true;
+    case OtaData:
+      if (len <= kOtaDataHeader) return false;
+      out.offset = getU32(in + 1);
+      out.data = in + kOtaDataHeader;
+      out.length = len - kOtaDataHeader;
+      return true;
+    case OtaEnd:
+    case OtaAbort:
+      return len == 1;
+    default:
+      return false;
+  }
+}
+
+inline size_t encodeOtaEvent(uint8_t* out, OtaEvent event, OtaErrorCode code, uint32_t value) {
+  out[0] = event;
+  out[1] = code;
+  putU32(out + 2, value);
+  return kOtaEventSize;
 }
 
 }  // namespace ble

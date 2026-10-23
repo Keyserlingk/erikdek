@@ -36,6 +36,8 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 # (tools/fwversion.py). Git-ignored, regenerated each build.
 printf 'window.ERKDEK_BUILD = { version: "%s", variant: "%s", firmware: "%s" };\n' \
   "$(git describe --always --dirty)" "$VARIANT" "$(python3 tools/fwversion.py)" > data/buildinfo.js
+# The sensor firmware that belongs to this app, for updates over Bluetooth.
+python3 tools/bundle_firmware.py
 node tools/vendor.mjs
 npx cap sync android
 TASK=assemble${VARIANT^}

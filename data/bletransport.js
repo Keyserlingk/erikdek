@@ -6,10 +6,27 @@
 // and reconnected automatically when the link drops. Without one, connect() waits.
 // The BLE client is injected so tests can drive this with a fake.
 
-import { UUID, decodeEvent, decodeSamples, decodeStatus, encodeCommand } from "./bleprotocol.js";
+import {
+  OTA_DATA_HEADER,
+  OTA_ERRORS,
+  UUID,
+  decodeEvent,
+  decodeOtaEvent,
+  decodeSamples,
+  decodeStatus,
+  encodeCommand,
+  encodeOtaAbort,
+  encodeOtaData,
+  encodeOtaEnd,
+  encodeOtaStart,
+} from "./bleprotocol.js";
 
 const DEVICE_KEY = "erkdek.bleDevice";
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000];
+const OTA_READY_TIMEOUT_MS = 30000; // erasing the update slot takes a few seconds
+const OTA_DONE_TIMEOUT_MS = 20000;
+
+const sha256 = async (bytes) => new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
 
 async function loadBleClient() {
   const { BleClient } = await import("./vendor/capacitor/bluetooth-le/index.js");
@@ -35,8 +52,9 @@ const browserStorage = {
 };
 
 export class BleTransport extends EventTarget {
-  constructor({ loadClient = loadBleClient, storage = browserStorage, reconnectDelaysMs = RECONNECT_DELAYS_MS } = {}) {
+  constructor({ loadClient = loadBleClient, storage = browserStorage, reconnectDelaysMs = RECONNECT_DELAYS_MS, digest = sha256 } = {}) {
     super();
+    this.digest = digest;
     this.loadClient = loadClient;
     this.storage = storage;
     this.reconnectDelaysMs = reconnectDelaysMs;
@@ -138,6 +156,65 @@ export class BleTransport extends EventTarget {
     this.storage.set(DEVICE_KEY, null);
     if (id && this.client) await this.client.disconnect(id).catch(() => {});
     this.setState("closed");
+  }
+
+  // Sends a firmware image (Uint8Array) to the sensor (see ota.h in the firmware):
+  // start with size and SHA-256, wait until the sensor has prepared the slot, the data
+  // in order (each write confirmed), then end. The sensor checks it, switches to it and
+  // restarts; the connection drops and comes back by itself. onProgress(0..1);
+  // signal: an AbortSignal to cancel. Throws with a readable message on failure.
+  async updateFirmware(image, { onProgress = () => {}, signal = null } = {}) {
+    if (this.state !== "open") throw new Error("The sensor isn't connected.");
+    const client = this.client;
+    const id = this.deviceId;
+    const write = (bytes) => client.write(id, UUID.service, UUID.ota, new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+    const events = [];
+    let wake = () => {};
+    await client.startNotifications(id, UUID.service, UUID.ota, (v) => {
+      const ev = decodeOtaEvent(v);
+      if (ev) {
+        events.push(ev);
+        wake();
+      }
+    });
+    const failed = () => events.find((e) => e.t === "error");
+    const errorOf = (ev) => new Error(OTA_ERRORS[ev.code] ?? `Update failed (code ${ev.code}).`);
+    // The next event of type t (an error event throws instead).
+    const waitFor = (t, timeoutMs) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("The sensor stopped answering during the update.")), timeoutMs);
+        wake = () => {
+          const err = failed();
+          const ev = events.find((e) => e.t === t);
+          if (err || ev) {
+            clearTimeout(timer);
+            if (err) reject(errorOf(err));
+            else resolve(ev);
+          }
+        };
+        wake();
+      });
+    try {
+      await write(encodeOtaStart(image.length, await this.digest(image)));
+      await waitFor("ready", OTA_READY_TIMEOUT_MS);
+      // As much data per write as the connection's packet size allows.
+      const mtu = await client.getMtu?.(id).catch(() => 23) ?? 23;
+      const chunk = Math.max(20, mtu - 3 - OTA_DATA_HEADER);
+      for (let offset = 0; offset < image.length; offset += chunk) {
+        if (signal?.aborted) {
+          await write(encodeOtaAbort()).catch(() => {});
+          throw new Error("Update cancelled. The sensor keeps its current firmware.");
+        }
+        if (failed()) throw errorOf(failed());
+        await write(encodeOtaData(offset, image.subarray(offset, offset + chunk)));
+        onProgress(Math.min(1, (offset + chunk) / image.length));
+      }
+      await write(encodeOtaEnd());
+      await waitFor("done", OTA_DONE_TIMEOUT_MS);
+    } finally {
+      wake = () => {};
+      await client.stopNotifications?.(id, UUID.service, UUID.ota).catch(() => {});
+    }
   }
 
   send(msg) {

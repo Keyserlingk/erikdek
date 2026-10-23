@@ -436,6 +436,27 @@
         <p id="sensorState" class="sensor-state"></p>
         <p id="sensorBattery" class="sensor-state" hidden></p>
         <button id="sensorChoose" class="secondary" type="button" hidden>Choose sensor…</button>
+        <div id="fwUpdate" class="fw-update" hidden>
+          <h3>Firmware</h3>
+          <p id="fwUpdateInfo" class="muted"></p>
+          <button id="fwUpdateButton" class="secondary" type="button">Update sensor</button>
+          <div id="fwUpdateSteps" hidden>
+            <ol class="fw-steps">
+              <li>Press the <strong>BOOT</strong> button on the sensor (the LED flashes twice).</li>
+              <li>Tap <strong>Start update</strong> within 30 s. Keep the phone near the sensor; it takes about a minute.</li>
+            </ol>
+            <div class="actions">
+              <button id="fwUpdateCancel" class="secondary" type="button">Cancel</button>
+              <button id="fwUpdateStart" class="primary" type="button">Start update</button>
+            </div>
+          </div>
+          <div id="fwUpdateProgress" hidden>
+            <progress id="fwUpdateBar" max="1" value="0"></progress>
+            <p id="fwUpdatePct" class="muted"></p>
+            <button id="fwUpdateStop" class="secondary" type="button">Cancel update</button>
+          </div>
+          <p id="fwUpdateMessage" class="message" aria-live="polite"></p>
+        </div>
       </div>
       <div class="card">
         <h2>Calibration</h2>

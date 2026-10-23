@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { UUID, decodeEvent, decodeSamples, decodeStatus, encodeCommand } from "../../data/bleprotocol.js";
+import {
+  UUID,
+  decodeEvent,
+  decodeOtaEvent,
+  decodeSamples,
+  decodeStatus,
+  encodeCommand,
+  encodeOtaData,
+  encodeOtaEnd,
+  encodeOtaStart,
+} from "../../data/bleprotocol.js";
 
 // Byte vectors shared with the firmware's test/test_core/test_main.cpp.
 const SAMPLES = Uint8Array.of(0x02, 0x01, 0xe8, 0x03, 0x00, 0x00, 0xd4, 0x30, 0x00, 0x00, 0xe9, 0x07, 0x6a, 0xff, 0xff, 0x7f);
@@ -66,4 +76,17 @@ test("UUIDs are distinct and well-formed", () => {
   const all = Object.values(UUID);
   assert.equal(new Set(all).size, all.length);
   for (const u of all) assert.match(u, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+});
+
+test("firmware update messages (same vectors as the firmware tests)", () => {
+  const sha = Uint8Array.from({ length: 32 }, (_, i) => i);
+  const start = encodeOtaStart(618496, sha);
+  assert.deepEqual([...start.slice(0, 5)], [0x01, 0x00, 0x70, 0x09, 0x00]);
+  assert.equal(start.length, 37);
+  assert.equal(start[36], 31);
+  assert.deepEqual(encodeOtaData(256, Uint8Array.of(0xaa, 0xbb)), Uint8Array.of(0x02, 0x00, 0x01, 0x00, 0x00, 0xaa, 0xbb));
+  assert.deepEqual(encodeOtaEnd(), Uint8Array.of(0x03));
+  assert.deepEqual(decodeOtaEvent(Uint8Array.of(0x02, 0x00, 0x00, 0x40, 0x00, 0x00)), { t: "progress", code: 0, value: 16384 });
+  assert.deepEqual(decodeOtaEvent(Uint8Array.of(0x04, 0x06, 0x00, 0x00, 0x00, 0x00)), { t: "error", code: 6, value: 0 });
+  assert.equal(decodeOtaEvent(Uint8Array.of(0x09, 0, 0, 0, 0, 0)), null);
 });

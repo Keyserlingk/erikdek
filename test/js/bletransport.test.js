@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { UUID } from "../../data/bleprotocol.js";
+import { createHash } from "node:crypto";
 import { BleTransport } from "../../data/bletransport.js";
 
 // Node 18 has no CustomEvent (browsers and Node 19+ do).
@@ -54,7 +55,39 @@ function fakeClient({ pick = "AA:BB", failConnect = 0 } = {}) {
       c.notify[chr] = cb;
     },
     async write(id, service, chr, value) {
-      c.writes.push([chr, new Uint8Array(value.buffer)]);
+      const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength).slice();
+      c.writes.push([chr, bytes]);
+      if (chr === UUID.ota) c.ota(bytes);
+    },
+    async getMtu() {
+      return 247;
+    },
+    async stopNotifications() {},
+    // Plays the sensor's side of a firmware update.
+    otaArmed: true,
+    otaImage: [],
+    ota(bytes) {
+      const send = (type, code = 0, value = 0) => {
+        const ev = new Uint8Array(6);
+        ev[0] = type;
+        ev[1] = code;
+        new DataView(ev.buffer).setUint32(2, value, true);
+        setTimeout(() => c.notify[UUID.ota](new DataView(ev.buffer)), 1);
+      };
+      if (bytes[0] === 1) {
+        c.otaSize = new DataView(bytes.buffer).getUint32(1, true);
+        c.otaSha = Buffer.from(bytes.slice(5)).toString("hex");
+        if (!c.otaArmed) send(4, 1);
+        else send(1, 0, c.otaSize);
+      } else if (bytes[0] === 2) {
+        c.otaImage.push(...bytes.slice(5));
+      } else if (bytes[0] === 3) {
+        const sha = createHash("sha256").update(Uint8Array.from(c.otaImage)).digest("hex");
+        if (sha === c.otaSha && c.otaImage.length === c.otaSize) send(3, 0, c.otaSize);
+        else send(4, 6);
+      } else if (bytes[0] === 4) {
+        c.otaAborted = true;
+      }
     },
   };
   return c;
@@ -153,4 +186,33 @@ test("a cancelled picker waits for the user; forget clears the sensor", async ()
   assert.equal(t2.deviceId, null);
   assert.ok(ok.calls.some((c) => c[0] === "disconnect"));
   assert.equal(t2.state, "closed");
+});
+
+const digest = async (bytes) => new Uint8Array(createHash("sha256").update(bytes).digest());
+
+test("firmware update: sends the image in order and waits for the sensor", async () => {
+  const client = fakeClient();
+  const t = new BleTransport({ loadClient: async () => client, storage: memoryStorage({ "erkdek.bleDevice": "AA:BB" }), digest });
+  await t.connect();
+  const image = Uint8Array.from({ length: 1000 }, (_, i) => i % 251);
+  const progress = [];
+  await t.updateFirmware(image, { onProgress: (p) => progress.push(p) });
+  assert.deepEqual(Uint8Array.from(client.otaImage), image);
+  const dataWrites = client.writes.filter(([chr, b]) => chr === UUID.ota && b[0] === 2);
+  assert.equal(dataWrites[0][1].length, 247 - 3); // as much as the packet size allows
+  assert.equal(progress.at(-1), 1);
+});
+
+test("firmware update: readable errors, and cancelling aborts on the sensor", async () => {
+  const client = fakeClient();
+  client.otaArmed = false;
+  const t = new BleTransport({ loadClient: async () => client, storage: memoryStorage({ "erkdek.bleDevice": "AA:BB" }), digest });
+  await t.connect();
+  await assert.rejects(t.updateFirmware(Uint8Array.of(1, 2, 3)), /BOOT button/);
+
+  client.otaArmed = true;
+  const cancel = new AbortController();
+  cancel.abort();
+  await assert.rejects(t.updateFirmware(Uint8Array.of(1, 2, 3), { signal: cancel.signal }), /cancelled/);
+  assert.equal(client.otaAborted, true);
 });

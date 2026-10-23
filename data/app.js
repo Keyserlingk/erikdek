@@ -6,6 +6,7 @@ import { device } from "./device.js";
 import { initHistory, showHistory } from "./history.js";
 import { initLive } from "./live.js";
 import { initMock } from "./mock.js";
+import { initFirmwareUpdate } from "./firmwareui.js";
 import { initProfiles } from "./profileui.js";
 import { profiles } from "./profiles.js";
 import { initSettings, showAbout } from "./settings.js";
@@ -103,6 +104,7 @@ initSettings();
 initTrain();
 initHistory();
 initBackup();
+initFirmwareUpdate({ busy: isBusy });
 
 // Tapping the tab you're already on goes back to that tab's main screen.
 const REHOME = {

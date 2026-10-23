@@ -5,6 +5,7 @@
 
 #include "battery.h"
 #include "ble_protocol.h"
+#include "ota.h"
 #include "sensor.h"
 
 #ifndef ERKDEK_VERSION
@@ -18,6 +19,7 @@ static constexpr const char* kSamplesUuid = "9a0b0002-3d10-4e93-8657-4a72c5dd331
 static constexpr const char* kStatusUuid = "9a0b0003-3d10-4e93-8657-4a72c5dd3311";
 static constexpr const char* kCommandUuid = "9a0b0004-3d10-4e93-8657-4a72c5dd3311";
 static constexpr const char* kEventUuid = "9a0b0005-3d10-4e93-8657-4a72c5dd3311";
+static constexpr const char* kOtaUuid = "9a0b0006-3d10-4e93-8657-4a72c5dd3311";
 
 static constexpr uint32_t kSamplePushMs = 50;
 static constexpr uint32_t kStatusPushMs = 1000;
@@ -28,6 +30,7 @@ static NimBLEServer* server = nullptr;
 static NimBLECharacteristic* samplesChr = nullptr;
 static NimBLECharacteristic* statusChr = nullptr;
 static NimBLECharacteristic* eventChr = nullptr;
+static NimBLECharacteristic* otaChr = nullptr;
 static volatile uint16_t connHandle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t seq = 0;
 
@@ -65,6 +68,17 @@ class CommandCallbacks : public NimBLECharacteristicCallbacks {
   }
 };
 
+class OtaCallbacks : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
+    const NimBLEAttValue& value = c->getValue();
+    otaHandleWrite(value.data(), value.size());
+  }
+};
+
+void bleNotifyOta(const uint8_t* data, size_t len) {
+  if (bleConnected()) otaChr->notify(data, len);
+}
+
 bool bleConnected() { return connHandle != BLE_HS_CONN_HANDLE_NONE; }
 
 static void updateStatus(bool notify) {
@@ -90,6 +104,8 @@ void bleBegin() {
       service->createCharacteristic(kCommandUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   commandChr->setCallbacks(new CommandCallbacks());
   eventChr = service->createCharacteristic(kEventUuid, NIMBLE_PROPERTY::NOTIFY);
+  otaChr = service->createCharacteristic(kOtaUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+  otaChr->setCallbacks(new OtaCallbacks());
 
   // Standard Device Information service: Firmware Revision String.
   NimBLEService* info = server->createService("180A");
@@ -161,7 +177,14 @@ void bleLoop() {
 
   if (now - lastSamples >= kSamplePushMs) {
     lastSamples = now;
-    sendSamples();
+    if (otaActive()) {
+      // During a firmware update the link is for the update: drop the readings.
+      Sample discard[kMaxBatch];
+      while (sensorDrain(discard, kMaxBatch)) {
+      }
+    } else {
+      sendSamples();
+    }
   }
   if (now - lastStatus >= kStatusPushMs) {
     lastStatus = now;

@@ -202,6 +202,38 @@ void test_calibration_moving_limit() {
   TEST_ASSERT_TRUE(calibrationMoving(0.4f, 70.0f));
 }
 
+void test_ota_parse_and_events() {
+  ble::OtaCommand cmd;
+  uint8_t start[37] = {0x01, 0x00, 0x70, 0x09, 0x00};  // size 0x097000 = 618496
+  for (int i = 0; i < 32; i++) start[5 + i] = (uint8_t)i;
+  TEST_ASSERT_TRUE(ble::parseOta(start, sizeof(start), cmd));
+  TEST_ASSERT_EQUAL(ble::OtaStart, cmd.op);
+  TEST_ASSERT_EQUAL_UINT32(618496, cmd.size);
+  TEST_ASSERT_EQUAL_HEX8(31, cmd.sha256[31]);
+  TEST_ASSERT_FALSE(ble::parseOta(start, 36, cmd));  // sha cut short
+
+  const uint8_t data[] = {0x02, 0x00, 0x01, 0x00, 0x00, 0xAA, 0xBB};  // offset 256
+  TEST_ASSERT_TRUE(ble::parseOta(data, sizeof(data), cmd));
+  TEST_ASSERT_EQUAL_UINT32(256, cmd.offset);
+  TEST_ASSERT_EQUAL(2u, cmd.length);
+  TEST_ASSERT_EQUAL_HEX8(0xBB, cmd.data[1]);
+  TEST_ASSERT_FALSE(ble::parseOta(data, 5, cmd));  // no bytes
+
+  const uint8_t end[] = {0x03};
+  TEST_ASSERT_TRUE(ble::parseOta(end, 1, cmd));
+  TEST_ASSERT_EQUAL(ble::OtaEnd, cmd.op);
+  const uint8_t bad[] = {0x09};
+  TEST_ASSERT_FALSE(ble::parseOta(bad, 1, cmd));
+
+  uint8_t ev[8];
+  const uint8_t progress[] = {0x02, 0x00, 0x00, 0x40, 0x00, 0x00};  // 16384 bytes
+  TEST_ASSERT_EQUAL(6u, ble::encodeOtaEvent(ev, ble::OtaProgress, ble::OtaOk, 16384));
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(progress, ev, 6);
+  const uint8_t error[] = {0x04, 0x06, 0x00, 0x00, 0x00, 0x00};  // bad checksum
+  ble::encodeOtaEvent(ev, ble::OtaError, ble::OtaBadChecksum, 0);
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(error, ev, 6);
+}
+
 void test_console_parses_commands() {
   TEST_ASSERT_TRUE(parseConsoleLine("t").op == ConsoleOp::Tare);
   TEST_ASSERT_TRUE(parseConsoleLine("  T \r").op == ConsoleOp::Tare);
@@ -245,6 +277,7 @@ int main() {
   RUN_TEST(test_ring_buffer_fifo_and_overflow);
   RUN_TEST(test_averager_measures_noise);
   RUN_TEST(test_calibration_moving_limit);
+  RUN_TEST(test_ota_parse_and_events);
   RUN_TEST(test_console_parses_commands);
   RUN_TEST(test_console_rejects_bad_input);
   return UNITY_END();

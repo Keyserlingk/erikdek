@@ -4,6 +4,7 @@
 #include "ble.h"
 #include "console.h"
 #include "led.h"
+#include "ota.h"
 #include "sensor.h"
 #include "storage.h"
 
@@ -22,6 +23,11 @@ static void handleSensorEvents() {
   }
 }
 
+// Keep a new firmware on probation instead of the Arduino core marking it valid before
+// setup(): it marks itself valid once Bluetooth runs (otaMarkValid), so a firmware that
+// crashes on start is rolled back by the bootloader.
+extern "C" bool verifyRollbackLater() { return true; }
+
 void setup() {
   Serial.begin(115200);
   Serial.println("\nErkdek starting");
@@ -31,12 +37,15 @@ void setup() {
   bleBegin();
   consoleBegin();
   ledBegin();
+  otaBegin();
+  otaMarkValid();  // got this far: sensor and Bluetooth are up
 }
 
 void loop() {
   handleSensorEvents();
   bleLoop();
   consoleLoop();
+  otaLoop();
   SensorStatus st = sensorStatus();
   ledLoop(bleConnected(), st.samplesRead, st.lastKg);
   delay(5);

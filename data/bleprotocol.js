@@ -19,6 +19,7 @@ export const UUID = {
   status: BASE(3),
   command: BASE(4),
   event: BASE(5),
+  ota: BASE(6), // firmware update (write with response / notify)
   // Standard Device Information service / Firmware Revision String
   deviceInfo: "0000180a-0000-1000-8000-00805f9b34fb",
   firmware: "00002a26-0000-1000-8000-00805f9b34fb",
@@ -102,4 +103,52 @@ export function encodeCommand(msg) {
     return out;
   }
   return Uint8Array.of(op);
+}
+
+// ---------------------------------------------------------------- firmware update
+// Same layouts as ble::OtaOp / OtaEvent in the firmware:
+//   start 0x01 | size u32 | sha256[32] · data 0x02 | offset u32 | bytes · end 0x03 · abort 0x04
+//   event: type u8 (1 ready, 2 progress, 3 done, 4 error) | code u8 | value u32
+
+export const OTA_DATA_HEADER = 5;
+const OTA_EVENTS = { 1: "ready", 2: "progress", 3: "done", 4: "error" };
+// What went wrong, by error code (the firmware's OtaErrorCode).
+export const OTA_ERRORS = {
+  0: "The update was cancelled.",
+  1: "Press the BOOT button on the sensor first, then start the update within 30 s.",
+  2: "The firmware file doesn't fit or arrived incomplete.",
+  3: "The sensor couldn't prepare the update.",
+  4: "Writing the firmware on the sensor failed.",
+  5: "Data arrived out of order.",
+  6: "The firmware arrived damaged (checksum mismatch).",
+  7: "The sensor rejected the firmware image.",
+  8: "No update in progress on the sensor.",
+  9: "An update is already in progress.",
+};
+
+export function encodeOtaStart(size, sha256) {
+  const out = new Uint8Array(37);
+  out[0] = 1;
+  new DataView(out.buffer).setUint32(1, size, true);
+  out.set(sha256, 5);
+  return out;
+}
+
+export function encodeOtaData(offset, bytes) {
+  const out = new Uint8Array(OTA_DATA_HEADER + bytes.length);
+  out[0] = 2;
+  new DataView(out.buffer).setUint32(1, offset, true);
+  out.set(bytes, OTA_DATA_HEADER);
+  return out;
+}
+
+export const encodeOtaEnd = () => Uint8Array.of(3);
+export const encodeOtaAbort = () => Uint8Array.of(4);
+
+// -> { t: "ready" | "progress" | "done" | "error", code, value } or null
+export function decodeOtaEvent(bytes) {
+  const v = view(bytes);
+  if (v.byteLength < 6) return null;
+  const t = OTA_EVENTS[v.getUint8(0)];
+  return t ? { t, code: v.getUint8(1), value: v.getUint32(2, true) } : null;
 }
