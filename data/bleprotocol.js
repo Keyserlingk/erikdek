@@ -115,7 +115,6 @@ const OTA_EVENTS = { 1: "ready", 2: "progress", 3: "done", 4: "error" };
 // What went wrong, by error code (the firmware's OtaErrorCode).
 export const OTA_ERRORS = {
   0: "The update was cancelled.",
-  1: "Press the BOOT button on the sensor first, then start the update within 30 s.",
   2: "The firmware file doesn't fit or arrived incomplete.",
   3: "The sensor couldn't prepare the update.",
   4: "Writing the firmware on the sensor failed.",

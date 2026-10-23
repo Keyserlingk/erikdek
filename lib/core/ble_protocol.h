@@ -157,7 +157,7 @@ inline bool parseCommand(const uint8_t* data, size_t len, ParsedCommand& out) {
 
 // ---------------------------------------------------------------- firmware update
 // Writes to the update characteristic (with response):
-//   start  0x01 | size u32 | sha256 [32]   needs the BOOT button pressed in the last 30 s
+//   start  0x01 | size u32 | sha256 [32]
 //   data   0x02 | offset u32 | bytes...    in order, offset = bytes received so far
 //   end    0x03                            verify, switch to the new firmware, restart
 //   abort  0x04
@@ -168,7 +168,6 @@ enum OtaOp : uint8_t { OtaStart = 1, OtaData = 2, OtaEnd = 3, OtaAbort = 4 };
 enum OtaEvent : uint8_t { OtaReady = 1, OtaProgress = 2, OtaDone = 3, OtaError = 4 };
 enum OtaErrorCode : uint8_t {
   OtaOk = 0,
-  OtaNotArmed = 1,     // BOOT button not pressed
   OtaBadSize = 2,      // too large, or end before all bytes arrived
   OtaBeginFailed = 3,  // couldn't prepare the update slot
   OtaWriteFailed = 4,

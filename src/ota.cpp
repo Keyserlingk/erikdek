@@ -6,17 +6,12 @@
 
 #include "ble.h"
 #include "ble_protocol.h"
-#include "led.h"
 
-static constexpr uint8_t kBootButtonPin = 0;          // the board's BOOT button (low when pressed)
-static constexpr uint32_t kArmMs = 30000;             // update window after pressing BOOT
 static constexpr uint32_t kProgressEvery = 16 * 1024; // progress notification interval
 
 enum class State : uint8_t { Idle, Starting, Receiving, Finishing };
 
 static volatile State state = State::Idle;
-static uint32_t armedUntil = 0;
-static bool buttonWasDown = false;
 static const esp_partition_t* target = nullptr;
 static esp_ota_handle_t handle = 0;
 static uint32_t expectedSize = 0;
@@ -40,7 +35,7 @@ static void fail(ble::OtaErrorCode code) {
 
 bool otaActive() { return state != State::Idle; }
 
-void otaBegin() { pinMode(kBootButtonPin, INPUT_PULLUP); }
+void otaBegin() {}
 
 void otaMarkValid() {
   esp_ota_img_states_t st;
@@ -59,7 +54,6 @@ void otaHandleWrite(const uint8_t* data, size_t len) {
   switch (cmd.op) {
     case ble::OtaStart:
       if (state != State::Idle) return notify(ble::OtaError, ble::OtaBusy, 0);
-      if ((int32_t)(armedUntil - millis()) <= 0) return notify(ble::OtaError, ble::OtaNotArmed, 0);
       target = esp_ota_get_next_update_partition(nullptr);
       if (!target || cmd.size == 0 || cmd.size > target->size) return notify(ble::OtaError, ble::OtaBadSize, 0);
       expectedSize = cmd.size;
@@ -127,13 +121,6 @@ static void finish() {
 }
 
 void otaLoop() {
-  bool down = digitalRead(kBootButtonPin) == LOW;
-  if (down && !buttonWasDown) {
-    armedUntil = millis() + kArmMs;
-    Serial.println("> BOOT pressed: update window open for 30 s");
-    ledFlash();
-  }
-  buttonWasDown = down;
   if (state == State::Starting) start();
   if (state == State::Finishing) finish();
 }

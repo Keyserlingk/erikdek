@@ -64,7 +64,7 @@ function fakeClient({ pick = "AA:BB", failConnect = 0 } = {}) {
     },
     async stopNotifications() {},
     // Plays the sensor's side of a firmware update.
-    otaArmed: true,
+    otaBusy: false,
     otaImage: [],
     ota(bytes) {
       const send = (type, code = 0, value = 0) => {
@@ -77,7 +77,7 @@ function fakeClient({ pick = "AA:BB", failConnect = 0 } = {}) {
       if (bytes[0] === 1) {
         c.otaSize = new DataView(bytes.buffer).getUint32(1, true);
         c.otaSha = Buffer.from(bytes.slice(5)).toString("hex");
-        if (!c.otaArmed) send(4, 1);
+        if (c.otaBusy) send(4, 9);
         else send(1, 0, c.otaSize);
       } else if (bytes[0] === 2) {
         c.otaImage.push(...bytes.slice(5));
@@ -205,12 +205,12 @@ test("firmware update: sends the image in order and waits for the sensor", async
 
 test("firmware update: readable errors, and cancelling aborts on the sensor", async () => {
   const client = fakeClient();
-  client.otaArmed = false;
+  client.otaBusy = true;
   const t = new BleTransport({ loadClient: async () => client, storage: memoryStorage({ "erkdek.bleDevice": "AA:BB" }), digest });
   await t.connect();
-  await assert.rejects(t.updateFirmware(Uint8Array.of(1, 2, 3)), /BOOT button/);
+  await assert.rejects(t.updateFirmware(Uint8Array.of(1, 2, 3)), /already in progress/);
 
-  client.otaArmed = true;
+  client.otaBusy = false;
   const cancel = new AbortController();
   cancel.abort();
   await assert.rejects(t.updateFirmware(Uint8Array.of(1, 2, 3), { signal: cancel.signal }), /cancelled/);

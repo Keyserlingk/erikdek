@@ -1,6 +1,6 @@
 // Settings → Sensor → Firmware: updates the sensor over Bluetooth with the firmware
-// bundled in the app (data/firmware/, tools/bundle_firmware.py). The sensor only takes
-// an update in the 30 s after its BOOT button was pressed; see ota.h in the firmware.
+// bundled in the app (data/firmware/, tools/bundle_firmware.py); see ota.h in the
+// firmware.
 
 import { device } from "./device.js";
 import { allowScreenOff, keepScreenOn } from "./wakelock.js";
