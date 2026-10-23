@@ -37,6 +37,7 @@ void loop() {
   handleSensorEvents();
   bleLoop();
   consoleLoop();
-  ledLoop(bleConnected(), sensorStatus().samplesRead);
+  SensorStatus st = sensorStatus();
+  ledLoop(bleConnected(), st.samplesRead, st.lastKg);
   delay(5);
 }
