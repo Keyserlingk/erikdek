@@ -4,6 +4,7 @@
 
 import { clamp } from "./common.js";
 import { LEVEL_IDS } from "./pong.js";
+import { SCALE_IDS } from "./tug.js";
 
 export const playKey = (profileId) => `erkdek.play:${profileId}`;
 
@@ -13,15 +14,22 @@ export const RANGE_KG = { min: 2, max: 200, step: 1 };
 export const RANGE_PCT = { min: 5, max: 150, step: 5 };
 const DEFAULT_RANGE = { unit: "kg", kg: 20, pct: 30 };
 
-export const GAME_IDS = ["pong", "flappy"];
+export const GAME_IDS = ["pong", "flappy"]; // the games with a full range
+
+// Your max pull for Tug of war when there is no Max pull test, in kg.
+export const MAX_KG = { min: 5, max: 250, step: 1, start: 30 };
 
 // pong: the difficulty and, per difficulty, games won and played and the best win margin
-// as { you, cpu }; flappy: best = most pipes passed.
+// as { you, cpu }; flappy: best = most pipes passed; tug: the scale, the computer's
+// strength (level), your max pull typed in (used without a Max pull test) and, per
+// strength, games won and played and the fastest round you won (s).
 const pongResults = () => ({ best: null, wins: 0, played: 0 });
+const tugResults = () => ({ fastestS: null, wins: 0, played: 0 });
 export function defaultPlayData() {
   return {
     pong: { range: { ...DEFAULT_RANGE }, level: "normal", results: Object.fromEntries(LEVEL_IDS.map((l) => [l, pongResults()])) },
     flappy: { range: { ...DEFAULT_RANGE }, best: 0, played: 0 },
+    tug: { scale: "kg", level: "normal", maxKg: MAX_KG.start, results: Object.fromEntries(LEVEL_IDS.map((l) => [l, tugResults()])) },
   };
 }
 
@@ -56,6 +64,18 @@ export function loadPlayData(storage, profileId) {
     d.played = count(r.played);
     d.wins = Math.min(count(r.wins), d.played);
     if (Number.isInteger(r.best?.you) && Number.isInteger(r.best?.cpu)) d.best = { you: r.best.you, cpu: r.best.cpu };
+  }
+  const tug = stored.tug || {};
+  if (SCALE_IDS.includes(tug.scale)) data.tug.scale = tug.scale;
+  if (LEVEL_IDS.includes(tug.level)) data.tug.level = tug.level;
+  if (Number.isFinite(tug.maxKg)) data.tug.maxKg = clamp(Math.round(tug.maxKg), MAX_KG.min, MAX_KG.max);
+  for (const l of LEVEL_IDS) {
+    const r = tug.results?.[l];
+    if (!r || typeof r !== "object") continue;
+    const d = data.tug.results[l];
+    d.played = count(r.played);
+    d.wins = Math.min(count(r.wins), d.played);
+    if (Number.isFinite(r.fastestS) && r.fastestS > 0) d.fastestS = r.fastestS;
   }
   data.flappy.played = count(stored.flappy?.played);
   data.flappy.best = count(stored.flappy?.best);
@@ -103,6 +123,33 @@ export function recordPong(data, level, you, cpu) {
   if (better) g.best = { you, cpu };
   return better;
 }
+
+// Records a finished Tug of war game at a strength; true when `fastestS` (your quickest
+// round win in it, or null) is a new best.
+export function recordTug(data, level, won, fastestS) {
+  const g = data.tug.results[level];
+  g.played++;
+  if (won) g.wins++;
+  if (fastestS == null || (g.fastestS != null && fastestS >= g.fastestS)) return false;
+  g.fastestS = fastestS;
+  return true;
+}
+
+// The best peak of the Max pull tests in `entries` (a session index), or null.
+export function bestMaxPullKg(entries) {
+  let best = null;
+  for (const e of entries) {
+    const kg = e?.type === "maxPull" ? e.summary?.peakKg : null;
+    if (Number.isFinite(kg) && kg > 0 && (best == null || kg > best)) best = kg;
+  }
+  return best;
+}
+
+// The max pull the game uses: the best Max pull test, else the one typed in.
+export const tugMaxKg = (tug, entries) => bestMaxPullKg(entries) ?? tug.maxKg;
+
+// The scale the game is played on: % BW needs a bodyweight (else kg).
+export const tugScale = (tug, bodyweightKg) => (tug.scale === "bw" && !(bodyweightKg > 0) ? "kg" : tug.scale);
 
 // Records a finished Flappy round; true when it is a new best.
 export function recordFlappy(data, score) {

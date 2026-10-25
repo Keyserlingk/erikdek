@@ -1,5 +1,6 @@
 // Play tab: mini games steered by your pull (games/*.js). The home screen lists the games
-// with their best score and full range (the force that maps to the top or right edge);
+// with their best score and full range (the force that maps to the top or right edge; Tug
+// of war has a scale and your max pull instead);
 // a game runs on a canvas with Pause and Quit. Without a sensor, press and drag on the
 // game instead.
 
@@ -7,9 +8,23 @@ import { tone, unlockAudio } from "./audio.js";
 import { device } from "./device.js";
 import { clamp, forceToLevel } from "./games/common.js";
 import { drawFlappy, newFlappy, stepFlappy } from "./games/flappy.js";
-import { fullRangeKg, loadPlayData, recordFlappy, recordPong, savePlayData, stepRange } from "./games/playdata.js";
+import {
+  MAX_KG,
+  bestMaxPullKg,
+  fullRangeKg,
+  loadPlayData,
+  recordFlappy,
+  recordPong,
+  recordTug,
+  savePlayData,
+  stepRange,
+  tugMaxKg,
+  tugScale,
+} from "./games/playdata.js";
 import { LEVEL_IDS, PONG, drawPong, newPong, stepPong } from "./games/pong.js";
+import { SCALES, SCALE_IDS, TUG, TUG_LEVELS, cpuOpponent, drawTug, newTug, stepTug, toScale } from "./games/tug.js";
 import { profiles } from "./profiles.js";
+import { sessions } from "./sessions.js";
 import { settings } from "./settingsstore.js";
 import { $, button, create } from "./ui.js";
 import { allowScreenOff, keepScreenOn } from "./wakelock.js";
@@ -76,6 +91,46 @@ const GAMES = {
       return { title: "Crashed", text: `${s.score} pipe${s.score === 1 ? "" : "s"}` + (newBest ? " · new best" : "") };
     },
     sounds: { pass: [880, 0.06], crash: [180, 0.3] },
+  },
+  tug: {
+    name: "Tug of war",
+    about: `Pull harder than the computer to drag the flag to your end; the bigger the difference, the faster it moves. Rounds last up to ${TUG.roundS} s, best of 3.`,
+    // Both pulls go on the chosen scale with your bodyweight and max. The opponent is
+    // anything with next(state, dt) → its level on that scale: the computer here; in
+    // multiplayer the host would plug in the other phone's latest level instead (normalised
+    // on that phone) and send the knot back (see games/tug.js).
+    prepare(d) {
+      const bodyweightKg = settings.values.bodyweightKg;
+      const maxKg = tugMaxKg(d, sessions.index);
+      const scale = tugScale(d, bodyweightKg);
+      const toLevel = (kg) => toScale(kg, scale, { bodyweightKg, maxKg }) ?? 0;
+      const opponent = cpuOpponent({ strengthKg: TUG_LEVELS[d.level] * maxKg, toLevel });
+      return { fullKg: maxKg, scale, level: d.level, toLevel, opponent };
+    },
+    create: (w, h, d, r) => newTug({ scale: r.scale }),
+    usesKg: true,
+    step: (s, dt, kg, r) => stepTug(s, dt, r.toLevel(kg), r.opponent.next(s, dt)),
+    draw: drawTug,
+    isOver: (s) => s.phase === "over",
+    scoreText: (s) => `You ${s.you.rounds} – ${s.them.rounds} CPU`,
+    bestText: ({ results, level }) => {
+      const r = results[level];
+      return r.played ? `${r.wins} of ${r.played} won` + (r.fastestS ? ` · fastest round ${r.fastestS.toFixed(1)} s` : "") : "Not played yet";
+    },
+    levels: { easy: "Easy", normal: "Normal", hard: "Hard" },
+    rows: (id) => [scaleRow(id), maxRow(id)],
+    // Touch: the lower your finger, the harder you pull (bottom = your max).
+    touchLevel: (fx, fy) => fy,
+    holdTouch: false,
+    record(data, s, r) {
+      const won = s.you.rounds > s.them.rounds;
+      const newBest = recordTug(data, r.level, won, s.fastestWinS);
+      return {
+        title: won ? "You won!" : "Computer wins",
+        text: `${s.you.rounds} – ${s.them.rounds} · ${this.levels[r.level]}` + (newBest ? ` · fastest round ${s.fastestWinS.toFixed(1)} s` : ""),
+      };
+    },
+    sounds: { count: [440, 0.08], go: [880, 0.2], roundWon: [880, 0.15], roundLost: [220, 0.25], draw: [440, 0.15] },
   },
 };
 
@@ -151,6 +206,62 @@ function levelRow(id, names) {
   ]);
 }
 
+// Tug of war: what counts as pulling harder.
+function scaleRow(id) {
+  const d = data[id];
+  const bw = settings.values.bodyweightKg;
+  const scale = tugScale(d, bw);
+  const pick = (next) => {
+    d.scale = next;
+    saveData();
+    renderHome();
+  };
+  const buttons = SCALE_IDS.map((sc) => {
+    const b = button(scale === sc ? "active" : "", SCALES[sc].name, () => pick(sc));
+    if (sc === "bw" && !(bw > 0)) {
+      b.disabled = true;
+      b.title = "Set your bodyweight in Settings first";
+    }
+    return b;
+  });
+  const what = { kg: "Pulls compared in kg.", bw: `Pulls compared as % of bodyweight (${bw} kg).`, max: "Pulls compared as % of each player's max pull." };
+  return create("div", { className: "play-range" }, [
+    create("span", { className: "muted", textContent: "Scale" }),
+    create("div", { className: "segmented" }, buttons),
+    create("span", { className: "muted play-range-kg", textContent: what[scale] }),
+  ]);
+}
+
+// Tug of war: your max pull sets the computer's strength (and the % max scale). From your
+// best Max pull test, else typed in here.
+function maxRow(id) {
+  const d = data[id];
+  const tested = bestMaxPullKg(sessions.index);
+  const maxKg = tugMaxKg(d, sessions.index);
+  const cpuKg = TUG_LEVELS[d.level] * maxKg;
+  const cpuText = `The computer pulls about ${Math.round(TUG_LEVELS[d.level] * 100)} % of it (${cpuKg.toFixed(0)} kg), in waves.`;
+  if (tested != null) {
+    return create("div", { className: "play-range" }, [
+      create("span", { className: "muted", textContent: "Your max" }),
+      create("strong", { className: "play-range-value", textContent: `${maxKg.toFixed(1)} kg` }),
+      create("span", { className: "muted", textContent: "from Max pull test" }),
+      create("span", { className: "muted play-range-kg", textContent: cpuText }),
+    ]);
+  }
+  const change = (dir) => {
+    d.maxKg = clamp(d.maxKg + dir * MAX_KG.step, MAX_KG.min, MAX_KG.max);
+    saveData();
+    renderHome();
+  };
+  return create("div", { className: "play-range" }, [
+    create("span", { className: "muted", textContent: "Your max" }),
+    button("pill-button step", "−", () => change(-1)),
+    create("strong", { className: "play-range-value", textContent: `${d.maxKg} kg` }),
+    button("pill-button step", "+", () => change(1)),
+    create("span", { className: "muted play-range-kg", textContent: `No Max pull test yet: set your best pull here. ${cpuText}` }),
+  ]);
+}
+
 function renderHome() {
   loadData();
   el.cards.replaceChildren(
@@ -162,7 +273,7 @@ function renderHome() {
         ]),
         create("p", { className: "muted", textContent: g.about }),
         ...(g.levels ? [levelRow(id, g.levels)] : []),
-        rangeRow(id),
+        ...(g.rows ? g.rows(id) : [rangeRow(id)]),
         create("div", { className: "actions" }, [button("primary", "Play", () => start(id))]),
       ]),
     ),
@@ -215,6 +326,12 @@ function currentLevel() {
   return run.game.holdTouch ? clamp(input.touchLevel, 0, 1) : 0;
 }
 
+// The force in kg (Tug of war: no cap at the full range); touch is a share of fullKg.
+function currentKg() {
+  if (input.touching) return clamp(input.touchLevel, 0, 1) * run.fullKg;
+  return sensorLive() ? Math.max(0, input.kg) : 0;
+}
+
 function draw() {
   if (!run || !view.w) return;
   const ctx = el.canvas.getContext("2d");
@@ -234,7 +351,7 @@ function frame(t) {
   if (run.paused || run.ended) return;
   const dt = run.last ? Math.min(0.05, (t - run.last) / 1000) : 0;
   run.last = t;
-  for (const ev of run.game.step(run.s, dt, currentLevel())) {
+  for (const ev of run.game.step(run.s, dt, run.game.usesKg ? currentKg() : currentLevel(), run)) {
     const sound = run.game.sounds[ev];
     if (sound) tone(sound[0], sound[1]);
   }
@@ -260,12 +377,14 @@ function start(id) {
   window.scrollTo(0, 0);
   fitStage();
   const game = GAMES[id];
+  // Per-game extras (Tug of war: scale, opponent); fullKg = the force of a full touch.
+  const extra = game.prepare ? game.prepare(data[id]) : { fullKg: fullRangeKg(data[id].range, settings.values.bodyweightKg) };
   run = {
+    ...extra,
     id,
     game,
-    s: game.create(el.stage.clientWidth, el.stage.clientHeight, data[id]),
+    s: game.create(el.stage.clientWidth, el.stage.clientHeight, data[id], extra),
     profileId: profiles.activeId, // scores go to the profile the game started with
-    fullKg: fullRangeKg(data[id].range, settings.values.bodyweightKg),
     paused: false,
     ended: false,
     raf: 0,
@@ -302,7 +421,7 @@ function finish() {
   run.ended = true;
   allowScreenOff();
   data = loadPlayData(storage(), run.profileId);
-  const { title, text } = run.game.record(data, run.s);
+  const { title, text } = run.game.record(data, run.s, run);
   saveData(run.profileId);
   renderBar();
   const id = run.id;
@@ -370,5 +489,6 @@ export function initPlay() {
   document.addEventListener("visibilitychange", () => document.hidden && pause());
   profiles.addEventListener("change", () => !run && renderHome());
   settings.addEventListener("change", () => !run && renderHome());
+  sessions.addEventListener("change", () => !run && renderHome()); // a new Max pull test
   renderHome();
 }

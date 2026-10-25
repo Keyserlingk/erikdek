@@ -68,7 +68,7 @@ firmware (`tools/bundle_firmware.py`, needs PlatformIO), vendors the Capacitor p
   protocol in `tindeqprotocol.js`, verified details in PLAN.md) or `simdevice.js`
   (simulator). All share one interface (state/message events, connect, send).
   `bleprotocol.js` = Erkdek byte layouts (keep in step with the firmware).
-- Play tab: `play.js` (screens) and `games/` (`pong.js`, `flappy.js`, `common.js`,
+- Play tab: `play.js` (screens) and `games/` (`pong.js`, `flappy.js`, `tug.js`, `common.js`,
   `playdata.js`); game logic is pure and tested in `test/js/games.test.js`.
 - Tindeq from the laptop: `tools/tindeq_probe.py` (bleak venv; `--seconds 8 --tare-at 2
   --battery-at 5`). Never send 0x6E (sleep) or the calibration commands.
