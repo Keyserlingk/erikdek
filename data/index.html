@@ -310,6 +310,32 @@
 
     </section>
 
+    <section id="view-play" hidden>
+      <div id="playHome">
+        <h1>Play</h1>
+        <p class="muted">Games you steer with your pull. Set the full range to a load you can hold and move between.</p>
+        <div id="playCards"></div>
+        <p class="muted play-hint">No sensor? Press and drag on the game.</p>
+      </div>
+      <div id="playGame" class="play-game" hidden>
+        <div class="play-bar">
+          <span id="playScore" class="play-score"></span>
+          <span id="playKg" class="play-kg"></span>
+          <span class="spacer"></span>
+          <button id="playPause" class="pill-button" type="button">Pause</button>
+          <button id="playQuit" class="pill-button" type="button">Quit</button>
+        </div>
+        <div id="playStage" class="play-stage">
+          <canvas id="playCanvas"></canvas>
+          <div id="playOverlay" class="play-overlay" hidden>
+            <h2 id="playOverlayTitle"></h2>
+            <p id="playOverlayText" class="muted"></p>
+            <div id="playOverlayActions" class="actions"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="view-history" hidden>
       <div id="historyMain">
         <h1>History</h1>
@@ -591,6 +617,7 @@
     <a href="#live">Live</a>
     <a href="#train">Train</a>
     <a href="#tests">Tests</a>
+    <a href="#play">Play</a>
     <a href="#history">History</a>
     <a href="#settings">Settings</a>
   </nav>
