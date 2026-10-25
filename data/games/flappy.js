@@ -128,14 +128,19 @@ export function flappyDuelResult(me, them) {
   return me.t > them.t ? "won" : "lost";
 }
 
+// Places for several birds: [{ id, score, t }] → the same, best first (further = better).
+export function flappyRanking(birds) {
+  return [...birds].sort((a, b) => (b.score - a.score) || (b.t - a.t));
+}
+
 // The next pipe the bird still has to pass, or null.
 export const nextPipe = (s) => s.pipes.find((p) => !p.passed && p.x + FLAPPY.pipeW >= FLAPPY.birdX - FLAPPY.birdR) || null;
 
 // Paints the field. `c` holds theme colours ({bg, muted, accent, ok, bad, border});
 // `fullKg` labels the force scale on the right, where the band shows the load the next
-// gap needs and the arrow shows your current level. `ghost`: the other player's bird
-// ({ y, over }) in a two-phone game.
-export function drawFlappy(ctx, s, c, cssW, cssH, { fullKg, level, ghost = null }) {
+// gap needs and the arrow shows your current level. `ghosts`: the other players' birds
+// ({ y, over, name }) in a game with friends.
+export function drawFlappy(ctx, s, c, cssW, cssH, { fullKg, level, ghosts = [] }) {
   const scale = cssH / s.h;
   ctx.clearRect(0, 0, cssW, cssH);
   ctx.save();
@@ -187,12 +192,18 @@ export function drawFlappy(ctx, s, c, cssW, cssH, { fullKg, level, ghost = null 
   ctx.fill();
 
   const r = FLAPPY.birdR;
-  if (ghost) {
+  for (const ghost of ghosts) {
     ctx.globalAlpha = 0.4;
     ctx.fillStyle = ghost.over ? c.bad : c.muted;
     ctx.beginPath();
     ctx.arc(FLAPPY.birdX, ghost.y, r, 0, 2 * Math.PI);
     ctx.fill();
+    if (ghost.name && !ghost.over) {
+      ctx.font = "2.6px system-ui, sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(ghost.name, FLAPPY.birdX - r - 1, ghost.y);
+    }
     ctx.globalAlpha = 1;
   }
 

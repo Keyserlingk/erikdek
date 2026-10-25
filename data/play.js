@@ -9,7 +9,7 @@
 import { tone, unlockAudio } from "./audio.js";
 import { device } from "./device.js";
 import { clamp, forceToLevel, mirrorEvent } from "./games/common.js";
-import { drawFlappy, flappyDuelResult, newFlappy, stepFlappy } from "./games/flappy.js";
+import { drawFlappy, flappyDuelResult, flappyRanking, newFlappy, stepFlappy } from "./games/flappy.js";
 import {
   MAX_KG,
   bestMaxPullKg,
@@ -24,8 +24,21 @@ import {
   tugScale,
 } from "./games/playdata.js";
 import { LEVEL_IDS, PONG, coastPong, drawPong, mirrorPong, newPong, pongSnapshot, stepPong } from "./games/pong.js";
-import { SCALES, SCALE_IDS, TUG, TUG_LEVELS, cpuOpponent, drawTug, mirrorTug, newTug, stepTug, toScale, tugSnapshot } from "./games/tug.js";
-import { duel, duelCard, sendHi } from "./playduel.js";
+import {
+  SCALES,
+  SCALE_IDS,
+  TUG,
+  TUG_LEVELS,
+  cpuOpponent,
+  drawTug,
+  mirrorTug,
+  newTug,
+  stepTug,
+  teamLevel,
+  toScale,
+  tugSnapshot,
+} from "./games/tug.js";
+import { HOST_ID, duel, duelCard, sendHi } from "./playduel.js";
 import { profiles } from "./profiles.js";
 import { sessions } from "./sessions.js";
 import { settings } from "./settingsstore.js";
@@ -78,28 +91,31 @@ const GAMES = {
     sounds: { hit: [660, 0.05], wall: [440, 0.03], point: [880, 0.15], miss: [220, 0.25] },
     // The host runs the ball; the guest's paddle is the top one on the host's phone.
     duel: {
+      players: [2, 2],
       opts: (d, w, h) => ({ level: d.level, h: clamp((PONG.w * h) / w, 120, 200) }),
       create: (o) => newPong({ h: o.h, level: o.level }),
       step(s, dt, level, r) {
         r.net.mine = level;
-        if (r.net.role === "host") return stepPong(s, dt, level, r.net.theirs ?? 0.5);
+        if (r.net.role === "host") return stepPong(s, dt, level, r.net.inputs[opponent(r)]?.v ?? 0.5);
         coastPong(s, dt, level);
         return [];
       },
       outgoing: (s, r) => (r.net.role === "host" ? { snap: pongSnapshot(s) } : { v: r.net.mine }),
-      incoming(s, d, ev, r) {
+      incoming(s, from, d, ev, r) {
         if (r.net.role === "host") {
-          r.net.theirs = d.v;
+          r.net.inputs[from] = d;
           return [];
         }
         const m = mirrorPong(d.snap, s.h);
         Object.assign(s, m, { player: { ...m.player, x: s.player.x } }); // own paddle stays as you pull
         return ev.map(mirrorEvent);
       },
+      // One against one: the other leaving ends it.
+      left: (s, id, r) => `${nameIn(r, id)} left the game.`,
       isOver: (s) => s.phase === "over",
-      scoreText: (s, r) => `You ${s.player.score} – ${s.cpu.score} ${r.net.peerName}`,
+      scoreText: (s, r) => `You ${s.player.score} – ${s.cpu.score} ${nameIn(r, opponent(r))}`,
       result: (s, r) => ({
-        won: s.player.score > s.cpu.score,
+        title: s.player.score > s.cpu.score ? "You won!" : `${nameIn(r, opponent(r))} wins`,
         text: `${s.player.score} – ${s.cpu.score} · ${GAMES.pong.levels[r.opts.level]}`,
       }),
     },
@@ -121,23 +137,47 @@ const GAMES = {
       return { title: "Crashed", text: `${s.score} pipe${s.score === 1 ? "" : "s"}` + (newBest ? " · new best" : "") };
     },
     sounds: { pass: [880, 0.06], crash: [180, 0.3] },
-    // Both fly the same course on their own phone; the friend's bird is drawn faintly.
+    // Everyone flies the same course on their own phone; the others' birds are drawn
+    // faintly. Each phone sends its bird to the host, the host sends everyone's.
     duel: {
+      players: [2, 6],
       opts: () => ({ seed: Math.floor(Math.random() * 2 ** 31), w: 80 }), // 80: wider than a phone held upright
       create: (o) => newFlappy({ w: o.w, seed: o.seed }),
       step: (s, dt, level) => stepFlappy(s, dt, level),
-      outgoing: (s) => ({ y: s.bird.y, score: s.score, over: s.over, t: s.t }),
-      incoming(s, d, ev, r) {
-        r.net.them = d;
+      outgoing(s, r) {
+        const mine = { y: s.bird.y, score: s.score, over: s.over, t: s.t };
+        return r.net.role === "host" ? { birds: { ...r.net.birds, [r.net.myId]: mine } } : mine;
+      },
+      incoming(s, from, d, ev, r) {
+        if (r.net.role === "host") r.net.birds[from] = d;
+        else r.net.birds = d.birds ?? {};
         return [];
       },
-      isOver: (s, r) => s.over && Boolean(r.net.them?.over),
-      scoreText: (s, r) => `You ${s.score} · ${r.net.peerName} ${r.net.them?.score ?? 0}` + (s.over && !r.net.them?.over ? " · still flying" : ""),
-      drawOpts: (r) => ({ ghost: r.net.them }),
+      // A bird whose player left counts as crashed where it was.
+      left(s, id, r) {
+        r.net.birds[id] = { y: 0, score: 0, t: 0, ...r.net.birds[id], over: true };
+        return null;
+      },
+      othersOf: (r) => r.net.ids.filter((id) => id !== r.net.myId).map((id) => ({ id, ...(r.net.birds[id] ?? { score: 0, t: 0 }) })),
+      isOver: (s, r) => s.over && GAMES.flappy.duel.othersOf(r).every((b) => b.over),
+      scoreText(s, r) {
+        const best = GAMES.flappy.duel.othersOf(r).sort((a, b) => b.score - a.score)[0];
+        const flying = GAMES.flappy.duel.othersOf(r).filter((b) => !b.over).length;
+        return `You ${s.score}` + (best ? ` · ${nameIn(r, best.id)} ${best.score}` : "") + (s.over && flying ? ` · ${flying} still flying` : "");
+      },
+      drawOpts: (r) => ({
+        ghosts: GAMES.flappy.duel
+          .othersOf(r)
+          .filter((b) => Number.isFinite(b.y))
+          .map((b) => ({ y: b.y, over: b.over, name: nameIn(r, b.id) })),
+      }),
       result(s, r) {
-        const them = r.net.them;
-        const outcome = flappyDuelResult({ score: s.score, t: s.t }, them);
-        return { won: outcome === "won", draw: outcome === "draw", text: `${s.score} – ${them.score} pipes` };
+        const ranked = flappyRanking([{ id: r.net.myId, score: s.score, t: s.t }, ...GAMES.flappy.duel.othersOf(r)]);
+        const place = ranked.findIndex((b) => b.id === r.net.myId) + 1;
+        const tie = ranked.length > 1 && flappyDuelResult(ranked[0], ranked[1]) === "draw";
+        const title = place === 1 ? (tie ? "Draw" : "You won!") : `${nameIn(r, ranked[0].id)} wins`;
+        const text = ranked.map((b, i) => `${i + 1}. ${b.id === r.net.myId ? "You" : nameIn(r, b.id)} ${b.score}`).join(" · ");
+        return { title, text };
       },
     },
   },
@@ -180,13 +220,16 @@ const GAMES = {
       };
     },
     sounds: { count: [440, 0.08], go: [880, 0.2], roundWon: [880, 0.15], roundLost: [220, 0.25], draw: [440, 0.15] },
-    // The host runs the knot with both levels, each put on the scale on its own phone
-    // (own bodyweight and max), and sends the state; the guest shows it from its end.
-    // Both need a sensor: a finger on the screen is no match for a pull.
+    // Two teams (one each with two players). Every phone puts its own pull on the scale
+    // (own bodyweight and max) and sends it to the host; the host adds them up per team
+    // (teamLevel), runs the knot and sends the state; the other team sees it turned round.
+    // Everyone needs a sensor: a finger on the screen is no match for a pull.
     duel: {
+      players: [2, 6],
+      teams: true,
       needsSensor: true,
-      // % BW needs both bodyweights (else kg).
-      opts: (d) => ({ scale: tugScale(d, duel.phase !== "open" || duel.peer?.bodyweight ? settings.values.bodyweightKg : 0) }),
+      // % BW needs everyone's bodyweight (else kg).
+      opts: (d) => ({ scale: tugScale(d, everyoneHasBodyweight() ? settings.values.bodyweightKg : 0) }),
       prepare(o) {
         const bodyweightKg = settings.values.bodyweightKg;
         const maxKg = tugMaxKg(data.tug, sessions.index);
@@ -196,21 +239,44 @@ const GAMES = {
       usesKg: true,
       step(s, dt, kg, r) {
         r.net.mine = r.toLevel(kg);
-        return r.net.role === "host" ? stepTug(s, dt, r.net.mine, r.net.theirs ?? 0) : [];
+        if (r.net.role !== "host") return [];
+        const levelOf = (id) => (id === r.net.myId ? r.net.mine : r.net.inputs[id]?.v ?? 0);
+        const team = (t) => teamLevel(r.net.ids.filter((id) => r.opts.teams[id] === t && !r.net.gone.has(id)).map(levelOf), r.opts.scale);
+        const mine = r.opts.teams[r.net.myId];
+        return stepTug(s, dt, team(mine), team(mine === "A" ? "B" : "A"));
       },
       outgoing: (s, r) => (r.net.role === "host" ? { snap: tugSnapshot(s) } : { v: r.net.mine }),
-      incoming(s, d, ev, r) {
+      incoming(s, from, d, ev, r) {
         if (r.net.role === "host") {
-          r.net.theirs = d.v;
+          r.net.inputs[from] = d;
           return [];
         }
-        Object.assign(s, mirrorTug(d.snap));
-        return ev.map(mirrorEvent);
+        // The host's state is from the host's team: the other team sees it turned round.
+        const same = r.opts.teams[r.net.myId] === r.opts.teams[HOST_ID];
+        Object.assign(s, same ? d.snap : mirrorTug(d.snap));
+        return same ? ev : ev.map(mirrorEvent);
       },
+      left: () => null, // the team pulls on without them
       isOver: (s) => s.phase === "over",
-      scoreText: (s, r) => `You ${s.you.rounds} – ${s.them.rounds} ${r.net.peerName}`,
-      drawOpts: (r) => ({ names: { you: "You", them: r.net.peerName } }),
-      result: (s, r) => ({ won: s.you.rounds > s.them.rounds, text: `${s.you.rounds} – ${s.them.rounds} · ${SCALES[r.opts.scale].name}` }),
+      teamNames(r) {
+        const mine = r.opts.teams[r.net.myId];
+        const names = (t) => r.net.ids.filter((id) => r.opts.teams[id] === t).map((id) => (id === r.net.myId ? "You" : nameIn(r, id)));
+        return { you: names(mine).join(" + "), them: names(mine === "A" ? "B" : "A").join(" + ") };
+      },
+      scoreText(s, r) {
+        const { them } = GAMES.tug.duel.teamNames(r);
+        return `You ${s.you.rounds} – ${s.them.rounds} ${them}`;
+      },
+      drawOpts: (r) => ({ names: GAMES.tug.duel.teamNames(r) }),
+      result(s, r) {
+        const { them } = GAMES.tug.duel.teamNames(r);
+        const won = s.you.rounds > s.them.rounds;
+        const teamGame = r.net.ids.length > 2;
+        return {
+          title: won ? (teamGame ? "Your team won!" : "You won!") : `${them} win${teamGame ? "" : "s"}`,
+          text: `${s.you.rounds} – ${s.them.rounds} · ${SCALES[r.opts.scale].name}`,
+        };
+      },
     },
   },
 };
@@ -302,9 +368,9 @@ function scaleRow(id) {
     if (sc === "bw" && !(bw > 0)) {
       b.disabled = true;
       b.title = "Set your bodyweight in Settings first";
-    } else if (sc === "bw" && duel.phase === "open" && duel.peer && !duel.peer.bodyweight) {
+    } else if (sc === "bw" && !everyoneHasBodyweight()) {
       b.disabled = true;
-      b.title = `${duel.peerName} has no bodyweight set`;
+      b.title = "Not everyone has a bodyweight set";
     }
     return b;
   });
@@ -351,8 +417,12 @@ function renderHome() {
   const withFriend = duel.phase === "open";
   // A guest waits for the host to pick.
   const games = withFriend && duel.role === "guest" ? [] : Object.entries(GAMES);
+  const names = (ids) => ids.map((pid) => duel.nameOf(pid)).join(", ");
   el.cards.replaceChildren(
     duelCard(),
+    ...(withFriend && duel.role === "guest" && watching
+      ? [create("p", { className: "muted", textContent: `Playing now: ${GAMES[watching.game].name} (${names(watching.ids)}). You're in the next one if ${duel.nameOf(HOST_ID)} picks you.` })]
+      : []),
     ...games.map(([id, g]) =>
       create("div", { className: "card play-card" }, [
         create("div", { className: "routine-head" }, [
@@ -368,23 +438,102 @@ function renderHome() {
   );
 }
 
-// The host's Play with <friend>; games that need a sensor on both phones say what is missing.
-function duelPlayRow(id, g) {
-  const play = button("primary", `Play with ${duel.peerName}`, () => hostDuel(id));
-  let missing = "";
-  if (g.duel.needsSensor) {
-    const mine = device.connected;
-    const theirs = Boolean(duel.peer?.sensor);
-    if (!mine && !theirs) missing = `Needs a sensor on both phones: connect yours, and ${duel.peerName} theirs.`;
-    else if (!mine) missing = "Needs a sensor on both phones: connect yours.";
-    else if (!theirs) missing = `Needs a sensor on both phones: ${duel.peerName} has none connected.`;
+// ---- With friends: who plays ----
+
+// Per game, who plays: { [playerId]: true | false } or, for team games, "A" | "B" | "out".
+// The host always plays. New players join in while there's room (team games: the
+// smaller team).
+const lineups = {};
+
+function lineupOf(id, g) {
+  const [, max] = g.duel.players;
+  const old = lineups[id] ?? {};
+  const next = {};
+  for (const p of duel.players) {
+    if (p.id in old) next[p.id] = old[p.id];
+    else if (g.duel.teams) {
+      const count = (t) => Object.values(next).filter((v) => v === t).length;
+      next[p.id] = count("A") + count("B") >= max ? "out" : count("A") <= count("B") ? "A" : "B";
+    } else next[p.id] = Object.values(next).filter(Boolean).length < max;
   }
+  return (lineups[id] = next);
+}
+
+const playing = (lineup) => Object.keys(lineup).filter((pid) => lineup[pid] === true || lineup[pid] === "A" || lineup[pid] === "B");
+
+// Tap a player: in ↔ out; team games: team 1 → team 2 → sits out (the host: 1 ↔ 2).
+function toggleLineup(id, g, pid) {
+  const l = lineupOf(id, g);
+  if (g.duel.teams) {
+    const order = pid === HOST_ID ? ["A", "B"] : ["A", "B", "out"];
+    l[pid] = order[(order.indexOf(l[pid]) + 1) % order.length];
+  } else if (pid !== HOST_ID) l[pid] = !l[pid];
+  renderHome();
+}
+
+function lineupChips(id, g, pids) {
+  return create(
+    "div",
+    { className: "rep-chips" },
+    pids.map((pid) => {
+      const p = duel.players.find((x) => x.id === pid);
+      const on = lineupOf(id, g)[pid] !== false && lineupOf(id, g)[pid] !== "out";
+      const b = button(`rep-chip${on ? " active" : ""}`, p.id === HOST_ID ? `${p.name} (you)` : p.name, () => toggleLineup(id, g, pid));
+      b.setAttribute("aria-pressed", String(on));
+      return b;
+    }),
+  );
+}
+
+// The host's lineup and Play button for a game with friends; says what is missing.
+function duelPlayRow(id, g) {
+  const [min, max] = g.duel.players;
+  const lineup = lineupOf(id, g);
+  const ids = playing(lineup);
+  const rows = [];
+  if (g.duel.teams) {
+    const team = (t) => Object.keys(lineup).filter((pid) => lineup[pid] === t);
+    rows.push(
+      create("div", { className: "duel-team" }, [create("span", { className: "muted", textContent: "Team 1" }), lineupChips(id, g, team("A"))]),
+      create("div", { className: "duel-team" }, [create("span", { className: "muted", textContent: "Team 2" }), lineupChips(id, g, team("B"))]),
+    );
+    if (team("out").length) {
+      rows.push(create("div", { className: "duel-team" }, [create("span", { className: "muted", textContent: "Sit out" }), lineupChips(id, g, team("out"))]));
+    }
+    rows.push(create("p", { className: "muted play-range-kg", textContent: "Tap a name to move it to the other team." }));
+  } else if (duel.players.length > 2) {
+    rows.push(
+      create("div", { className: "duel-team" }, [
+        create("span", { className: "muted", textContent: max < duel.players.length ? `Who plays (up to ${max})` : "Who plays" }),
+        lineupChips(id, g, duel.players.map((p) => p.id)),
+      ]),
+    );
+  }
+  let missing = "";
+  if (ids.length < min) missing = `Pick at least ${min} players.`;
+  else if (ids.length > max) missing = `At most ${max} players in ${g.name}.`;
+  else if (g.duel.teams && (!ids.some((pid) => lineup[pid] === "A") || !ids.some((pid) => lineup[pid] === "B"))) missing = "Each team needs a player.";
+  else if (g.duel.needsSensor) {
+    const without = duel.players.filter((p) => ids.includes(p.id) && !(p.id === HOST_ID ? device.connected : p.sensor));
+    if (without.length) {
+      const names = without.map((p) => (p.id === HOST_ID ? "you" : p.name));
+      missing = `Needs a sensor on every phone: ${names.join(", ")} ${without.length === 1 && names[0] !== "you" ? "has" : "have"} none connected.`;
+    }
+  }
+  const others = ids.filter((pid) => pid !== HOST_ID);
+  const label = others.length === 1 ? `Play with ${duel.nameOf(others[0])}` : `Play (${ids.length} players)`;
+  const play = button("primary", label, () => hostDuel(id));
   play.disabled = Boolean(missing);
   return [
+    ...rows,
     ...(missing ? [create("p", { className: "muted", textContent: missing })] : []),
     create("div", { className: "actions" }, [play]),
   ];
 }
+
+const everyoneHasBodyweight = () => duel.phase !== "open" || duel.players.every((p) => (p.id === duel.myId ? settings.values.bodyweightKg > 0 : p.bodyweight));
+const nameIn = (r, id) => r.net.names[id] ?? "Someone";
+const opponent = (r) => r.net.ids.find((id) => id !== r.net.myId);
 
 // ---- Running a game ----
 
@@ -484,9 +633,10 @@ function sounds(events) {
 
 const isOver = () => (run.net ? run.game.duel.isOver(run.s, run) : run.game.isOver(run.s));
 
-// ---- With a friend ----
+// ---- With friends ----
 
 const TICK_MS = 33; // ~30 messages a second each way
+let watching = null; // a guest not in the host's game: { game, ids }
 
 function sendTick(t = performance.now()) {
   duel.send({ t: "tick", d: run.game.duel.outgoing(run.s, run), ev: run.net.events });
@@ -494,28 +644,57 @@ function sendTick(t = performance.now()) {
   run.net.sentAt = t;
 }
 
-// Host: start game `id` on both phones with this phone's settings.
+// Host: start game `id` on everyone's phone with this phone's settings and lineup.
 function hostDuel(id) {
   loadData();
   showGame();
-  const opts = GAMES[id].duel.opts(data[id], el.stage.clientWidth, el.stage.clientHeight);
+  const g = GAMES[id];
+  const lineup = lineupOf(id, g);
+  const ids = playing(lineup);
+  const opts = {
+    ...g.duel.opts(data[id], el.stage.clientWidth, el.stage.clientHeight),
+    ids,
+    ...(g.duel.teams ? { teams: Object.fromEntries(ids.map((pid) => [pid, lineup[pid]])) } : {}),
+  };
   duel.send({ t: "start", game: id, opts });
   start(id, opts);
 }
 
-function onDuelMessage({ detail: msg }) {
+function onDuelMessage({ detail: { from, msg } }) {
   if (msg.t === "start" && duel.role === "guest" && GAMES[msg.game]) {
+    if (!msg.opts.ids.includes(duel.myId)) {
+      watching = { game: msg.game, ids: msg.opts.ids };
+      if (!run) renderHome();
+      return;
+    }
+    watching = null;
     if (location.hash !== "#play") location.hash = "#play";
     start(msg.game, msg.opts);
-  } else if (msg.t === "tick" && run?.net && !run.ended) {
-    sounds(run.game.duel.incoming(run.s, msg.d, msg.ev ?? [], run));
-  } else if (msg.t === "leave" && run?.net) {
-    if (run.ended) quit();
-    else stopDuel(`${duel.peerName} left the game.`);
+  } else if (msg.t === "tick" && run?.net && !run.ended && run.net.ids.includes(from)) {
+    sounds(run.game.duel.incoming(run.s, from, msg.d, msg.ev ?? [], run));
+  } else if (msg.t === "leave") {
+    if (duel.role === "host") playerLeft(from);
+    else {
+      // The host ended the game for everyone.
+      watching = null;
+      if (!run?.net) renderHome();
+      else if (run.ended) quit();
+      else stopDuel(`${duel.nameOf(HOST_ID)} ended the game.`);
+    }
   }
 }
 
-// The game can't go on (the friend left, or the connection ended).
+// Host: a player left the game or lost the connection. Some games go on without them.
+function playerLeft(id) {
+  if (!run?.net || run.ended || !run.net.ids.includes(id) || run.net.gone.has(id)) return;
+  run.net.gone.add(id);
+  const text = run.game.duel.left(run.s, id, run);
+  if (!text) return;
+  duel.send({ t: "leave" });
+  stopDuel(text);
+}
+
+// The game can't go on (a player left, or the connection ended).
 function stopDuel(text) {
   run.ended = true;
   cancelAnimationFrame(run.raf);
@@ -556,7 +735,18 @@ function start(id, opts = null) {
     id,
     game,
     opts,
-    net: opts && { role: duel.role, peerName: duel.peerName, theirs: null, them: null, mine: 0, events: [], sentAt: 0 },
+    net: opts && {
+      role: duel.role,
+      myId: duel.myId,
+      ids: opts.ids,
+      names: Object.fromEntries(duel.players.map((p) => [p.id, p.name])),
+      inputs: {}, // host: each guest's latest payload
+      birds: {}, // Flappy: everyone's bird
+      gone: new Set(), // players who left
+      mine: 0,
+      events: [],
+      sentAt: 0,
+    },
     s: opts ? game.duel.create(opts) : game.create(el.stage.clientWidth, el.stage.clientHeight, data[id], extra),
     profileId: profiles.activeId, // scores go to the profile the game started with
     paused: false,
@@ -596,13 +786,12 @@ function finish() {
   allowScreenOff();
   if (run.net) {
     sendTick(); // the end reaches the friend too
-    const r = run.game.duel.result(run.s, run);
+    const { title, text } = run.game.duel.result(run.s, run);
     renderBar();
     const id = run.id;
     const again = duel.role === "host" ? [button("primary", "Play again", () => hostDuel(id))] : [];
-    const title = r.draw ? "Draw" : r.won ? "You won!" : `${duel.peerName} wins`;
-    const text = r.text + (duel.role === "guest" ? ` · ${duel.peerName} can start another game` : "");
-    showOverlay(title, text, [button("secondary", "Back", quit), ...again]);
+    const more = duel.role === "guest" ? ` · ${duel.nameOf(HOST_ID)} can start another game` : "";
+    showOverlay(title, text + more, [button("secondary", "Back", quit), ...again]);
     return;
   }
   data = loadPlayData(storage(), run.profileId);
@@ -629,7 +818,7 @@ function quit() {
 export function playBack() {
   if (!run) return false;
   if (run.net && !run.ended) {
-    if (confirm(`Leave the game with ${run.net.peerName}?`)) quit();
+    if (confirm("Leave the game?")) quit();
   } else playHome();
   return true;
 }
@@ -693,6 +882,10 @@ export function initPlay() {
   });
   duel.addEventListener("change", () => !run && renderHome());
   duel.addEventListener("message", onDuelMessage);
-  duel.addEventListener("lost", () => run?.net && !run.ended && stopDuel(duel.error || "The connection ended."));
+  duel.addEventListener("left", ({ detail: id }) => playerLeft(id));
+  duel.addEventListener("lost", () => {
+    watching = null;
+    if (run?.net && !run.ended) stopDuel(duel.error || "The connection ended.");
+  });
   renderHome();
 }

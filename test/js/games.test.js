@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { forceToLevel, mirrorEvent, seededRandom, smoothToward, springStep } from "../../data/games/common.js";
-import { FLAPPY, flappyDuelResult, gapLevels, hitsPipe, levelToY, newFlappy, nextPipe, stepFlappy, yToLevel } from "../../data/games/flappy.js";
+import { FLAPPY, flappyDuelResult, flappyRanking, gapLevels, hitsPipe, levelToY, newFlappy, nextPipe, stepFlappy, yToLevel } from "../../data/games/flappy.js";
 import {
   defaultPlayData,
   fullRangeKg,
@@ -19,7 +19,7 @@ import {
   tugScale,
 } from "../../data/games/playdata.js";
 import { LEVEL_IDS, PONG, PONG_LEVELS, coastPong, levelToPaddleX, mirrorPong, newPong, pongSnapshot, predictX, stepPong } from "../../data/games/pong.js";
-import { SCALES, TUG, TUG_LEVELS, knotSpeed, mirrorTug, newTug, seededCpu, stepTug, toScale, tugSnapshot } from "../../data/games/tug.js";
+import { SCALES, TUG, TUG_LEVELS, knotSpeed, mirrorTug, newTug, seededCpu, stepTug, teamLevel, toScale, tugSnapshot } from "../../data/games/tug.js";
 
 class MemoryStorage {
   constructor() {
@@ -604,4 +604,20 @@ test("duel flappy: same seed, same course; further wins", () => {
   assert.equal(flappyDuelResult({ score: 5, t: 10 }, { score: 4, t: 20 }), "won");
   assert.equal(flappyDuelResult({ score: 5, t: 10 }, { score: 5, t: 12 }), "lost");
   assert.equal(flappyDuelResult({ score: 5, t: 10 }, { score: 5, t: 10.01 }), "draw");
+});
+
+test("tug teams: kg add up, shares are averaged", () => {
+  assert.equal(teamLevel([20, 25], "kg"), 45);
+  assert.equal(teamLevel([40, 60], "bw"), 50);
+  assert.equal(teamLevel([30, 50, 70], "max"), 50);
+  assert.equal(teamLevel([], "kg"), 0);
+});
+
+test("flappy with friends: ranked by pipes, then by who flew longer", () => {
+  const ranked = flappyRanking([
+    { id: "a", score: 4, t: 20 },
+    { id: "b", score: 7, t: 30 },
+    { id: "c", score: 4, t: 25 },
+  ]);
+  assert.deepEqual(ranked.map((b) => b.id), ["b", "c", "a"]);
 });

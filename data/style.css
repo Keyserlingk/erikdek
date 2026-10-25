@@ -883,3 +883,8 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
 .qr-scan-message { margin: 0; text-align: center; font-weight: 600; }
 .qr-scan-paste { display: flex; gap: 8px; }
 .qr-scan-paste input { flex: 1; min-width: 0; }
+.duel-roster { list-style: none; margin: 0 0 8px; padding: 0; }
+.duel-roster li { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.duel-roster li:last-child { border-bottom: none; }
+.duel-team { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; }
+.duel-team > .muted { min-width: 64px; }

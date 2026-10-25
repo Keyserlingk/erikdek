@@ -175,6 +175,14 @@ export function cpuOpponent({ strengthKg, toLevel = (kg) => kg, random = Math.ra
   };
 }
 
+// A team's level from its players' levels: kg add up (more people pull more), shares of
+// bodyweight or max are averaged (so teams of different sizes stay fair on those).
+export function teamLevel(levels, scale) {
+  if (!levels.length) return 0;
+  const sum = levels.reduce((a, b) => a + (b || 0), 0);
+  return scale === "kg" ? sum : sum / levels.length;
+}
+
 // Two phones: the host runs the game and sends tugSnapshot() ~30 times a second; the
 // guest shows it from its side (mirrorTug: its own end at the bottom).
 export function tugSnapshot(s) {
