@@ -336,14 +336,31 @@ doesn't care which one is used. The online host gets one such link per guest fro
 
 **Lobby and games (built)** – `data/playduel.js` + the `duel` part of each game in
 `data/play.js`; pure helpers in `games/*.js` (tested).
-- Play home has a "Play with a friend" card: Host a game (shows the code) / Join a game
-  (type it), or "Same Wi-Fi, no internet?" → Show my code / Scan a code (two scans).
-  Once connected both see "Connected to <name> · <ping> ms"; the host's game cards say
-  "Play with <name>" and start the game on both phones with the host's settings
-  (difficulty, scale); the guest waits for the host's pick.
-- Messages `{t: hi | start | tick | leave}`: `hi` says whether the player has a
-  bodyweight (% BW scale only when both do); `start {game, opts}`; `tick {d, ev}` ~30/s
-  each way; `leave` ends the game for both (the lobby stays connected).
+- Play home has a "Play with friends" card: Host a game (shows the code) / Join a game
+  (type it), up to 6 players (net.js room); or "Same Wi-Fi, no internet?" → Show my code
+  / Scan a code (two scans, one friend only). A star: guests talk only to the host.
+  Everyone sees the player list (host, ping, "no sensor"); while there's room, more can
+  join with the same code. The host's game cards show who plays (tap names; Tug of war:
+  Team 1 / Team 2 / sit out) and Play starts the game on the players' phones with the
+  host's settings; players sitting out see "Playing now: …".
+- Messages `{t: hi | roster | start | tick | leave}`: `hi` (guest → host: bodyweight?
+  sensor?, again when the sensor changes); `roster` (host → each guest: everyone, plus
+  `you`); `start {game, opts}` (opts.ids: who plays, opts.teams / opts.sides);
+  `tick {d, ev}` ~30/s each way; `leave` (guest: I left the game; host: game over for
+  everyone – the lobby stays connected).
+- *Flappy* (2–6): same seed and width; each phone sends its bird to the host, the host
+  sends everyone's; others drawn faintly with names; ranked at the end (`flappyRanking`).
+- *Tug of war* (2–6, two teams): each phone puts its pull on the scale, the host combines
+  per team (`teamLevel`: kg added up, % BW / % max averaged) and runs the knot; the other
+  team sees it turned round. Everyone playing needs a sensor.
+- *Pong* (2–4): 1 v 1 as below; 3–4 on a square, a side each, 5 lives
+  (`games/pong4.js`: corner blocks, a wall for an empty or out side; each phone turns the
+  field so its side is at the bottom).
+- A player who leaves drops out (Flappy: crashed; Tug: their team pulls on; Pong on a
+  square: their paddle stops); in 1 v 1 Pong it ends the game.
+- Checked with a host + 3 guests in four headless Chromes (real relays): all joined in
+  ~2 s; Flappy for 4, Tug of war 2 v 2, Pong for 4 and for 3 (one sitting out) ran to
+  the end with the same results on every phone.
 - *Tug of war* and *Pong*: the host runs the game with the guest's latest level and sends
   the state + events; the guest shows it turned round (`mirrorTug` / `mirrorPong`, events
   through `mirrorEvent`), so each sees themselves at the bottom. Each phone puts its own

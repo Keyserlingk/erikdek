@@ -65,7 +65,7 @@ const el = {
 const GAMES = {
   pong: {
     name: "Pong",
-    about: "Pull to move your paddle: no load is the left edge, full range the right. First to 7 wins.",
+    about: "Pull to move your paddle: no load is the left edge, full range the right. First to 7 wins. With 3–4 friends: a square field, a side each and 5 lives; the last one in wins.",
     create: (w, h, d) => newPong({ h: clamp((PONG.w * h) / w, 120, 200), level: d.level }),
     step: (s, dt, level) => stepPong(s, dt, level), // the computer plays the top paddle
     draw: drawPong,
@@ -231,7 +231,7 @@ const GAMES = {
   },
   tug: {
     name: "Tug of war",
-    about: `Pull harder than the computer to drag the flag to your end; the bigger the difference, the faster it moves. Rounds last up to ${TUG.roundS} s, best of 3.`,
+    about: `Pull harder than the computer to drag the flag to your end; the bigger the difference, the faster it moves. Rounds last up to ${TUG.roundS} s, best of 3. With friends: two teams, each team's pulls added up (kg) or averaged (% BW, % max).`,
     // Both pulls go on the chosen scale with your bodyweight and max. The opponent is
     // anything with next(state, dt) → its level on that scale: the computer here; in
     // multiplayer the host would plug in the other phone's latest level instead (normalised

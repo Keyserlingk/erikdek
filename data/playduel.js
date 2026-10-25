@@ -85,6 +85,7 @@ function addPeer(link) {
     } else emit(id, msg);
   });
   link.addEventListener("status", changed);
+  pingPeer(duel.peers.get(id));
   link.addEventListener("close", () => {
     if (!duel.peers.delete(id)) return;
     duel.dispatchEvent(new CustomEvent("left", { detail: id }));
@@ -200,21 +201,23 @@ export function sendHi() {
   else if (duel.role === "host") updateRoster();
 }
 
+function pingPeer(p) {
+  p.link
+    .ping()
+    .then((ms) => {
+      p.pingMs = ms;
+      const player = duel.players.find((x) => duel.peers.get(x.id) === p);
+      if (player) player.pingMs = ms;
+      changed();
+    })
+    .catch(() => {});
+}
+
 function startPinging() {
   clearInterval(pinger);
   const ping = () => {
-    if (duel.role === "guest") {
-      duel.link?.ping().then((ms) => ((duel.pingMs = ms), changed())).catch(() => {});
-      return;
-    }
-    for (const p of duel.peers.values()) {
-      p.link.ping().then((ms) => {
-        p.pingMs = ms;
-        const player = duel.players.find((x) => duel.peers.get(x.id) === p);
-        if (player) player.pingMs = ms;
-        changed();
-      }).catch(() => {});
-    }
+    if (duel.role === "guest") duel.link?.ping().then((ms) => ((duel.pingMs = ms), changed())).catch(() => {});
+    else for (const p of duel.peers.values()) pingPeer(p);
   };
   ping();
   pinger = setInterval(ping, 5000);
