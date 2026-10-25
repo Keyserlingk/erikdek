@@ -341,14 +341,14 @@
         <h1>History</h1>
         <p id="histStorage" class="muted storage-line"></p>
         <div id="histError" class="error" hidden></div>
+        <div id="histMode" class="segmented wide list-tabs" role="tablist" aria-label="History" hidden>
+          <button type="button" data-mode="mine" role="tab">Mine</button>
+          <button type="button" data-mode="people" role="tab">Compare people</button>
+        </div>
         <div class="card filters">
           <label class="field stacked">
             <span>Show</span>
             <select id="histKind"></select>
-          </label>
-          <label id="histWhoRow" class="field stacked" hidden>
-            <span>Whose sessions</span>
-            <select id="histWho"></select>
           </label>
           <div class="grid2">
             <label class="field stacked"><span>Hold</span><select id="histHold"></select></label>
@@ -361,12 +361,10 @@
           <label id="histRoutineRow" class="field stacked" hidden><span id="histRoutineLabel">Routine</span><select id="histRoutine"></select></label>
           <label id="histMetricRow" class="field stacked" hidden><span>Compare by</span><select id="histMetric"></select></label>
         </div>
+        <div id="histPeople" hidden></div>
+        <div id="histMine">
         <h2 class="section">Personal bests</h2>
         <div id="histBests" class="tiles"></div>
-        <div id="histLeaderBlock" hidden>
-          <h2 id="histLeaderTitle" class="section">Leaderboard</h2>
-          <ol id="histLeader" class="card leaderboard"></ol>
-        </div>
         <div class="section-head">
           <h2 class="section" id="histProgressTitle">Progress</h2>
           <button id="histMetricInfo" class="info-button" type="button" aria-label="Explain this metric" aria-expanded="false">ⓘ</button>
@@ -398,6 +396,7 @@
             <button id="histSelCsv" class="secondary" type="button">CSV</button>
             <button id="histSelDelete" class="secondary danger" type="button">Delete</button>
           </div>
+        </div>
         </div>
       </div>
       <div id="historyCompare" hidden>

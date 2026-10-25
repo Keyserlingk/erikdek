@@ -5,6 +5,7 @@ import { buildBackup, fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCs
 import { profileOf, profiles } from "./profiles.js";
 import { bodyweightOn, settings } from "./settingsstore.js";
 import { sessions } from "./sessions.js";
+import { renderPeople } from "./peoplecompare.js";
 import { MAX_COMPARE, renderCompare } from "./sessioncompare.js";
 import { editCard } from "./sessionedit.js";
 import { notesCard } from "./sessionnotes.js";
@@ -51,11 +52,10 @@ const el = {
   edit: $("histEdit"),
   detailEdit: $("histDetailEdit"),
   tag: $("histTag"),
-  who: $("histWho"),
-  whoRow: $("histWhoRow"),
-  leaderBlock: $("histLeaderBlock"),
-  leaderTitle: $("histLeaderTitle"),
-  leader: $("histLeader"),
+  modes: document.querySelectorAll("#histMode button"),
+  modeBar: $("histMode"),
+  mine: $("histMine"),
+  people: $("histPeople"),
   board: $("histBoard"),
   boardRow: $("histBoardRow"),
   tagRow: $("histTagRow"),
@@ -121,11 +121,11 @@ function distinct(list, key) {
 }
 
 // ---------------------------------------------------------------- people
-// History is the active profile's; the "Whose sessions" filter can add the other
-// profiles on this phone (compare with friends), and the leaderboard ranks everyone.
+// History is the active profile's ("Mine"); "Compare people" puts the profiles on this
+// phone side by side (peoplecompare.js), each with the bodyweight of their own log.
 
-const WHO_ME = "me";
-const WHO_ALL = "all";
+let mode = "mine"; // or "people"
+let peopleChart = null;
 let profileSettings = {}; // { profileId: settings }, for the others' bodyweight logs
 
 async function loadProfileSettings() {
@@ -148,59 +148,26 @@ function mySessions() {
   return sessions.index.map(withWeight);
 }
 
-// The sessions the "Whose sessions" filter picks.
-function whoseSessions() {
-  const who = el.who.value || WHO_ME;
-  if (who === WHO_ME) return mySessions();
-  return sessions.all.filter((s) => who === WHO_ALL || profileOf(s) === who).map(withWeight);
+// Everyone's sessions (Compare people).
+function everyonesSessions() {
+  return sessions.all.map(withWeight);
 }
 
-function renderWho() {
-  const others = profiles.list.filter((p) => p.id !== profiles.activeId && sessions.all.some((s) => profileOf(s) === p.id));
-  el.whoRow.hidden = !others.length;
-  const current = el.who.value || WHO_ME;
-  el.who.replaceChildren(
-    create("option", { value: WHO_ME, textContent: `Mine (${profiles.active.name})` }),
-    create("option", { value: WHO_ALL, textContent: "Everyone" }),
-    ...others.map((p) => create("option", { value: p.id, textContent: p.name })),
-  );
-  el.who.value = [WHO_ME, WHO_ALL, ...others.map((p) => p.id)].includes(current) ? current : WHO_ME;
-}
-
-// Everyone's best for the metric (with the filters), when two or more people have one.
-function renderLeaderboard(metric) {
-  const better = (a, b) => (metric.better === "lower" ? a < b : a > b);
-  const best = new Map(); // profileId -> { value, hand, date }
-  if (metric.better) {
-    for (const s of filtered(sessions.all.map(withWeight))) {
-      for (const p of metricPoints(metric, s)) {
-        if (p.value === null) continue;
-        const pid = profileOf(s);
-        if (!best.has(pid) || better(p.value, best.get(pid).value)) best.set(pid, { value: p.value, hand: p.hand, date: s.startedAt });
-      }
-    }
+// The Mine / Compare people switch shows once someone else has sessions too.
+function renderMode() {
+  const others = sessions.all.some((s) => profileOf(s) !== profiles.activeId);
+  el.modeBar.hidden = !others;
+  if (!others) mode = "mine";
+  for (const b of el.modes) {
+    b.classList.toggle("active", b.dataset.mode === mode);
+    b.setAttribute("aria-selected", String(b.dataset.mode === mode));
   }
-  el.leaderBlock.hidden = best.size < 2;
-  if (el.leaderBlock.hidden) return;
-  el.leaderTitle.textContent = `Leaderboard: ${metric.label}`;
-  const ranked = [...best.entries()].sort(([, a], [, b]) => (better(a.value, b.value) ? -1 : 1));
-  el.leader.replaceChildren(
-    ...ranked.map(([pid, b], i) => {
-      const hand = b.hand === "left" ? " (L)" : b.hand === "right" ? " (R)" : "";
-      return create("li", { className: pid === profiles.activeId ? "me" : "" }, [
-        create("span", { className: "rank", textContent: `${i + 1}` }),
-        create("span", { className: "who" }, [
-          create("strong", { textContent: profiles.find(pid)?.name ?? "?" }),
-          create("span", { className: "muted", textContent: formatDate(b.date) }),
-        ]),
-        create("span", { className: "value", textContent: metric.format(b.value) + hand }),
-      ]);
-    }),
-  );
+  el.mine.hidden = mode !== "mine";
+  el.people.hidden = mode !== "people";
 }
 
-// Sessions of the chosen kind matching the filters; from `source` (default: whose).
-function filtered(source = whoseSessions()) {
+// Sessions of the chosen kind matching the filters (default: the active profile's).
+function filtered(source = mySessions()) {
   const kind = el.kind.value;
   return source.filter(
     (s) =>
@@ -253,8 +220,7 @@ function pointsOf(s) {
 // ---------------------------------------------------------------- main view
 
 function renderFilters() {
-  renderWho();
-  const ofKind = whoseSessions().filter((s) => s.type === el.kind.value);
+  const ofKind = (mode === "people" ? everyonesSessions() : mySessions()).filter((s) => s.type === el.kind.value);
   fillSelect(el.hold, "All holds", distinct(ofKind, "holdType"));
   fillSelect(el.grip, "All grips", distinct(ofKind, "grip"));
   fillSelect(el.board, "All hangboards", distinct(ofKind, "board"));
@@ -432,7 +398,7 @@ function renderSelectBar() {
   el.selCompare.disabled = n < 2 || n > MAX_COMPARE;
 }
 
-const selectedIndex = () => sessions.all.filter((s) => selected.has(s.id)).map(withWeight);
+const selectedIndex = () => mySessions().filter((s) => selected.has(s.id));
 
 // Selected sessions as a backup file (sessions only): can be restored under Settings.
 async function downloadSelectedJson() {
@@ -447,11 +413,12 @@ async function downloadSelectedJson() {
 }
 
 // The selected sessions side by side (oldest first), on their own screen.
-async function openCompare() {
+// entries: index entries of the sessions to compare (the selection, or people's bests).
+async function openCompare(entries = selectedIndex()) {
   showError(el.error, "");
   try {
     const list = [];
-    for (const s of selectedIndex().sort((a, b) => a.startedAt.localeCompare(b.startedAt))) list.push(await sessions.get(s.id));
+    for (const s of [...entries].sort((a, b) => a.startedAt.localeCompare(b.startedAt))) list.push(await sessions.get(s.id));
     el.main.hidden = true;
     el.compare.hidden = false;
     window.scrollTo(0, 0);
@@ -499,13 +466,24 @@ async function renderStorage() {
 }
 
 function render() {
+  renderMode();
   renderFilters();
-  const list = filtered(); // whose sessions (the list, select, compare)
-  const mine = filtered(mySessions()); // personal bests and progress are your own
   const metric = currentMetric();
-  renderBests(mine, metric);
-  renderLeaderboard(metric);
-  renderProgress(mine, metric);
+  peopleChart?.destroy();
+  peopleChart = null;
+  if (mode === "people") {
+    if (selecting) setSelecting(false);
+    peopleChart = renderPeople(el.people, {
+      list: filtered(everyonesSessions()),
+      metric,
+      unit: metricUnit(metric),
+      onCompare: (best) => openCompare(best),
+    });
+    return;
+  }
+  const list = filtered();
+  renderBests(list, metric);
+  renderProgress(list, metric);
   visibleIds = list.map((s) => s.id);
   renderList(list, metric);
   renderSelectBar();
@@ -585,7 +563,14 @@ export function initHistory() {
   el.kind.replaceChildren(
     ...KIND_ORDER.map((k) => create("option", { value: k, textContent: k === "workout" ? "Routines" : KINDS[k].name })),
   );
-  for (const select of [el.kind, el.who, el.hold, el.grip, el.board, el.tag, el.routine, el.metric]) select.addEventListener("change", render);
+  for (const select of [el.kind, el.hold, el.grip, el.board, el.tag, el.routine, el.metric]) select.addEventListener("change", render);
+  for (const b of el.modes) {
+    b.addEventListener("click", () => {
+      mode = b.dataset.mode;
+      render();
+    });
+  }
+  el.people.addEventListener("change", render); // someone ticked on/off
   el.back.addEventListener("click", closeDetail);
   el.edit.addEventListener("click", () => showEditor(true));
   el.metricInfo.addEventListener("click", () => {
