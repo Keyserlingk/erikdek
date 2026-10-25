@@ -63,5 +63,12 @@ firmware (`tools/bundle_firmware.py`, needs PlatformIO), vendors the Capacitor p
   `routines.js`, `workouts.js`, `tags.js`, `db.js` (IndexedDB, memory backend in tests).
 - Analysis and per-kind results: `analysis.js`, `tests.js` (`KINDS`), `workout.js`
   (phases, engine, rep stats), `protocols.js` (test protocols).
-- Sensor link: `device.js` → `bletransport.js` (Bluetooth) / `simdevice.js` (simulator);
-  `bleprotocol.js` = byte layouts (keep in step with the firmware, see the firmware skill).
+- Sensor link: `device.js` picks the transport from `platform.js` `sensorMode()`:
+  `bletransport.js` (Erkdek over Bluetooth), `tindeqtransport.js` (Tindeq Progressor,
+  protocol in `tindeqprotocol.js`, verified details in PLAN.md) or `simdevice.js`
+  (simulator). All share one interface (state/message events, connect, send).
+  `bleprotocol.js` = Erkdek byte layouts (keep in step with the firmware).
+- Play tab: `play.js` (screens) and `games/` (`pong.js`, `flappy.js`, `common.js`,
+  `playdata.js`); game logic is pure and tested in `test/js/games.test.js`.
+- Tindeq from the laptop: `tools/tindeq_probe.py` (bleak venv; `--seconds 8 --tare-at 2
+  --battery-at 5`). Never send 0x6E (sleep) or the calibration commands.

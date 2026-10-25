@@ -1,7 +1,9 @@
 # Erkdek – notes for coding agents
 
-Erkdek is a DIY climbing force gauge: load cell → amplifier (HX711) → ESP32 sensor →
-Bluetooth LE → Android app (Capacitor wrapping a plain-JS web app). PLAN.md is the plan
+Erkdek is a DIY climbing force gauge: load cell → amplifier (HX711 or ADS1220, detected
+at start) → ESP32 sensor → Bluetooth LE → Android app (Capacitor wrapping a plain-JS web
+app). The app also works with a Tindeq Progressor, and has a Play tab with games
+steered by force. PLAN.md is the plan
 of record (decisions, protocol, milestones); README.md has setup and commands;
 CONTRIBUTING.md is the human guide.
 
@@ -14,7 +16,8 @@ build, test, flash, serial console, Bluetooth checks, protocol changes).
   concern (`live.js`, `runner.js`, `history.js`, …); stores (`sessions.js`,
   `settingsstore.js`, `routines.js`, `profiles.js`) are DOM-free and tested under node.
   `bleprotocol.js` mirrors the firmware's byte layouts; `simdevice.js` is the simulated
-  sensor used in the browser.
+  sensor used in the browser; `tindeqtransport.js` + `tindeqprotocol.js` talk to a Tindeq
+  Progressor; `play.js` + `games/` are the Play tab (pure game logic is tested).
 - `src/` – ESP32 firmware (Arduino core 2.0.17, NimBLE). `lib/core/` – hardware-free
   firmware logic (protocol codec, calibration, console parsing) with native tests.
 - `test/js/` – app tests (`npm test`); `test/test_core/` – firmware tests

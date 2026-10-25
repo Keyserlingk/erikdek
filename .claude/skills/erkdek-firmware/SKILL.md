@@ -6,7 +6,12 @@ description: Build, test and flash the Erkdek ESP32 firmware (src/, lib/core/), 
 # Erkdek firmware
 
 ESP32 (NodeMCU WROOM-32, CH340 USB serial), Arduino core 2.0.17 under PlatformIO,
-NimBLE-Arduino. Load cell amplifier: HX711 on DT=GPIO16, SCK=GPIO17.
+NimBLE-Arduino. Load cell amplifier, detected at start (`src/adc.h` interface):
+- ADS1220 on SPI: SCK 18, MISO/DOUT 19, MOSI/DIN 23, CS 5, DRDY 4 (interrupt). Rate set
+  in software (20–2000 SPS, console `rate <sps>`, app setRate), saved in NVS.
+- HX711 on DT=GPIO16, SCK=GPIO17 (fallback; ~80 Hz with the RATE pin bridged).
+Tare and calibration are timed (0.5 s / 1 s) at any rate; the calibration is stored
+with the ADC type it was made with.
 
 ## Build and test
 ```sh
