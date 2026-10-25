@@ -127,8 +127,8 @@ same suffix), advertised with the name `Erkdek`. All values little-endian.
 | Characteristic | UUID | Properties | Content |
 |---|---|---|---|
 | Samples | `9a0b0002-…` | notify | `seq` u16, `t0` u32 (ms of first sample), `dt` u16 (µs per sample), then n × i16 force in 10 g units (±327.67 kg). 6 samples fit the default 23-byte MTU; the firmware asks for MTU 247. |
-| Status | `9a0b0003-…` | read, notify (1 Hz and after events) | flags u8 (bit0 tared, bit1 calibrated), rate u16 (0.1 Hz), counts per kg f32, uptime u32 ms |
-| Command | `9a0b0004-…` | write, write without response | opcode u8: 1 tare, 2 calibrate + kg f32, 3 reset calibration, 4 set calibration + counts per kg f32 |
+| Status | `9a0b0003-…` | read, notify (1 Hz and after events) | flags u8 (bit0 tared, bit1 calibrated), rate u16 (0.1 Hz), counts per kg f32, uptime u32 ms, tare noise rms/peak-to-peak u16 g, battery u16 mV, protocol version u8 (2), ADC u8 (1 HX711, 2 ADS1220), ADS1220 rate u16 SPS (0 for the HX711) |
+| Command | `9a0b0004-…` | write, write without response | opcode u8: 1 tare, 2 calibrate + kg f32, 3 reset calibration, 4 set calibration + counts per kg f32, 5 set ADS1220 rate + SPS f32 (20/45/90/175/330/600/1000/2000; saved on the sensor) |
 | Event | `9a0b0005-…` | notify | 1 tared · 2 calibrated + u8 calibrated + counts per kg f32 · 3 calibration failed + u8 reason (1 bad weight, 2 too small) |
 | Firmware Revision | `2A26` in Device Information `180A` | read | git version, e.g. `27d90cf` |
 
@@ -212,7 +212,7 @@ Phone: enable Developer options and USB debugging, then `adb install`.
 erkdek/
 ├─ PLAN.md
 ├─ platformio.ini        firmware build
-├─ src/                  firmware: sensor task (sensor.*, hx711.*), BLE service (ble.*), NVS (storage.*)
+├─ src/                  firmware: sensor task (sensor.*, ADC drivers adc.h, hx711.*, ads1220.*), BLE service (ble.*), NVS (storage.*)
 ├─ lib/core/             hardware-independent firmware logic
 ├─ test/                 native firmware tests, test/js app tests
 ├─ data/                 the app UI (HTML/JS/CSS), Capacitor's web dir

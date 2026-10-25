@@ -1,5 +1,7 @@
 #include <unity.h>
 
+#include "adc_type.h"
+#include "ads1220_config.h"
 #include "ble_protocol.h"
 #include "calibration.h"
 #include "console_command.h"
@@ -132,10 +134,11 @@ void test_ble_force_units_round_and_clamp() {
 
 void test_ble_encode_status_and_events() {
   uint8_t buf[32];
-  size_t n = ble::encodeStatus(buf, true, false, 80.04f, 16000.0f, 123456, 0.0124f, 0.041f, 3.92f);
+  size_t n = ble::encodeStatus(buf, true, false, 80.04f, 16000.0f, 123456, 0.0124f, 0.041f, 3.92f, AdcType::Ads1220, 330);
   const uint8_t status[] = {0x01, 0x20, 0x03, 0x00, 0x00, 0x7A, 0x46, 0x40, 0xE2,
                             0x01, 0x00, 0x0C, 0x00, 0x29, 0x00, 0x50, 0x0F,  // 3920 mV
-                            0x01};                                           // protocol 1
+                            0x02,                                            // protocol 2
+                            0x02, 0x4A, 0x01};                               // ADS1220, 330 SPS
   TEST_ASSERT_EQUAL(sizeof(status), n);
   TEST_ASSERT_EQUAL_HEX8_ARRAY(status, buf, n);
 
@@ -170,6 +173,12 @@ void test_ble_parse_commands() {
   const uint8_t tare[] = {0x01};
   TEST_ASSERT_TRUE(ble::parseCommand(tare, 1, cmd));
   TEST_ASSERT_EQUAL(ble::CmdTare, cmd.op);
+
+  const uint8_t setRate[] = {0x05, 0x00, 0x00, 0xA5, 0x43};  // 330.0 SPS
+  TEST_ASSERT_TRUE(ble::parseCommand(setRate, sizeof(setRate), cmd));
+  TEST_ASSERT_EQUAL(ble::CmdSetRate, cmd.op);
+  TEST_ASSERT_EQUAL_FLOAT(330.0f, cmd.value);
+  TEST_ASSERT_FALSE(ble::parseCommand(setRate, 1, cmd));  // rate missing
 
   TEST_ASSERT_FALSE(ble::parseCommand(calibrate, 3, cmd));  // value missing
   const uint8_t unknown[] = {0x09};
@@ -248,6 +257,72 @@ void test_console_parses_commands() {
   TEST_ASSERT_FLOAT_WITHIN(1e-4, 20.5f, c.kg);
 }
 
+void test_console_parses_rate() {
+  ConsoleCommand c = parseConsoleLine("rate 330");
+  TEST_ASSERT_TRUE(c.op == ConsoleOp::Rate);
+  TEST_ASSERT_EQUAL_UINT16(330, c.sps);
+  c = parseConsoleLine("  RATE 2000 \r");
+  TEST_ASSERT_TRUE(c.op == ConsoleOp::Rate);
+  TEST_ASSERT_EQUAL_UINT16(2000, c.sps);
+  c = parseConsoleLine("rate");  // show the ADC and rate
+  TEST_ASSERT_TRUE(c.op == ConsoleOp::Rate);
+  TEST_ASSERT_EQUAL_UINT16(0, c.sps);
+  TEST_ASSERT_TRUE(parseConsoleLine("rate 333").op == ConsoleOp::Invalid);  // not an ADS1220 rate
+  TEST_ASSERT_TRUE(parseConsoleLine("rate 330.5").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("rate fast").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("rates").op == ConsoleOp::Invalid);
+  TEST_ASSERT_TRUE(parseConsoleLine("r").op == ConsoleOp::CalReset);  // still the reset
+}
+
+void test_ads1220_registers() {
+  uint8_t reg = 0;
+  TEST_ASSERT_TRUE(ads1220::config1ForRate(20, reg));
+  TEST_ASSERT_EQUAL_HEX8(0x04, reg);  // DR 000, normal, continuous
+  TEST_ASSERT_TRUE(ads1220::config1ForRate(330, reg));
+  TEST_ASSERT_EQUAL_HEX8(0x84, reg);  // DR 100
+  TEST_ASSERT_TRUE(ads1220::config1ForRate(1000, reg));
+  TEST_ASSERT_EQUAL_HEX8(0xC4, reg);  // DR 110
+  TEST_ASSERT_TRUE(ads1220::config1ForRate(2000, reg));
+  TEST_ASSERT_EQUAL_HEX8(0xD4, reg);  // DR 110, turbo
+  reg = 0x55;
+  TEST_ASSERT_FALSE(ads1220::config1ForRate(80, reg));
+  TEST_ASSERT_EQUAL_HEX8(0x55, reg);
+  for (uint16_t r : ads1220::kRates) TEST_ASSERT_TRUE(ads1220::config1ForRate(r, reg));
+  TEST_ASSERT_TRUE(ads1220::isSupportedRate(ads1220::kDefaultRate));
+  TEST_ASSERT_FALSE(ads1220::isSupportedRate(0));
+
+  TEST_ASSERT_EQUAL_HEX8(0x3E, ads1220::kConfig0);  // AIN1-AIN2, gain 128, PGA on
+  TEST_ASSERT_EQUAL_HEX8(0x43, ads1220::cmdWriteReg(0, 4));
+  TEST_ASSERT_EQUAL_HEX8(0x23, ads1220::cmdReadReg(0, 4));
+  TEST_ASSERT_EQUAL_HEX8(0x44, ads1220::cmdWriteReg(1, 1));
+
+  TEST_ASSERT_EQUAL_INT32(0x7FFFFF, ads1220::signExtend24(0x7F, 0xFF, 0xFF));
+  TEST_ASSERT_EQUAL_INT32(-1, ads1220::signExtend24(0xFF, 0xFF, 0xFF));
+  TEST_ASSERT_EQUAL_INT32(-8388608, ads1220::signExtend24(0x80, 0x00, 0x00));
+  TEST_ASSERT_EQUAL_INT32(0x012345, ads1220::signExtend24(0x01, 0x23, 0x45));
+}
+
+void test_samples_for_duration_and_adc_defaults() {
+  TEST_ASSERT_EQUAL(40u, samplesFor(0.5f, 80.0f));  // tare at 80 Hz, as before
+  TEST_ASSERT_EQUAL(80u, samplesFor(1.0f, 80.0f));
+  TEST_ASSERT_EQUAL(1000u, samplesFor(0.5f, 2000.0f));
+  TEST_ASSERT_EQUAL(20u, samplesFor(1.0f, 20.0f));
+  TEST_ASSERT_EQUAL(5u, samplesFor(0.5f, 10.0f));
+  TEST_ASSERT_EQUAL(4u, samplesFor(0.5f, 0.0f));  // floor
+  TEST_ASSERT_EQUAL_FLOAT(Calibration::kDefaultCountsPerKg, adcDefaultCountsPerKg(AdcType::Hx711));
+  TEST_ASSERT_FLOAT_WITHIN(10.0f, 7158.0f, adcDefaultCountsPerKg(AdcType::Ads1220));
+  TEST_ASSERT_EQUAL_STRING("ADS1220", adcName(AdcType::Ads1220));
+}
+
+void test_rate_meter_restart() {
+  RateMeter meter(2000);
+  for (uint32_t t = 0; t < 5000; t += 100) meter.tick(t);  // 10 Hz
+  meter.restart(330.0f);
+  TEST_ASSERT_EQUAL_FLOAT(330.0f, meter.rateHz());  // until measured
+  for (uint32_t t = 6000; t < 9000; t += 5) meter.tick(t);  // 200 Hz
+  TEST_ASSERT_FLOAT_WITHIN(1.0f, 200.0f, meter.rateHz());
+}
+
 void test_console_rejects_bad_input() {
   TEST_ASSERT_TRUE(parseConsoleLine("c").op == ConsoleOp::Invalid);
   TEST_ASSERT_TRUE(parseConsoleLine("c 0").op == ConsoleOp::Invalid);
@@ -280,5 +355,9 @@ int main() {
   RUN_TEST(test_ota_parse_and_events);
   RUN_TEST(test_console_parses_commands);
   RUN_TEST(test_console_rejects_bad_input);
+  RUN_TEST(test_console_parses_rate);
+  RUN_TEST(test_ads1220_registers);
+  RUN_TEST(test_samples_for_duration_and_adc_defaults);
+  RUN_TEST(test_rate_meter_restart);
   return UNITY_END();
 }

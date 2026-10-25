@@ -19,6 +19,7 @@ static void printHelp() {
   Serial.println("  t        tare (nothing hanging)");
   Serial.println("  c <kg>   calibrate with a known weight hanging, e.g. c 20");
   Serial.println("  r        reset the calibration to the default factor");
+  Serial.println("  rate <n> ADS1220 sample rate: 20 45 90 175 330 600 1000 2000; rate: show the ADC");
   Serial.println("  f        fast mode on/off: every reading (ms, raw, kg)");
   Serial.println("  s        status line on/off");
   Serial.println("  h        this help");
@@ -40,6 +41,18 @@ static void run(const ConsoleCommand& cmd) {
       Serial.println("> calibration reset to the default factor");
       sensorResetCalibration();
       break;
+    case ConsoleOp::Rate: {
+      SensorStatus st = sensorStatus();
+      if (cmd.sps == 0) {
+        if (st.adcRateSps) Serial.printf("> ADC: %s at %u SPS\n", adcName(st.adc), st.adcRateSps);
+        else Serial.printf("> ADC: %s (rate set by its RATE pin)\n", adcName(st.adc));
+      } else if (sensorSetRate(cmd.sps)) {
+        Serial.printf("> setting the rate to %u SPS...\n", cmd.sps);
+      } else {
+        Serial.printf("> the %s has no settable rate\n", adcName(st.adc));
+      }
+      break;
+    }
     case ConsoleOp::Fast:
       fastOn = !fastOn;
       sensorSetMonitor(fastOn);
@@ -71,7 +84,8 @@ static void readCommands() {
   }
 }
 
-// One line per second, so the wiring and the 80 Hz RATE mod can be checked without the app.
+// One line per second, so the wiring (and the HX711's 80 Hz RATE mod) can be checked
+// without the app.
 static void statusReport() {
   static uint32_t lastMs = 0;
   static uint32_t lastCount = 0;
@@ -90,6 +104,10 @@ static void statusReport() {
                 (unsigned long)(now / 1000), hz, (long)st.lastRaw, st.lastKg, st.tared ? "yes" : "no",
                 st.calibrated ? "yes" : "no", st.countsPerKg, bleConnected() ? "connected" : "-", battery,
                 (unsigned)st.dropped);
+  if (st.adc == AdcType::Ads1220) {
+    if (hz < 1.0f) Serial.println("  ! no readings from the ADS1220: check DRDY -> GPIO4");
+    return;
+  }
   if (hz < 1.0f) {
     Serial.println("  ! no readings from the HX711: check VCC 3.3V, GND, DT -> GPIO16, SCK -> GPIO17");
   } else if (hz < 20.0f) {
@@ -128,6 +146,9 @@ void consoleLogEvent(const SensorEvent& ev) {
       } else {
         Serial.printf("> calibration reset: %.1f counts/kg (default), saved\n", ev.calibration.countsPerKg);
       }
+      break;
+    case SensorEvent::RateChanged:
+      Serial.printf("> sample rate %u SPS, saved\n", ev.rateSps);
       break;
     case SensorEvent::CalibrationFailed:
       if (ev.result == CalResult::BadWeight) {

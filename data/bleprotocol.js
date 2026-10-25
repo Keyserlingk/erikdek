@@ -7,7 +7,9 @@
 //                        | countsPerKg f32 | uptime u32 ms
 //                        | tare noise rms u16 (g) | tare noise peak-to-peak u16 (g)
 //                        | battery u16 (mV) | protocol version u8
-//   Command (write)      opcode u8 [| value f32]
+//                        | ADC u8 (0 none, 1 HX711, 2 ADS1220) | ADC rate u16 (SPS, 0 = HX711)
+//   Command (write)      opcode u8 [| value f32]: tare 1, calibrate 2 (kg), calReset 3,
+//                        setCalibration 4 (counts/kg), setRate 5 (SPS, ADS1220 only)
 //   Event (notify)       tared 1 | calibrated 2, calibrated u8, countsPerKg f32, noise u16 (g)
 //                        | calError 3, reason u8, noise u16 (g)
 // Noise and battery values of 0xFFFF mean "not measured" and decode to null.
@@ -27,9 +29,14 @@ export const UUID = {
 export const DEVICE_NAME = "Erkdek";
 // The layouts here, numbered: same as kProtocolVersion in the firmware. The app warns
 // when the sensor reports another one (its firmware doesn't belong to this app).
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
-const COMMANDS = { tare: 1, calibrate: 2, calReset: 3, setCalibration: 4 };
+const COMMANDS = { tare: 1, calibrate: 2, calReset: 3, setCalibration: 4, setRate: 5 };
+// The message field sent as the value, for commands that have one.
+const COMMAND_VALUES = { calibrate: "kg", setCalibration: "cpk", setRate: "sps" };
+const ADC_TYPES = { 1: "hx711", 2: "ads1220" };
+// ADS1220 data rates the sensor accepts (setRate); the HX711's is set by its RATE pin.
+export const ADS1220_RATES = [20, 45, 90, 175, 330, 600, 1000, 2000];
 const CAL_ERRORS = { 1: "badWeight", 2: "tooSmall", 3: "moving" };
 
 // u16 in thousandths (g -> kg, mV -> V); 0xFFFF = not measured -> null.
@@ -72,6 +79,8 @@ export function decodeStatus(bytes) {
     tareNoisePpKg: has(15) ? thousandths(v, 13) : null,
     batteryV: has(17) ? thousandths(v, 15) : null,
     protocol: has(18) ? v.getUint8(17) : 0,
+    adc: has(19) ? (ADC_TYPES[v.getUint8(18)] ?? null) : null, // "hx711" | "ads1220" | null
+    adcRate: has(21) ? v.getUint16(19, true) : 0, // configured SPS, 0 for the HX711
   };
 }
 
@@ -90,19 +99,18 @@ export function decodeEvent(bytes) {
   }
 }
 
-// { cmd: "tare" | "calibrate" (kg) | "calReset" | "setCalibration" (cpk) } -> bytes, or
-// null for commands the sensor doesn't have (e.g. the simulator's "mock").
+// { cmd: "tare" | "calibrate" (kg) | "calReset" | "setCalibration" (cpk) | "setRate" (sps) }
+// -> bytes, or null for commands the sensor doesn't have (e.g. the simulator's "mock").
 export function encodeCommand(msg) {
   const op = COMMANDS[msg.cmd];
   if (!op) return null;
-  if (msg.cmd === "calibrate" || msg.cmd === "setCalibration") {
-    const out = new Uint8Array(5);
-    const v = new DataView(out.buffer);
-    v.setUint8(0, op);
-    v.setFloat32(1, msg.cmd === "calibrate" ? msg.kg : msg.cpk, true);
-    return out;
-  }
-  return Uint8Array.of(op);
+  const field = COMMAND_VALUES[msg.cmd];
+  if (!field) return Uint8Array.of(op);
+  const out = new Uint8Array(5);
+  const v = new DataView(out.buffer);
+  v.setUint8(0, op);
+  v.setFloat32(1, msg[field], true);
+  return out;
 }
 
 // ---------------------------------------------------------------- firmware update

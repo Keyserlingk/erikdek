@@ -21,6 +21,13 @@ class RateMeter {
     }
   }
 
+  // After a rate change: report `expectedHz` until the next window has been measured.
+  void restart(float expectedHz) {
+    count_ = 0;
+    started_ = false;
+    rateHz_ = expectedHz;
+  }
+
   float rateHz() const { return rateHz_; }
 
  private:
