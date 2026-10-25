@@ -24,6 +24,7 @@ import {
   tugScale,
 } from "./games/playdata.js";
 import { LEVEL_IDS, PONG, coastPong, drawPong, mirrorPong, newPong, pongSnapshot, stepPong } from "./games/pong.js";
+import { applyPong4Snapshot, coastPong4, drawPong4, newPong4, pong4Ranking, pong4Snapshot, stepPong4 } from "./games/pong4.js";
 import {
   SCALES,
   SCALE_IDS,
@@ -89,35 +90,82 @@ const GAMES = {
       };
     },
     sounds: { hit: [660, 0.05], wall: [440, 0.03], point: [880, 0.15], miss: [220, 0.25] },
-    // The host runs the ball; the guest's paddle is the top one on the host's phone.
+    // The host runs the ball. Two players: the guest's paddle is the top one on the host's
+    // phone. Three or four: Pong on a square, a side each (games/pong4.js), lives instead
+    // of points; every phone turns the field so its own side is at the bottom.
     duel: {
-      players: [2, 2],
+      players: [2, 4],
       opts: (d, w, h) => ({ level: d.level, h: clamp((PONG.w * h) / w, 120, 200) }),
-      create: (o) => newPong({ h: o.h, level: o.level }),
+      arrange: (ids) => (ids.length > 2 ? { sides: Object.fromEntries(ids.map((id, i) => [id, [0, 2, 1, 3][i]])) } : {}),
+      create: (o) => (o.sides ? newPong4({ sides: Object.values(o.sides), level: o.level }) : newPong({ h: o.h, level: o.level })),
       step(s, dt, level, r) {
         r.net.mine = level;
+        const sides = r.opts.sides;
+        if (sides) {
+          if (r.net.role !== "host") {
+            coastPong4(s, dt, sides[r.net.myId], level);
+            return [];
+          }
+          const levels = { [sides[r.net.myId]]: level };
+          for (const id of r.net.ids) if (id !== r.net.myId && r.net.inputs[id]) levels[sides[id]] = r.net.inputs[id].v;
+          return stepPong4(s, dt, levels);
+        }
         if (r.net.role === "host") return stepPong(s, dt, level, r.net.inputs[opponent(r)]?.v ?? 0.5);
         coastPong(s, dt, level);
         return [];
       },
-      outgoing: (s, r) => (r.net.role === "host" ? { snap: pongSnapshot(s) } : { v: r.net.mine }),
+      outgoing(s, r) {
+        if (r.net.role !== "host") return { v: r.net.mine };
+        return { snap: r.opts.sides ? pong4Snapshot(s) : pongSnapshot(s) };
+      },
       incoming(s, from, d, ev, r) {
         if (r.net.role === "host") {
           r.net.inputs[from] = d;
           return [];
         }
+        if (r.opts.sides) {
+          applyPong4Snapshot(s, d.snap, r.opts.sides[r.net.myId]); // own paddle stays as you pull
+          return ev;
+        }
         const m = mirrorPong(d.snap, s.h);
-        Object.assign(s, m, { player: { ...m.player, x: s.player.x } }); // own paddle stays as you pull
+        Object.assign(s, m, { player: { ...m.player, x: s.player.x } });
         return ev.map(mirrorEvent);
       },
-      // One against one: the other leaving ends it.
-      left: (s, id, r) => `${nameIn(r, id)} left the game.`,
+      // Pong on a square sends events as { type, side }: the sounds are from this side.
+      sound(ev, r) {
+        if (typeof ev === "string") return ev;
+        const mine = ev.side === r.opts.sides[r.net.myId];
+        if (ev.type === "miss") return mine ? "miss" : "point";
+        if (ev.type === "won") return mine ? "point" : "miss";
+        return ev.type === "out" ? null : ev.type;
+      },
+      // One against one: the other leaving ends it. On a square their paddle just stops.
+      left: (s, id, r) => (r.opts.sides ? null : `${nameIn(r, id)} left the game.`),
       isOver: (s) => s.phase === "over",
-      scoreText: (s, r) => `You ${s.player.score} – ${s.cpu.score} ${nameIn(r, opponent(r))}`,
-      result: (s, r) => ({
-        title: s.player.score > s.cpu.score ? "You won!" : `${nameIn(r, opponent(r))} wins`,
-        text: `${s.player.score} – ${s.cpu.score} · ${GAMES.pong.levels[r.opts.level]}`,
-      }),
+      scoreText(s, r) {
+        if (!r.opts.sides) return `You ${s.player.score} – ${s.cpu.score} ${nameIn(r, opponent(r))}`;
+        const lives = (id) => s.players[r.opts.sides[id]]?.lives ?? 0;
+        return r.net.ids.map((id) => `${id === r.net.myId ? "You" : nameIn(r, id)} ${lives(id)}`).join(" · ");
+      },
+      draw(ctx, s, c, w, h, opts, r) {
+        if (!r.opts.sides) return drawPong(ctx, s, c, w, h, opts);
+        const names = Object.fromEntries(r.net.ids.map((id) => [r.opts.sides[id], id === r.net.myId ? "You" : nameIn(r, id)]));
+        drawPong4(ctx, s, c, w, h, { view: r.opts.sides[r.net.myId], names });
+      },
+      result(s, r) {
+        if (!r.opts.sides) {
+          return {
+            title: s.player.score > s.cpu.score ? "You won!" : `${nameIn(r, opponent(r))} wins`,
+            text: `${s.player.score} – ${s.cpu.score} · ${GAMES.pong.levels[r.opts.level]}`,
+          };
+        }
+        const bySide = Object.fromEntries(r.net.ids.map((id) => [r.opts.sides[id], id]));
+        const ranked = pong4Ranking(s).map((side) => bySide[side]).filter(Boolean);
+        return {
+          title: ranked[0] === r.net.myId ? "You won!" : `${nameIn(r, ranked[0])} wins`,
+          text: ranked.map((id, i) => `${i + 1}. ${id === r.net.myId ? "You" : nameIn(r, id)}`).join(" · ") + ` · ${GAMES.pong.levels[r.opts.level]}`,
+        };
+      },
     },
   },
   flappy: {
@@ -593,7 +641,9 @@ function draw() {
   const ctx = el.canvas.getContext("2d");
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   const extra = run.net && run.game.duel.drawOpts ? run.game.duel.drawOpts(run) : {};
-  run.game.draw(ctx, run.s, colors, view.w, view.h, { fullKg: run.fullKg, level: currentLevel(), ...extra });
+  const opts = { fullKg: run.fullKg, level: currentLevel(), ...extra };
+  if (run.net && run.game.duel.draw) run.game.duel.draw(ctx, run.s, colors, view.w, view.h, opts, run);
+  else run.game.draw(ctx, run.s, colors, view.w, view.h, opts);
 }
 
 function renderBar() {
@@ -625,7 +675,8 @@ function frame(t) {
 }
 
 function sounds(events) {
-  for (const ev of events) {
+  for (const raw of events) {
+    const ev = run.net && run.game.duel.sound ? run.game.duel.sound(raw, run) : raw;
     const sound = run.game.sounds[ev];
     if (sound) tone(sound[0], sound[1]);
   }
@@ -655,6 +706,7 @@ function hostDuel(id) {
     ...g.duel.opts(data[id], el.stage.clientWidth, el.stage.clientHeight),
     ids,
     ...(g.duel.teams ? { teams: Object.fromEntries(ids.map((pid) => [pid, lineup[pid]])) } : {}),
+    ...(g.duel.arrange ? g.duel.arrange(ids) : {}),
   };
   duel.send({ t: "start", game: id, opts });
   start(id, opts);
