@@ -39,9 +39,12 @@ release builds are signed differently, so switching between them on the phone ne
 uninstall first, which deletes the app's data (make a backup in Settings first).
 The version comes from git (versionCode = commit count, versionName = short SHA).
 
-The app starts with the simulated sensor; switch to **Erkdek (Bluetooth)** under
-Settings → Sensor. The first connection shows Android's device picker; the chosen
-sensor is remembered and reconnected automatically.
+The debug app starts with the simulated sensor, the release app with an Erkdek; switch
+under Settings → Sensor (**Erkdek** or **Tindeq** for a Tindeq Progressor, both Bluetooth). The
+first connection shows Android's device picker; the chosen sensor is remembered and
+reconnected automatically. With a Progressor there is no calibration or firmware
+update (it is factory calibrated); `tools/tindeq_probe.py` checks its protocol from a
+computer (needs `pip install bleak`).
 
 ## Firmware
 

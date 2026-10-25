@@ -1,6 +1,6 @@
 import { device } from "./device.js";
 import { applyDisplay, displayPrefs, setDisplayPrefs } from "./display.js";
-import { buildInfo, canChooseSensor, isNativeApp, sensorMode, setSensorMode } from "./platform.js";
+import { buildInfo, canChooseSensor, isNativeApp, sensorMode, sensorModes, setSensorMode } from "./platform.js";
 import { formatBytes, formatKg } from "./format.js";
 import { sessions } from "./sessions.js";
 import {
@@ -44,25 +44,30 @@ const sensorEl = {
 };
 
 const STATE_TEXT = { open: "Connected", connecting: "Connecting…", closed: "Not connected" };
+const MODE_INFO = {
+  ble: "Connects to your Erkdek over Bluetooth and reconnects automatically.",
+  tindeq: "Connects to your Tindeq Progressor over Bluetooth and reconnects automatically. It is factory calibrated.",
+  sim: "A simulated sensor, for trying the app without the hardware.",
+};
 
 function renderSensor() {
   const native = isNativeApp();
   const mode = sensorMode();
   const t = device.transport;
+  const bluetooth = mode !== "sim";
   sensorEl.modeGroup.hidden = !canChooseSensor();
-  for (const b of sensorEl.modes) b.classList.toggle("active", b.dataset.mode === mode);
-  sensorEl.info.textContent = !native
-    ? "In the browser the app uses a simulated sensor (development)."
-    : mode === "ble"
-      ? "Connects to your Erkdek over Bluetooth and reconnects automatically."
-      : "A simulated sensor, for trying the app without the hardware.";
+  for (const b of sensorEl.modes) {
+    b.hidden = !sensorModes().includes(b.dataset.mode);
+    b.classList.toggle("active", b.dataset.mode === mode);
+  }
+  sensorEl.info.textContent = native ? MODE_INFO[mode] : "In the browser the app uses a simulated sensor (development).";
   const parts = [STATE_TEXT[t.state] ?? t.state];
-  if (mode === "ble") {
+  if (bluetooth) {
     parts.push(t.deviceId ? `sensor ${t.deviceId}` : "no sensor chosen yet");
     if (t.error && t.state !== "open") parts.push(t.error);
   }
   sensorEl.state.textContent = parts.join(" · ");
-  sensorEl.choose.hidden = mode !== "ble";
+  sensorEl.choose.hidden = !bluetooth;
   renderBattery();
 }
 
@@ -70,7 +75,9 @@ function renderSensor() {
 function renderBattery() {
   const v = device.connected ? device.status?.batteryV : null;
   sensorEl.battery.hidden = v === null || v === undefined;
-  if (!sensorEl.battery.hidden) sensorEl.battery.textContent = `Battery ${v.toFixed(2)} V`;
+  if (!sensorEl.battery.hidden) {
+    sensorEl.battery.textContent = `Battery ${v.toFixed(2)} V${device.status.lowBattery ? " – low, charge it soon" : ""}`;
+  }
 }
 
 function initSensor() {
@@ -142,7 +149,8 @@ function renderFirmware(st) {
   const fw = st?.fw;
   const own = buildInfo().firmware;
   let text = fw || "–";
-  if (fw && own && !st.mock) text += fw === own ? " (matches this app)" : ` (this app's firmware: ${own})`;
+  if (st?.device === "tindeq") text = `Tindeq Progressor ${text}`;
+  else if (fw && own && !st.mock) text += fw === own ? " (matches this app)" : ` (this app's firmware: ${own})`;
   about.fw.textContent = text;
 }
 
@@ -232,6 +240,8 @@ export function initSettings() {
   settings.load().catch((e) => showMessage(e.message, true));
   initSensor();
   initDisplay();
+  // The Progressor is factory calibrated.
+  document.getElementById("calibrationCard").hidden = sensorMode() === "tindeq";
 
   initTagManager(
     document.getElementById("manageHolds"),

@@ -1,16 +1,20 @@
 import { BleTransport } from "./bletransport.js";
 import { sensorMode } from "./platform.js";
 import { SimulatedTransport } from "./simdevice.js";
+import { TindeqTransport } from "./tindeqtransport.js";
 
 // Transports connect the app to a sensor. Interface:
 //   connect()             start connecting (and reconnect when the link drops)
 //   send(obj)             send a command ({cmd: "tare"} ...); false when not connected
 //   "state" event         detail: "connecting" | "open" | "closed"
 //   "message" event       detail: message from the sensor ({t: "samples"|"status"|...})
-// The browser uses the simulated sensor; the Android app uses Bluetooth or the simulated
-// sensor, as chosen under Settings → Sensor.
+// The browser uses the simulated sensor; the Android app an Erkdek or a Tindeq
+// Progressor over Bluetooth (or the simulated sensor), as chosen under Settings → Sensor.
 function createTransport() {
-  return sensorMode() === "ble" ? new BleTransport() : new SimulatedTransport();
+  const mode = sensorMode();
+  if (mode === "ble") return new BleTransport();
+  if (mode === "tindeq") return new TindeqTransport();
+  return new SimulatedTransport();
 }
 
 // The connected device as seen by the views. Re-dispatches every device message as an

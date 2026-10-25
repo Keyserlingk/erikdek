@@ -7,6 +7,7 @@ import { initHistory, showHistory } from "./history.js";
 import { initLive } from "./live.js";
 import { initMock } from "./mock.js";
 import { initFirmwareUpdate } from "./firmwareui.js";
+import { sensorMode } from "./platform.js";
 import { initProfiles } from "./profileui.js";
 import { profiles } from "./profiles.js";
 import { initSettings, showAbout } from "./settings.js";
@@ -27,7 +28,9 @@ const el = {
 
 function showView() {
   const name = location.hash.slice(1);
-  const view = VIEWS.includes(name) ? name : "live";
+  let view = VIEWS.includes(name) ? name : "live";
+  // The Progressor is factory calibrated: no Calibrate screen.
+  if (view === "calibrate" && sensorMode() === "tindeq") view = "settings";
   for (const v of VIEWS) document.getElementById(`view-${v}`).hidden = v !== view;
   const tab = TAB_OF[view] || view;
   for (const t of el.tabs) t.classList.toggle("active", t.getAttribute("href") === `#${tab}`);
@@ -60,18 +63,19 @@ function renderStatus() {
   el.rate.classList.toggle("low", lowRate);
 
   const warnings = [];
+  const erkdek = st.device !== "tindeq"; // the Progressor has no Erkdek firmware or calibration
   // Firmware from another version of the app: its data may be misread.
-  if (st.protocol !== PROTOCOL_VERSION) {
+  if (erkdek && st.protocol !== PROTOCOL_VERSION) {
     warnings.push(
       `The sensor's firmware doesn't match this app (protocol ${st.protocol}, app ${PROTOCOL_VERSION}). Flash the firmware of this version.`,
     );
   }
-  if (lowRate) warnings.push(`Sample rate is ${st.rate.toFixed(0)} Hz. Bridge the HX711 RATE pin to VCC for 80 Hz.`);
-  if (!st.calibrated) warnings.push("Not calibrated – readings are approximate.");
+  if (erkdek && lowRate) warnings.push(`Sample rate is ${st.rate.toFixed(0)} Hz. Bridge the HX711 RATE pin to VCC for 80 Hz.`);
+  if (erkdek && !st.calibrated) warnings.push("Not calibrated – readings are approximate.");
   if (!st.tared) warnings.push("Not tared – press Tare with no load.");
   el.warning.hidden = warnings.length === 0 || !sensorInUse();
   el.warning.textContent = warnings.join(" ");
-  if (!st.calibrated && location.hash !== "#calibrate") {
+  if (erkdek && !st.calibrated && location.hash !== "#calibrate") {
     el.warning.append(" ", Object.assign(document.createElement("a"), { href: "#calibrate", textContent: "Calibrate now" }));
   }
 }

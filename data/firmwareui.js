@@ -31,7 +31,8 @@ function message(text, isError = false) {
 
 function render() {
   const st = device.status;
-  el.section.hidden = !bundle || !device.connected || !st;
+  // Only an Erkdek runs this app's firmware (not a Tindeq Progressor).
+  el.section.hidden = !bundle || !device.connected || !st || st.device === "tindeq";
   if (el.section.hidden) return;
   const current = st.fw === bundle.version;
   el.info.textContent = st.mock

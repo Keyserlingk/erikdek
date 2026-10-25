@@ -1,6 +1,7 @@
 import { LiveChart, smoothKg } from "./chart.js";
 import { device } from "./device.js";
 import { formatKg } from "./format.js";
+import { sensorMode } from "./platform.js";
 import { settings } from "./settingsstore.js";
 import { targetStatus } from "./workout.js";
 
@@ -88,7 +89,7 @@ function renderConnect() {
   if (el.connect.hidden) return;
   el.connectText.textContent = t.deviceId
     ? "Looking for your sensor… make sure it's switched on and nearby."
-    : "No sensor connected yet. Switch on your Erkdek and connect it.";
+    : `No sensor connected yet. Switch on your ${sensorMode() === "tindeq" ? "Tindeq Progressor" : "Erkdek"} and connect it.`;
   el.connectButton.textContent = t.deviceId ? "Choose another sensor" : "Connect sensor";
   el.connectButton.disabled = t.state === "connecting";
 }

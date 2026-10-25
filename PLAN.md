@@ -153,8 +153,9 @@ Android app (Capacitor) ◄── BLE ──► live view, graph, timer, routine
 ### App
 - The existing web app (plain HTML/JS/CSS, no build step) is the app's UI. Capacitor
   packages it; only the connection and storage layers change.
-- **Transport** (interface in `device.js`): two implementations:
+- **Transport** (interface in `device.js`): three implementations:
   - Capacitor BLE (`@capacitor-community/bluetooth-le`) in the Android app,
+  - a Tindeq Progressor over the same plugin (`tindeqtransport.js`),
   - simulated sensor (`simdevice.js`) in a desktop browser for development.
 - **Storage:** the stores the screens already use (settings, routines, workouts,
   holds/grips, sessions) keep their interfaces but read/write IndexedDB instead of
@@ -256,8 +257,36 @@ phone and the ESP. The WiFi version of the firmware is in git history (up to the
 switch to BLE).
 
 ### Tindeq protocol
-Tindeq has published the Progressor BLE protocol. Copying it might make the device
-usable from the official Tindeq app (unverified).
+Tindeq has published the Progressor BLE protocol. Copying it in the Erkdek firmware
+might make the Erkdek usable from the official Tindeq app (unverified).
+
+The app itself can use a real Progressor as its sensor (Settings → Sensor → Tindeq;
+`data/tindeqprotocol.js`, `data/tindeqtransport.js`). Protocol as verified on
+a Progressor with firmware 2.0.4 (2026-10-25, `tools/tindeq_probe.py`):
+- Service `7e4e1701-1ea6-40c9-9dcc-13d34ffead57`: data `…1702` (notify), control point
+  `…1703` (write, with or without response). Also a Nordic DFU service (`fe59`).
+- Commands, one byte: `0x64` tare, `0x65` start weight, `0x66` stop weight,
+  `0x6B` firmware version (`"2.0.4"`), `0x6C` error info (`deadbeef` = none),
+  `0x6F` battery (u32 mV, e.g. `00 04 b4 0e 00 00` = 3764 mV), `0x70` device id (6 bytes:
+  its Bluetooth address, reversed). Not tried: `0x6E` (sleep/off), `0x69`/`0x6A`
+  (calibration). Older write-ups that put the battery at `0x6B` and the version at
+  `0x70` are wrong for this firmware.
+- Notifications: code u8 | length u8 | payload. Code 0 = reply to a query (it doesn't
+  say which: one at a time). Code 1 = weight: n × (f32 kg, u32 µs), little-endian, e.g.
+  `01 78 | 78 eb 45 be 02 d8 00 00 | …` = -0.193 kg at 55298 µs. Code 4 = low battery
+  (not seen).
+- Any command while measuring (tare, battery, …) stops the measurement: the app starts it
+  again right after (a ~0.1 s gap). Tare itself sends no reply; it zeroes the reading
+  (-0.19 → 0.00 kg) and the zero stays across connections.
+- Timestamps: µs since the start command (first sample at ~55 ms), restarting at 0 on
+  every start. After a command stopped the measurement, the last few samples from before
+  come first in the next notification.
+- Rate: sample period 11.61 ms (86.1 Hz), but about one sample per notification is
+  skipped (a double-length step), so 80.6 Hz effective (240 s run: 19290 samples, no
+  other gaps). 15 samples (120 bytes) per
+  notification, one every ~186 ms (the link has a large MTU; with 23 bytes it would be
+  2 per notification). Streams until stopped (tested 4 minutes).
+- Units kg; noise ~4 g rms unloaded; drifted ~20 g in 4 minutes without load.
 
 ## Milestones
 

@@ -431,7 +431,8 @@
         <p id="sensorInfo" class="muted"></p>
         <div id="sensorMode" class="segmented wide" role="group" aria-label="Sensor" hidden>
           <button type="button" data-mode="sim">Simulated</button>
-          <button type="button" data-mode="ble">Erkdek (Bluetooth)</button>
+          <button type="button" data-mode="ble">Erkdek</button>
+          <button type="button" data-mode="tindeq">Tindeq</button>
         </div>
         <p id="sensorState" class="sensor-state"></p>
         <p id="sensorBattery" class="sensor-state" hidden></p>
@@ -455,7 +456,7 @@
           <p id="fwUpdateMessage" class="message" aria-live="polite"></p>
         </div>
       </div>
-      <div class="card">
+      <div id="calibrationCard" class="card">
         <h2>Calibration</h2>
         <p id="setCalStatus" class="muted"></p>
         <p id="setNoise" class="muted" hidden></p>
