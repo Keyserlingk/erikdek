@@ -19,6 +19,20 @@ import {
   tugScale,
 } from "../../data/games/playdata.js";
 import { LEVEL_IDS, PONG, PONG_LEVELS, coastPong, levelToPaddleX, mirrorPong, newPong, pongSnapshot, predictX, stepPong } from "../../data/games/pong.js";
+import {
+  PONG4,
+  applyPong4Snapshot,
+  coastPong4,
+  fromLocal,
+  levelToAlong,
+  levelToSide,
+  newPong4,
+  pong4Alive,
+  pong4Ranking,
+  pong4Snapshot,
+  stepPong4,
+  toLocal,
+} from "../../data/games/pong4.js";
 import { SCALES, TUG, TUG_LEVELS, knotSpeed, mirrorTug, newTug, seededCpu, stepTug, teamLevel, toScale, tugSnapshot } from "../../data/games/tug.js";
 
 class MemoryStorage {
@@ -620,4 +634,180 @@ test("flappy with friends: ranked by pipes, then by who flew longer", () => {
     { id: "c", score: 4, t: 25 },
   ]);
   assert.deepEqual(ranked.map((b) => b.id), ["b", "c", "a"]);
+});
+
+// ---- Pong for 3-4 players ----
+
+// A ball in play heading straight at `side`, `ahead` units before its edge, `a` along it.
+function aimAt(s, side, a, ahead = 25, speed = 60) {
+  s.phase = "play";
+  const p = fromLocal(side, a, ahead);
+  const v = fromLocal(side, PONG4.size / 2, PONG4.size / 2 - speed); // inward vector, flipped below
+  s.ball = { x: p.x, y: p.y, vx: v.x - PONG4.size / 2, vy: v.y - PONG4.size / 2 };
+}
+const runPong4 = (s, seconds, levels) => run((st, dt, lv) => stepPong4(st, dt, lv), s, seconds, levels);
+
+test("pong4: level 0 is each player's own left end, 1 their right end", () => {
+  const lo = levelToAlong(0);
+  const hi = levelToAlong(1);
+  assert.equal(lo, PONG4.corner + PONG4.paddleW / 2, "stops at the corner block");
+  assert.equal(hi, PONG4.size - lo);
+  const g = PONG4.paddleGap;
+  // Bottom: left to right. Right side (seen from there): from the bottom up. Top: right
+  // to left. Left side: from the top down.
+  assert.deepEqual(levelToSide(0, 0), { x: lo, y: 100 - g });
+  assert.deepEqual(levelToSide(0, 1), { x: hi, y: 100 - g });
+  assert.deepEqual(levelToSide(1, 0), { x: 100 - g, y: hi });
+  assert.deepEqual(levelToSide(1, 1), { x: 100 - g, y: lo });
+  assert.deepEqual(levelToSide(2, 0), { x: hi, y: g });
+  assert.deepEqual(levelToSide(2, 1), { x: lo, y: g });
+  assert.deepEqual(levelToSide(3, 0), { x: g, y: lo });
+  assert.deepEqual(levelToSide(3, 1), { x: g, y: hi });
+  for (let side = 0; side < 4; side++) {
+    const p = fromLocal(side, 30, 7);
+    assert.deepEqual(toLocal(side, p.x, p.y), { a: 30, d: 7 });
+  }
+});
+
+test("pong4: paddles follow their levels; a side without a level stays", () => {
+  const s = newPong4({ random: seededRandom(1) });
+  runPong4(s, 0.5, { 0: 0, 1: 1, 3: 0.5 });
+  assert.ok(Math.abs(s.players[0].a - levelToAlong(0)) < 0.1);
+  assert.ok(Math.abs(s.players[1].a - levelToAlong(1)) < 0.1);
+  assert.equal(s.players[2].a, 50);
+});
+
+test("pong4: a paddle returns the ball on every side", () => {
+  for (let side = 0; side < 4; side++) {
+    const s = newPong4({ random: seededRandom(2) });
+    s.players[side].a = levelToAlong(0.5);
+    aimAt(s, side, 50 + PONG4.paddleW / 4);
+    const events = runPong4(s, 0.3, { [side]: 0.5 });
+    assert.ok(events.some((e) => e.type === "hit" && e.side === side), `side ${side}`);
+    assert.ok(!events.some((e) => e.type === "miss"));
+    const b = s.ball;
+    const v = toLocal(side, 50 + b.vx, 50 + b.vy);
+    assert.ok(v.d > 50, "heads back into the field");
+    assert.ok(v.a > 50, "hit right of centre goes to that player's right");
+    assert.ok(Math.hypot(b.vx, b.vy) > 60, "speeds up");
+  }
+});
+
+test("pong4: a miss costs a life and serves again after a pause", () => {
+  const s = newPong4({ random: seededRandom(3) });
+  aimAt(s, 2, 20); // the paddle sits in the middle
+  const events = runPong4(s, 1, {});
+  assert.deepEqual(events.filter((e) => e.type !== "wall"), [{ type: "miss", side: 2 }]);
+  assert.equal(s.players[2].lives, PONG4.lives - 1);
+  assert.equal(s.phase, "serve");
+  assert.deepEqual(s.ball, { x: 50, y: 50, vx: 0, vy: 0 });
+  runPong4(s, PONG4.serveDelayS, {});
+  assert.equal(s.phase, "play");
+  assert.ok(Math.hypot(s.ball.vx, s.ball.vy) > PONG_LEVELS.normal.serveSpeed, "serves get faster");
+});
+
+test("pong4: corner blocks keep the ball in", () => {
+  const s = newPong4({ random: seededRandom(4) });
+  s.phase = "play";
+  s.ball = { x: 6, y: 50, vx: 0, vy: 80 }; // down the left edge into the bottom-left block
+  const events = runPong4(s, 0.5, {});
+  assert.ok(events.some((e) => e.type === "wall"));
+  assert.ok(s.ball.vy < 0, "bounced off the block");
+  assert.ok(!events.some((e) => e.type === "miss"));
+});
+
+test("pong4: out at 0 lives, the side becomes a wall; the last one in wins", () => {
+  const s = newPong4({ random: seededRandom(5) });
+  s.players[1].lives = 1;
+  aimAt(s, 1, 20);
+  let events = runPong4(s, 1, {});
+  assert.deepEqual(events.filter((e) => e.type !== "wall"), [{ type: "miss", side: 1 }, { type: "out", side: 1 }]);
+  assert.deepEqual(pong4Alive(s), [0, 2, 3]);
+  // Now the ball bounces off side 1.
+  aimAt(s, 1, 20);
+  events = runPong4(s, 0.5, {});
+  assert.ok(events.some((e) => e.type === "wall"));
+  assert.ok(!events.some((e) => e.type === "miss"));
+  assert.ok(s.ball.vx < 0);
+
+  s.players[3].lives = 1;
+  aimAt(s, 3, 20);
+  runPong4(s, 1, {});
+  s.players[0].lives = 1;
+  aimAt(s, 0, 20);
+  events = runPong4(s, 1, {});
+  assert.deepEqual(events.filter((e) => e.type !== "wall"), [{ type: "miss", side: 0 }, { type: "out", side: 0 }, { type: "won", side: 2 }]);
+  assert.equal(s.phase, "over");
+  assert.equal(s.winner, 2);
+  assert.deepEqual(s.out, [1, 3, 0]);
+  assert.deepEqual(pong4Ranking(s), [2, 0, 3, 1]);
+  assert.deepEqual(runPong4(s, 1, {}), [], "nothing happens after the end");
+});
+
+test("pong4: with 3 players the free side is a wall; serves go to players only", () => {
+  const s = newPong4({ sides: [0, 1, 2], random: seededRandom(6) });
+  assert.equal(s.players[3], null);
+  assert.deepEqual(pong4Alive(s), [0, 1, 2]);
+  aimAt(s, 3, 20);
+  const events = runPong4(s, 0.4, {});
+  assert.ok(events.some((e) => e.type === "wall"));
+  assert.ok(s.ball.vx > 0);
+  for (let i = 0; i < 40; i++) {
+    const t = newPong4({ sides: [0, 1, 2], random: seededRandom(100 + i) });
+    runPong4(t, PONG4.startDelayS + 0.02, {});
+    const { vx, vy } = t.ball;
+    assert.ok(vx > 0 || Math.abs(vy) > Math.abs(vx), "never served at the wall");
+  }
+});
+
+test("pong4: a snapshot goes through JSON and keeps the receiver's own paddle", () => {
+  const s = newPong4({ random: seededRandom(7) });
+  runPong4(s, PONG4.startDelayS + 0.3, { 0: 0.2, 1: 0.9, 2: 0.4, 3: 0.6 });
+  s.players[2].lives = 2;
+  const snap = JSON.parse(JSON.stringify(pong4Snapshot(s)));
+  assert.deepEqual(snap.alive, [0, 1, 2, 3]);
+  const r = applyPong4Snapshot(newPong4(), snap);
+  assert.deepEqual(pong4Snapshot(r), pong4Snapshot(s));
+  const g = newPong4();
+  g.players[1].a = 33;
+  applyPong4Snapshot(g, snap, 1);
+  assert.equal(g.players[1].a, 33);
+  assert.equal(g.players[2].lives, 2);
+  assert.deepEqual(g.ball, s.ball);
+  const three = JSON.parse(JSON.stringify(pong4Snapshot(newPong4({ sides: [0, 1, 3] }))));
+  assert.equal(applyPong4Snapshot(newPong4(), three).players[2], null);
+});
+
+test("pong4: coasting moves the ball and the own paddle, bouncing off walls", () => {
+  const g = newPong4({ sides: [0, 1, 2] });
+  g.phase = "play";
+  g.ball = { x: 30, y: 50, vx: -50, vy: 0 };
+  coastPong4(g, 0.1, 0, 1);
+  assert.ok(Math.abs(g.ball.x - 25) < 1e-9);
+  assert.ok(g.players[0].a > 50, "own paddle moves at once");
+  coastPong4(g, 0.6, 0, 1); // to the left wall (side 3) and back
+  assert.ok(g.ball.vx > 0);
+  assert.ok(g.ball.x > PONG4.wall + PONG4.ballR);
+  // At a side still in it waits at the edge for the host.
+  g.ball = { x: 50, y: 90, vx: 0, vy: 50 };
+  coastPong4(g, 1, 0, 0.5);
+  assert.equal(g.ball.y, 100 + PONG4.ballR);
+});
+
+test("pong4: same seed, same game", () => {
+  const play = () => {
+    const s = newPong4({ random: seededRandom(9), level: "hard" });
+    const rnd = seededRandom(10);
+    const levels = { 0: 0.5, 1: 0.5, 2: 0.5, 3: 0.5 };
+    const log = [];
+    for (let i = 0; i < 60 * 120 && s.phase !== "over"; i++) {
+      if (i % 20 === 0) for (const k in levels) levels[k] = rnd();
+      log.push(...stepPong4(s, 1 / 60, levels));
+    }
+    return { log, snap: pong4Snapshot(s) };
+  };
+  const a = play();
+  assert.deepEqual(play(), a);
+  assert.ok(a.log.filter((e) => e.type === "miss").length > 3, "the game moves on");
+  assert.ok(a.log.every((e) => typeof e.type === "string"));
 });
