@@ -240,7 +240,9 @@ erkdek/
 - **Export/import:** CSV/JSON per session, all sessions as CSV, routine files, backup.
 - **Play:** Pong and Flappy steered by the pull (full range in kg or % bodyweight), best
   scores per profile; Pong has Easy / Normal / Hard (ball speed, computer skill), results
-  per difficulty; touch fallback without a sensor.
+  per difficulty; touch fallback without a sensor. Tug of war against the computer
+  (pulls compared in kg, % bodyweight or % of your max pull; the computer pulls a share
+  of your max in waves), built so a second phone's level can replace the computer.
 
 ## Play: multiplayer (proposal)
 

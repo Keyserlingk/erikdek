@@ -8,13 +8,18 @@ import {
   fullRangeKg,
   loadPlayData,
   playKey,
+  bestMaxPullKg,
   recordFlappy,
   recordPong,
+  recordTug,
   removePlayData,
   savePlayData,
   stepRange,
+  tugMaxKg,
+  tugScale,
 } from "../../data/games/playdata.js";
 import { LEVEL_IDS, PONG, PONG_LEVELS, levelToPaddleX, newPong, predictX, stepPong } from "../../data/games/pong.js";
+import { SCALES, TUG, TUG_LEVELS, knotSpeed, newTug, seededCpu, stepTug, toScale } from "../../data/games/tug.js";
 
 class MemoryStorage {
   constructor() {
@@ -361,4 +366,192 @@ test("play data: full range in kg or % of bodyweight", () => {
   assert.deepEqual(stepRange({ unit: "bw", kg: 20, pct: 30 }, -1), { unit: "bw", kg: 20, pct: 25 });
   assert.equal(stepRange({ unit: "kg", kg: 2, pct: 30 }, -1).kg, 2);
   assert.equal(stepRange({ unit: "bw", kg: 2, pct: 150 }, 1).pct, 150);
+});
+
+test("tug: forces are put on the chosen scale", () => {
+  const me = { bodyweightKg: 80, maxKg: 50 };
+  assert.equal(toScale(20, "kg", me), 20);
+  assert.equal(toScale(20, "bw", me), 25);
+  assert.equal(toScale(20, "max", me), 40);
+  assert.equal(toScale(-1, "kg", me), 0, "tare drift");
+  assert.equal(toScale(20, "bw", { maxKg: 50 }), null, "no bodyweight");
+  assert.equal(toScale(20, "max", { bodyweightKg: 80 }), null, "no max");
+  // A light climber pulling less kg can still pull harder on % BW.
+  const light = toScale(30, "bw", { bodyweightKg: 55 });
+  const heavy = toScale(36, "bw", { bodyweightKg: 85 });
+  assert.ok(light > heavy, `${light} vs ${heavy}`);
+  // % max: each player against their own max.
+  assert.ok(toScale(30, "max", { maxKg: 40 }) > toScale(40, "max", { maxKg: 70 }));
+
+  assert.equal(tugScale({ scale: "bw" }, 0), "kg");
+  assert.equal(tugScale({ scale: "bw" }, 70), "bw");
+  assert.equal(tugScale({ scale: "max" }, 0), "max");
+});
+
+test("tug: the knot moves towards the harder pull, faster for bigger differences, capped", () => {
+  assert.equal(knotSpeed(0, "kg"), 0);
+  assert.ok(knotSpeed(3, "kg") > 0 && knotSpeed(-3, "kg") < 0);
+  assert.equal(knotSpeed(-3, "kg"), -knotSpeed(3, "kg"));
+  const speeds = [1, 2, 5, 10, 15].map((d) => knotSpeed(d, "kg"));
+  for (let i = 1; i < speeds.length; i++) assert.ok(speeds[i] > speeds[i - 1]);
+  assert.ok(speeds[1] / speeds[0] > 2, "slightly progressive");
+  assert.equal(knotSpeed(15, "kg"), TUG.maxSpeed);
+  assert.equal(knotSpeed(100, "kg"), TUG.maxSpeed, "capped");
+  assert.equal(knotSpeed(SCALES.max.span, "max"), TUG.maxSpeed);
+
+  // In the game, after the countdown.
+  const s = newTug({ scale: "kg" });
+  const events = run((st, dt, l) => stepTug(st, dt, l, 20), s, TUG.countdownS + 0.1, 30);
+  assert.equal(events.filter((e) => e === "count").length, 2);
+  assert.ok(events.includes("go"));
+  assert.equal(s.phase, "pull");
+  const x0 = s.x;
+  run((st, dt, l) => stepTug(st, dt, l, 20), s, 1, 25);
+  assert.ok(s.x > x0, "towards you");
+  const x1 = s.x;
+  run((st, dt, l) => stepTug(st, dt, l, 30), s, 1, 25);
+  assert.ok(s.x < x1, "back towards them");
+});
+
+test("tug: reaching your end wins the round; two rounds win the game", () => {
+  const s = newTug();
+  const events = run((st, dt, l) => stepTug(st, dt, l, 10), s, 60, 30);
+  assert.equal(s.phase, "over");
+  assert.equal(s.you.rounds, TUG.winRounds);
+  assert.equal(s.them.rounds, 0);
+  assert.equal(events.filter((e) => e === "roundWon").length, 2);
+  assert.ok(events.includes("won"));
+  // 20 kg more than the opponent: full speed, so the end in about 1/maxSpeed s.
+  assert.ok(Math.abs(s.fastestWinS - 1 / TUG.maxSpeed) < 0.2, `${s.fastestWinS}`);
+  const x = s.x;
+  assert.deepEqual(stepTug(s, 1, 0, 50), [], "nothing moves after the end");
+  assert.equal(s.x, x);
+
+  const t = newTug();
+  const lost = run((st, dt, l) => stepTug(st, dt, l, 30), t, 60, 0);
+  assert.ok(lost.includes("lost") && t.them.rounds === 2 && t.fastestWinS === null);
+});
+
+test("tug: at the time limit the knot's side wins; dead even is replayed", () => {
+  const s = newTug();
+  run((st, dt) => stepTug(st, dt, 20.4, 20), s, TUG.countdownS + 0.05, 0);
+  // A small lead: too slow to reach the end in time.
+  const events = run((st, dt) => stepTug(st, dt, 20.4, 20), s, TUG.roundS, 0);
+  assert.ok(events.includes("roundWon"), events.join());
+  assert.ok(s.last.winner === "you" && Math.abs(s.last.s - TUG.roundS) < 0.05);
+  assert.equal(s.phase, "break");
+
+  const even = newTug();
+  const ev = run((st, dt) => stepTug(st, dt, 20, 20), even, TUG.countdownS + TUG.roundS + 0.1, 0);
+  assert.ok(ev.includes("draw"));
+  assert.equal(even.you.rounds + even.them.rounds, 0);
+  assert.equal(even.round, 1, "the same round again");
+  run((st, dt) => stepTug(st, dt, 0, 0), even, TUG.breakS, 0);
+  assert.equal(even.phase, "ready");
+  assert.equal(even.x, 0);
+});
+
+// A whole game against the computer at `level` with your max at 50 kg, pulling `share` of
+// it steadily. Returns true when you win.
+function playCpu(level, share, seed, scale = "max") {
+  const me = { bodyweightKg: 70, maxKg: 50 };
+  const toLevel = (kg) => toScale(kg, scale, me);
+  const cpu = seededCpu({ strengthKg: TUG_LEVELS[level] * me.maxKg, toLevel }, seed);
+  const s = newTug({ scale });
+  for (let i = 0; i < 60 * 300 && s.phase !== "over"; i++) {
+    const theirs = cpu.next(s, 1 / 60);
+    stepTug(s, 1 / 60, toLevel(s.phase === "pull" ? share * me.maxKg : 0), theirs);
+  }
+  assert.equal(s.phase, "over");
+  return s.you.rounds > s.them.rounds;
+}
+
+const winsCpu = (level, share, scale) => Array.from({ length: 20 }, (_, i) => playCpu(level, share, i + 1, scale)).filter(Boolean).length;
+
+test("tug: the computer is beatable by a strong steady pull and beats a weak one", () => {
+  for (const scale of ["kg", "bw", "max"]) {
+    assert.equal(winsCpu("normal", 0.6, scale), 20, `strong beats Normal (${scale})`);
+    assert.equal(winsCpu("normal", 0.3, scale), 0, `weak loses to Normal (${scale})`);
+  }
+  assert.ok(winsCpu("easy", 0.35) >= 18, "Easy: a light pull wins");
+  assert.ok(winsCpu("hard", 0.45) <= 2, "Hard: Normal's strength isn't enough");
+  assert.ok(winsCpu("hard", 0.75) >= 18, "Hard: a strong pull wins");
+  // Close to its strength it's a real fight: some won, some lost.
+  const close = winsCpu("normal", 0.42);
+  assert.ok(close >= 3 && close <= 17, `close fight (${close}/20)`);
+});
+
+test("tug: the computer ramps up, surges, sags and tires", () => {
+  const cpu = seededCpu({ strengthKg: 20 }, 5);
+  const s = newTug();
+  s.phase = "pull";
+  const kgs = [];
+  for (let i = 0; i < 60 * 60; i++) kgs.push(cpu.next(s, 1 / 60));
+  assert.ok(kgs[6] < 10, `ramps up (${kgs[6]})`);
+  const first = kgs.slice(60, 60 * 10);
+  const last = kgs.slice(60 * 50);
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  assert.ok(Math.max(...first) > 20 * 1.2, "surges");
+  assert.ok(Math.min(...first) < 20 * 0.92, "sags");
+  assert.ok(mean(last) < mean(first) * 0.9, `tires (${mean(first)} → ${mean(last)})`);
+  // Rest: lets go between rounds, and a longer rest gives more back.
+  const tiredAfterRest = (restS) => {
+    const c = seededCpu({ strengthKg: 20 }, 5);
+    const t = { ...newTug(), phase: "pull" };
+    for (let i = 0; i < 60 * 60; i++) c.next(t, 1 / 60);
+    t.phase = "break";
+    for (let i = 0; i < 60 * restS; i++) c.next(t, 1 / 60);
+    assert.ok(c.kg < 0.5, "lets go between rounds");
+    t.phase = "pull";
+    const after = [];
+    for (let i = 0; i < 60 * 5; i++) after.push(c.next(t, 1 / 60));
+    return mean(after.slice(60));
+  };
+  assert.ok(tiredAfterRest(30) > tiredAfterRest(5) * 1.05, "rested");
+  // Digs in when about to lose.
+  const a = seededCpu({ strengthKg: 20 }, 9);
+  const b = seededCpu({ strengthKg: 20 }, 9);
+  const near = { ...newTug(), phase: "pull", x: 0.9 };
+  const safe = { ...newTug(), phase: "pull", x: 0 };
+  let ka = 0;
+  let kb = 0;
+  for (let i = 0; i < 60 * 3; i++) [ka, kb] = [a.next(near, 1 / 60), b.next(safe, 1 / 60)];
+  assert.ok(ka > kb * 1.08, `${ka} vs ${kb}`);
+});
+
+test("play data: tug settings and results", () => {
+  const st = new MemoryStorage();
+  const d = loadPlayData(st, "me");
+  assert.deepEqual(d.tug.results.normal, { fastestS: null, wins: 0, played: 0 });
+  assert.equal(recordTug(d, "normal", false, null), false);
+  assert.equal(recordTug(d, "normal", true, 8.5), true);
+  assert.equal(recordTug(d, "normal", true, 9), false);
+  assert.equal(recordTug(d, "normal", false, 6), true, "a round won in a lost game counts");
+  d.tug.scale = "max";
+  d.tug.level = "hard";
+  d.tug.maxKg = 44;
+  savePlayData(st, "me", d);
+  const back = loadPlayData(st, "me");
+  assert.deepEqual(back.tug.results.normal, { fastestS: 6, wins: 2, played: 4 });
+  assert.equal(back.tug.scale, "max");
+  assert.equal(back.tug.level, "hard");
+  assert.equal(back.tug.maxKg, 44);
+
+  st.setItem(playKey("x"), JSON.stringify({ tug: { scale: "lbs", level: "x", maxKg: 9999, results: { easy: { wins: 4, played: 2, fastestS: -1 } } } }));
+  const fixed = loadPlayData(st, "x");
+  assert.equal(fixed.tug.scale, "kg");
+  assert.equal(fixed.tug.level, "normal");
+  assert.equal(fixed.tug.maxKg, 250);
+  assert.deepEqual(fixed.tug.results.easy, { fastestS: null, wins: 2, played: 2 });
+
+  // Max pull: the best Max pull test, else the typed-in value.
+  const index = [
+    { type: "maxPull", summary: { peakKg: 41.2 } },
+    { type: "maxPull", summary: { peakKg: 47.5 } },
+    { type: "hangboard", summary: { peakKg: 90 } },
+  ];
+  assert.equal(bestMaxPullKg(index), 47.5);
+  assert.equal(bestMaxPullKg([]), null);
+  assert.equal(tugMaxKg({ maxKg: 30 }, index), 47.5);
+  assert.equal(tugMaxKg({ maxKg: 30 }, index.slice(2)), 30);
 });
