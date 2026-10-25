@@ -7,16 +7,27 @@ import { initRunner, isRunning } from "./runner.js";
 import { hasResult, initSummary } from "./runsummary.js";
 import { grips, hangboards, holdTypes } from "./tags.js";
 import { initTestList } from "./testlist.js";
-import { HOME, getRunHost, show, showNotice } from "./trainscreens.js";
+import { HOME, getRunHost, isHome, show, showNotice } from "./trainscreens.js";
 import { initWorkouts, isWorkoutActive } from "./workoutflow.js";
 import { workouts } from "./workouts.js";
+
+// A run, an unsaved summary or a workout is open in this tab.
+const busyIn = (group) => group === getRunHost() && (isRunning() || hasResult() || (group === "train" && isWorkoutActive()));
 
 // Tab tapped again: back to that tab's main screen, unless a run or an unsaved
 // summary is showing there (those are only left via Stop / Save / Discard).
 export function goHome(group) {
-  const busy = group === getRunHost() && (isRunning() || hasResult() || (group === "train" && isWorkoutActive()));
-  if (!busy) show(HOME[group]);
+  if (!busyIn(group)) show(HOME[group]);
   window.scrollTo(0, 0);
+}
+
+// Android's Back in the Train or Tests tab: back to the tab's main screen. During a run,
+// a summary or a workout it does nothing (they have their own Stop / Save / Discard).
+// True when Back was used up here.
+export function trainBack(group) {
+  if (isHome(group)) return false;
+  if (!busyIn(group)) show(HOME[group]);
+  return true;
 }
 
 // True while a run or an unsaved summary (or workout) is open: nothing may change the

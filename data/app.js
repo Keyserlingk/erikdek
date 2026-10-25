@@ -1,18 +1,19 @@
 import { isMuted, setMuted } from "./audio.js";
+import { initBackButton } from "./backbutton.js";
 import { initBackup } from "./backup.js";
 import { PROTOCOL_VERSION } from "./bleprotocol.js";
 import { initCalibrate } from "./calibrate.js";
 import { device } from "./device.js";
-import { initHistory, showHistory } from "./history.js";
+import { historyBack, initHistory, showHistory } from "./history.js";
 import { initLive } from "./live.js";
 import { initMock } from "./mock.js";
-import { initPlay, playHome } from "./play.js";
+import { initPlay, playBack, playHome } from "./play.js";
 import { initFirmwareUpdate } from "./firmwareui.js";
 import { sensorMode } from "./platform.js";
 import { initProfiles } from "./profileui.js";
 import { profiles } from "./profiles.js";
 import { initSettings, showAbout } from "./settings.js";
-import { goHome, initTrain, isBusy } from "./train.js";
+import { goHome, initTrain, isBusy, trainBack } from "./train.js";
 
 const LOW_RATE_HZ = 60; // below this the HX711 RATE pin is probably still at 10 Hz (not for the ADS1220)
 const VIEWS = ["live", "train", "tests", "play", "history", "calibrate", "settings"];
@@ -132,6 +133,15 @@ for (const t of el.tabs) {
     REHOME[href]?.();
   });
 }
+
+// Android's Back: the current tab's sub-screen first, then the previous page.
+const BACK = {
+  "#train": () => trainBack("train"),
+  "#tests": () => trainBack("tests"),
+  "#play": playBack,
+  "#history": historyBack,
+};
+initBackButton(() => BACK[location.hash]?.() ?? false);
 
 window.addEventListener("hashchange", showView);
 showView();

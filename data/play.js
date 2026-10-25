@@ -603,6 +603,16 @@ function quit() {
   renderHome();
 }
 
+// Android's Back in Play: pauses a game, then quits it (a game with a friend after
+// asking). True when Back was used up here.
+export function playBack() {
+  if (!run) return false;
+  if (run.net && !run.ended) {
+    if (confirm(`Leave the game with ${run.net.peerName}?`)) quit();
+  } else playHome();
+  return true;
+}
+
 // Play tab tapped again: pause a running game, else back to the games.
 export function playHome() {
   if (run && !run.paused && !run.ended) pause();

@@ -23,6 +23,7 @@ const PACKAGES = {
   "keep-awake": "node_modules/@capacitor-community/keep-awake/dist/esm",
   filesystem: "node_modules/@capacitor/filesystem/dist/esm",
   share: "node_modules/@capacitor/share/dist/esm",
+  app: "node_modules/@capacitor/app/dist/esm",
 };
 // Single-file packages: copied as <name>/index.js.
 const SINGLE_FILES = {

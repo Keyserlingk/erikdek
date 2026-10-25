@@ -654,6 +654,16 @@ export function initHistory() {
   }).observe(el.chart);
 }
 
+// Android's Back in History: closes a session, the compare screen or Select. True when
+// Back was used up here.
+export function historyBack() {
+  if (!el.detail.hidden) closeDetail();
+  else if (!el.compare.hidden) closeCompare();
+  else if (selecting) setSelecting(false);
+  else return false;
+  return true;
+}
+
 // Called when the History tab becomes visible: back to the overview, freshly rendered.
 export async function showHistory() {
   await loadProfileSettings();

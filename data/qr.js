@@ -5,6 +5,7 @@
 // Both libraries are copied into vendor/qr by tools/vendor.mjs.
 
 import qrcode from "./vendor/qr/qrcode.js";
+import { pushBack } from "./backbutton.js";
 import { button, create } from "./ui.js";
 
 const QUIET = 4; // modules of white border the QR spec asks for; scanners need it
@@ -37,10 +38,12 @@ export function scanQr({ title = "Scan the code on the other phone", check = () 
     const message = create("p", { className: "qr-scan-message", textContent: title });
     const paste = create("input", { type: "text", placeholder: "Or paste a code", autocomplete: "off", spellcheck: false });
     let stream = null, timer = 0, done = false, lastBad = "";
+    const releaseBack = pushBack(() => cancel.click()); // Android's Back = Cancel
 
     function finish(err, text) {
       if (done) return;
       done = true;
+      releaseBack();
       clearTimeout(timer);
       stream?.getTracks().forEach((t) => t.stop());
       overlay.remove();

@@ -35,6 +35,9 @@ export function show(screen) {
   window.scrollTo(0, 0);
 }
 
+// The tab's main screen is showing (no editor, run or summary on top).
+export const isHome = (group) => !screens[HOME[group]].hidden;
+
 // Moves the shared run/summary screens into the tab a run starts from.
 export function mountRunScreens(group) {
   if (group === runHost) return;

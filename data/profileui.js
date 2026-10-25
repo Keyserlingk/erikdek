@@ -7,6 +7,7 @@ import { removePlayData } from "./games/playdata.js";
 import { profiles, DEFAULT_PROFILE, GUEST_PROFILE } from "./profiles.js";
 import { sessions } from "./sessions.js";
 import { importShare, parseShare } from "./share.js";
+import { pushBack } from "./backbutton.js";
 import { settings } from "./settingsstore.js";
 import { $, button, create } from "./ui.js";
 
@@ -22,6 +23,7 @@ const el = {
 };
 
 let isBusy = () => false;
+let releaseBack = () => {}; // the open menu closes with Android's Back
 
 function showMessage(text, isError = false) {
   el.message.textContent = text;
@@ -55,6 +57,7 @@ function renderHeader() {
 }
 
 function closeMenu() {
+  releaseBack();
   el.menu.hidden = true;
   el.button.setAttribute("aria-expanded", "false");
 }
@@ -156,6 +159,8 @@ export function initProfiles({ busy }) {
   el.button.addEventListener("click", (ev) => {
     ev.stopPropagation();
     el.menu.hidden = !el.menu.hidden;
+    if (el.menu.hidden) releaseBack();
+    else releaseBack = pushBack(closeMenu);
     el.button.setAttribute("aria-expanded", String(!el.menu.hidden));
   });
   document.addEventListener("click", (ev) => {
