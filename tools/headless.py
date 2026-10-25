@@ -16,20 +16,27 @@ the next (use window.x); promises aren't awaited (store the result on window and
 in a later step). Every run starts with a fresh browser profile (empty app data).
 Needs google-chrome and the "websockets" Python package.
 """
-import asyncio, base64, json, subprocess, sys, time, urllib.request, websockets, tempfile
+import asyncio, base64, json, socket, subprocess, sys, time, urllib.request, websockets, tempfile
 
 url, outdir, dark = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
 steps = json.load(sys.stdin)
 
+def free_port():
+    # A port of its own, so checks running in parallel (several agents) don't share a Chrome.
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
 async def main():
+    port = free_port()
     prof = tempfile.mkdtemp()
     chrome = subprocess.Popen(["google-chrome", "--headless=new", "--disable-gpu", "--no-sandbox",
-        "--remote-debugging-port=9333", f"--user-data-dir={prof}", "about:blank"],
+        f"--remote-debugging-port={port}", f"--user-data-dir={prof}", "about:blank"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for _ in range(50):
             try:
-                targets = json.load(urllib.request.urlopen("http://127.0.0.1:9333/json")); break
+                targets = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json")); break
             except OSError: time.sleep(0.2)
         page = [t for t in targets if t["type"] == "page"][0]
         async with websockets.connect(page["webSocketDebuggerUrl"], max_size=None) as ws:
