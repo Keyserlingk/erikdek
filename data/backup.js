@@ -55,7 +55,8 @@ async function createBackup() {
     const backup = buildBackup({
       profiles: profiles.list,
       settings: await settings.byProfile(),
-      calibration: st?.calibrated ? { cpk: st.cpk, calibrated: true } : null,
+      // An Erkdek's calibration (a Progressor has none to save).
+      calibration: st?.calibrated && typeof st.cpk === "number" ? { cpk: st.cpk, calibrated: true } : null,
       routines: routines.custom,
       workouts: workouts.list,
       holdTypes: holdTypes.custom,
@@ -140,7 +141,7 @@ async function restore() {
     if (o.calibration.checked && b.calibration) {
       // Calibration lives on the sensor, so it needs a connection.
       if (device.send("setCalibration", { cpk: b.calibration.cpk })) done.push("calibration");
-      else done.push("not the calibration (no device connected)");
+      else done.push("not the calibration (no Erkdek connected)");
     }
     pending = null;
     el.preview.hidden = true;

@@ -136,6 +136,7 @@ test("without a chosen sensor connect waits; chooseSensor picks, remembers and s
     adcRate: 0,
     fw: "abc1234",
     mock: false,
+    device: "erkdek",
   });
 
   client.notify[UUID.samples](dv(SAMPLES));

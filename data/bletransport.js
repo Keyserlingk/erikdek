@@ -28,12 +28,12 @@ const OTA_DONE_TIMEOUT_MS = 20000;
 
 const sha256 = async (bytes) => new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
 
-async function loadBleClient() {
+export async function loadBleClient() {
   const { BleClient } = await import("./vendor/capacitor/bluetooth-le/index.js");
   return BleClient;
 }
 
-const browserStorage = {
+export const browserStorage = {
   get: (key) => {
     try {
       return localStorage.getItem(key);
@@ -52,15 +52,26 @@ const browserStorage = {
 };
 
 export class BleTransport extends EventTarget {
-  constructor({ loadClient = loadBleClient, storage = browserStorage, reconnectDelaysMs = RECONNECT_DELAYS_MS, digest = sha256 } = {}) {
+  // deviceKey, service: where the chosen sensor is remembered and the service the picker
+  // looks for (TindeqTransport uses its own).
+  constructor({
+    loadClient = loadBleClient,
+    storage = browserStorage,
+    reconnectDelaysMs = RECONNECT_DELAYS_MS,
+    digest = sha256,
+    deviceKey = DEVICE_KEY,
+    service = UUID.service,
+  } = {}) {
     super();
+    this.deviceKey = deviceKey;
+    this.service = service;
     this.digest = digest;
     this.loadClient = loadClient;
     this.storage = storage;
     this.reconnectDelaysMs = reconnectDelaysMs;
     this.client = null;
     this.state = "closed";
-    this.deviceId = storage.get(DEVICE_KEY);
+    this.deviceId = storage.get(deviceKey);
     this.firmware = null;
     this.error = null; // last problem, shown under Settings → Sensor
     this.attempt = 0;
@@ -82,9 +93,9 @@ export class BleTransport extends EventTarget {
     try {
       const client = await this.ensureClient();
       if (!this.deviceId) {
-        const device = await client.requestDevice({ services: [UUID.service] });
+        const device = await client.requestDevice({ services: [this.service] });
         this.deviceId = device.deviceId;
-        this.storage.set(DEVICE_KEY, this.deviceId);
+        this.storage.set(this.deviceKey, this.deviceId);
       }
       await client.connect(this.deviceId, () => this.onDisconnect());
       await this.setUp(client);
@@ -153,7 +164,7 @@ export class BleTransport extends EventTarget {
     clearTimeout(this.timer);
     const id = this.deviceId;
     this.deviceId = null;
-    this.storage.set(DEVICE_KEY, null);
+    this.storage.set(this.deviceKey, null);
     if (id && this.client) await this.client.disconnect(id).catch(() => {});
     this.setState("closed");
   }
@@ -228,7 +239,7 @@ export class BleTransport extends EventTarget {
   }
 
   emitStatus(view) {
-    this.emit({ ...decodeStatus(view), fw: this.firmware, mock: false });
+    this.emit({ ...decodeStatus(view), fw: this.firmware, mock: false, device: "erkdek" });
   }
 
   emit(msg) {
