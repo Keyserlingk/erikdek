@@ -16,9 +16,11 @@
     "@capacitor/android": "^8.5.3",
     "@capacitor/core": "^8.5.3",
     "@capacitor/filesystem": "8.1.4",
-    "@capacitor/share": "8.0.3"
+    "@capacitor/share": "8.0.3",
+    "trystero": "0.25.4"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.5.3"
+    "@capacitor/cli": "^8.5.3",
+    "esbuild": "0.25.10"
   }
 }

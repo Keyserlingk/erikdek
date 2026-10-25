@@ -2,11 +2,15 @@
 // so the app can import them without a bundler. While copying, extension-less
 // relative imports get ".js" and package imports (@capacitor/core, @capacitor/synapse)
 // point at the copied files.
+// Trystero (online play, Nostr strategy) and its dependencies are packed by esbuild into
+// one ES module, data/vendor/trystero.js; esbuild is only used here, the app stays
+// bundler-free.
 // Run with: npm run vendor (also part of tools/build_android.sh). Output is git-ignored.
 
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = join(root, "data", "vendor", "capacitor");
@@ -61,3 +65,16 @@ for (const file of jsFiles(out)) {
   writeFileSync(file, code);
 }
 console.log(`vendor: Capacitor modules copied to ${relative(root, out)}`);
+
+await build({
+  entryPoints: [join(root, "node_modules/trystero/dist/nostr.mjs")],
+  outfile: join(root, "data", "vendor", "trystero.js"),
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  target: "es2020",
+  minify: true,
+  legalComments: "inline",
+  logLevel: "warning",
+});
+console.log("vendor: Trystero packed into data/vendor/trystero.js");
