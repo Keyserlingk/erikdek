@@ -75,6 +75,12 @@ firmware (`tools/bundle_firmware.py`, needs PlatformIO), vendors the Capacitor p
   `vendor/trystero.js`, which `npm run vendor` builds (git-ignored) – run that once before
   trying it in the browser. Live check: two `tools/headless.py` runs in parallel, the host
   prints its code, the second joins with it (see PLAN.md "Play: multiplayer").
+- Play with a friend: `playduel.js` (lobby card, connection, messages) + each game's
+  `duel` part in `play.js` (host runs Tug/Pong and sends the state, Flappy shares a seed).
+  Check with two Chromes driven over CDP in one script: rename the profiles, host, read
+  `.duel-code`, join, click "Play with …", compare `#playScore` on both.
+- Sharing results with a friend: `share.js` (`buildShare`/`parseShare`/`importShare`;
+  friend profiles in `profiles.js`, read-only, shown in History → Compare people).
 - Same-Wi-Fi play by QR code: `netqr.js` (`hostOffline`/`joinOffline`, WebRTC with the
   offer/answer squeezed into ~100-character QR codes; same link interface as `net.js`;
   tested with SDP fixtures and a fake peer connection in `test/js/netqr.test.js`) and

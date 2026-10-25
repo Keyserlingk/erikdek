@@ -246,7 +246,7 @@ erkdek/
 
 ## Play: multiplayer
 
-The connection layer is built (no game UI or lobby yet). Single-player games live in
+The connection layer, the lobby and two-phone Tug of war, Pong and Flappy are built. Single-player games live in
 `data/games/` (pure logic) and `data/play.js` (UI). Two climbers, each with their own
 phone and sensor, playing against each other.
 
@@ -300,35 +300,33 @@ doesn't care which one is used.
     phones then need multicast DNS on the Wi-Fi (some guest/corporate Wi-Fi block it, or
     isolate clients altogether – then nothing local works).
 
-**What is sent** (JSON or a few bytes per message, unreliable/unordered channel where
-possible)
-- Each phone sends its own level (0..1 after its own full range, so different strengths
-  are fair) about 30 times a second, with a sequence number and its game time.
-- *Pong:* the host is authoritative for the ball and score: it runs `stepPong` with both
-  paddles and sends ball position/velocity, score and events (~30 Hz). The guest shows its
-  own paddle at once from its sensor, the host's paddle and the ball from the last
-  message. The field is mirrored for the guest, so each player sees themselves at the
-  bottom.
-- *Flappy:* both phones start from a shared seed and start time (host sends
-  `{seed, startAt}`), so `newFlappy({seed})` gives the same course on both and nothing
-  else needs syncing; each phone simulates its own bird and sends its height and
-  crash/score. The other bird is drawn semi-transparent. The longest flight wins.
-
-**Latency**
-- Wi-Fi P2P is ~5–30 ms, P2P across the internet ~20–150 ms. Remote paddles/birds are drawn
-  ~100 ms in the past and interpolated between messages (jitter buffer).
-- Pong: the guest predicts the ball locally from the last host state (same physics) and
-  snaps softly to the host's corrections; at paddle hits the host decides. A slightly
-  bigger guest paddle hitbox could compensate for lag.
-- Clocks: a ping exchange at start estimates the offset, used for `startAt`.
-- Lost connection: pause with "Waiting for <name>…", give up after ~10 s.
-
-**UI**
-- Play home gets a "Play with a friend" button per game → Host / Join.
-- Host: QR code (or game code) and "Waiting for player…"; Join: camera scanner (or code
-  entry). Both show the other's name (profile) once connected, then a 3-2-1 countdown.
-- In game: both scores in the bar ("You 3 – 2 Anna"), a connection dot, Pause pauses both.
-- After the round: winner, "Rematch" and "Leave".
+**Lobby and games (built)** – `data/playduel.js` + the `duel` part of each game in
+`data/play.js`; pure helpers in `games/*.js` (tested).
+- Play home has a "Play with a friend" card: Host a game (shows the code) / Join a game
+  (type it), or "Same Wi-Fi, no internet?" → Show my code / Scan a code (two scans).
+  Once connected both see "Connected to <name> · <ping> ms"; the host's game cards say
+  "Play with <name>" and start the game on both phones with the host's settings
+  (difficulty, scale); the guest waits for the host's pick.
+- Messages `{t: hi | start | tick | leave}`: `hi` says whether the player has a
+  bodyweight (% BW scale only when both do); `start {game, opts}`; `tick {d, ev}` ~30/s
+  each way; `leave` ends the game for both (the lobby stays connected).
+- *Tug of war* and *Pong*: the host runs the game with the guest's latest level and sends
+  the state + events; the guest shows it turned round (`mirrorTug` / `mirrorPong`, events
+  through `mirrorEvent`), so each sees themselves at the bottom. Each phone puts its own
+  force on the scale (own full range / bodyweight / max), so different strengths are
+  fair. Pong's guest moves the ball on between states (`coastPong`) and draws its own
+  paddle at once from its sensor; the host decides hits (so the guest's paddle counts
+  ~half a ping late).
+- *Flappy*: the same seed and field width (80) on both phones, so each flies the same
+  course on its own; the friend's bird is drawn faintly, the one that gets further wins
+  (`flappyDuelResult`).
+- No pause in a two-phone game; leaving the tab doesn't stop it. Results don't count
+  towards the solo stats. The host's end screen has Play again.
+- Checked with two headless Chromes (a script driving both over CDP): all
+  three games to the end over game code, Tug of war over QR (pasted codes), play again,
+  quitting, leaving.
+- Not yet: a 3-2-1 countdown for Pong/Flappy, lag compensation (bigger guest hitbox),
+  rematch requests from the guest.
 
 **Later: two players on one phone** – the app connects to two sensors at once (two BLE
 connections, one per player), Pong with paddles at both ends (each player's full range set
