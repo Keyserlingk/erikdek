@@ -10,7 +10,12 @@
 //                      | countsPerKg f32 | uptime u32 (ms)
 //                      | tare noise rms u16 (g) | tare noise peak-to-peak u16 (g)
 //                      | battery u16 (mV, 0xFFFF = not measured) | protocol version u8
+//                      | ADC u8 (0 none, 1 HX711, 2 ADS1220)
+//                      | ADC rate u16 (configured SPS; 0 for the HX711, set by its RATE pin)
 //   Command (write)    opcode u8 [| value f32]
+//                      tare 1 | calibrate 2 (kg) | calReset 3 | setCalibration 4 (counts/kg)
+//                      | setRate 5 (SPS, a whole number from ads1220::kRates; the HX711
+//                        ignores it). The new rate shows in the status.
 //   Event (notify)     tared:      1
 //                      calibrated: 2 | calibrated u8 | countsPerKg f32 | noise rms u16 (g)
 //                      calError:   3 | reason u8 | noise rms u16 (g)
@@ -21,17 +26,19 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "adc_type.h"
+
 namespace ble {
 
 static constexpr size_t kSamplesHeader = 8;
-static constexpr size_t kStatusSize = 18;
+static constexpr size_t kStatusSize = 21;
 // Raised whenever a layout here changes; the app warns when the sensor's differs from
 // its own (data/bleprotocol.js PROTOCOL_VERSION).
-static constexpr uint8_t kProtocolVersion = 1;
+static constexpr uint8_t kProtocolVersion = 2;
 static constexpr uint16_t kNoNoise = 0xFFFF;
 static constexpr int16_t kForceMax = 32767;  // 327.67 kg
 
-enum Command : uint8_t { CmdTare = 1, CmdCalibrate = 2, CmdCalReset = 3, CmdSetCalibration = 4 };
+enum Command : uint8_t { CmdTare = 1, CmdCalibrate = 2, CmdCalReset = 3, CmdSetCalibration = 4, CmdSetRate = 5 };
 enum Event : uint8_t { EvTared = 1, EvCalibrated = 2, EvCalError = 3 };
 enum CalError : uint8_t { CalErrBadWeight = 1, CalErrTooSmall = 2, CalErrMoving = 3 };
 
@@ -98,7 +105,8 @@ inline size_t encodeSamples(uint8_t* out, uint16_t seq, uint32_t t0Ms, uint16_t 
 }
 
 inline size_t encodeStatus(uint8_t* out, bool tared, bool calibrated, float rateHz, float countsPerKg, uint32_t uptimeMs,
-                           float tareNoiseRmsKg, float tareNoisePpKg, float batteryVolts) {
+                           float tareNoiseRmsKg, float tareNoisePpKg, float batteryVolts, AdcType adc,
+                           uint16_t adcRateSps) {
   out[0] = (tared ? 1 : 0) | (calibrated ? 2 : 0);
   float r = rateHz * 10.0f + 0.5f;
   putU16(out + 1, r <= 0 ? 0 : r >= 65535 ? 65535 : (uint16_t)r);
@@ -108,6 +116,8 @@ inline size_t encodeStatus(uint8_t* out, bool tared, bool calibrated, float rate
   putU16(out + 13, noiseGrams(tareNoisePpKg));
   putU16(out + 15, batteryMillivolts(batteryVolts));
   out[17] = kProtocolVersion;
+  out[18] = (uint8_t)adc;
+  putU16(out + 19, adcRateSps);
   return kStatusSize;
 }
 
@@ -133,7 +143,7 @@ inline size_t encodeCalError(uint8_t* out, CalError reason, float noiseRmsKg) {
 
 struct ParsedCommand {
   Command op;
-  float value;  // kg for calibrate, counts per kg for set calibration
+  float value;  // kg for calibrate, counts per kg for set calibration, SPS for set rate
 };
 
 // Parses a command write; false for unknown opcodes or a missing value.
@@ -147,6 +157,7 @@ inline bool parseCommand(const uint8_t* data, size_t len, ParsedCommand& out) {
       return true;
     case CmdCalibrate:
     case CmdSetCalibration:
+    case CmdSetRate:
       if (len < 5) return false;
       out.value = getF32(data + 1);
       return true;

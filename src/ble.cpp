@@ -24,7 +24,9 @@ static constexpr const char* kOtaUuid = "9a0b0006-3d10-4e93-8657-4a72c5dd3311";
 static constexpr uint32_t kSamplePushMs = 50;
 static constexpr uint32_t kStatusPushMs = 1000;
 static constexpr uint16_t kMtu = 247;
-static constexpr size_t kMaxBatch = 32;  // samples drained per push (~3 pushes' worth)
+// Samples per notification at most: one full packet at MTU 247. Each push sends all
+// buffered samples (2000 SPS: ~100 per 50 ms push).
+static constexpr size_t kMaxBatch = 119;
 
 static NimBLEServer* server = nullptr;
 static NimBLECharacteristic* samplesChr = nullptr;
@@ -37,7 +39,7 @@ static uint16_t seq = 0;
 class ServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& info) override {
     connHandle = info.getConnHandle();
-    // Short connection interval (1.25 ms units: 7.5–15 ms) so 80 Hz streams smoothly.
+    // Short connection interval (1.25 ms units: 7.5–15 ms) so the samples stream smoothly.
     s->updateConnParams(info.getConnHandle(), 6, 12, 0, 400);
   }
 
@@ -64,6 +66,13 @@ class CommandCallbacks : public NimBLECharacteristicCallbacks {
       case ble::CmdSetCalibration:
         sensorSetCalibration(cmd.value);
         break;
+      case ble::CmdSetRate:
+        // Whole SPS only; rejected for the HX711 and unsupported rates (the status shows
+        // the rate in effect).
+        if (cmd.value >= 1 && cmd.value <= 65535 && cmd.value == (float)(uint16_t)cmd.value) {
+          sensorSetRate((uint16_t)cmd.value);
+        }
+        break;
     }
   }
 };
@@ -85,7 +94,7 @@ static void updateStatus(bool notify) {
   SensorStatus st = sensorStatus();
   uint8_t buf[ble::kStatusSize];
   size_t n = ble::encodeStatus(buf, st.tared, st.calibrated, st.rateHz, st.countsPerKg, millis(), st.tareNoise.rmsKg,
-                               st.tareNoise.ppKg, batteryVolts());
+                               st.tareNoise.ppKg, batteryVolts(), st.adc, st.adcRateSps);
   statusChr->setValue(buf, n);
   if (notify && bleConnected()) statusChr->notify();
 }
@@ -143,29 +152,37 @@ void bleSendEvent(const SensorEvent& ev) {
     case SensorEvent::CalibrationFailed:
       n = ble::encodeCalError(buf, calError(ev.result), ev.noise.rmsKg);
       break;
+    case SensorEvent::RateChanged:
+      break;  // no event: the status carries the new rate
   }
-  if (bleConnected()) eventChr->notify(buf, n);
+  if (n && bleConnected()) eventChr->notify(buf, n);
   updateStatus(true);
 }
 
-// Sends the buffered samples in as few notifications as the MTU allows.
+static void discardSamples() {
+  Sample discard[kMaxBatch];
+  while (sensorDrain(discard, kMaxBatch)) {
+  }
+}
+
+// Sends all buffered samples, as many per notification as the MTU allows.
 static void sendSamples() {
-  Sample buf[kMaxBatch];
-  size_t n = sensorDrain(buf, kMaxBatch);
-  if (n == 0 || !bleConnected()) return;  // drained anyway, so nothing piles up
-
+  if (!bleConnected()) return discardSamples();  // drained anyway, so nothing piles up
   uint16_t mtu = max<uint16_t>(server->getPeerMTU(connHandle), 23);  // 23 = BLE minimum
-  size_t perPacket = ble::samplesPerPacket(mtu - 3);
-  if (perPacket == 0) return;
-  // Average time between samples (µs); 80 Hz when there is only one.
-  uint16_t dtUs = n > 1 ? (uint16_t)((buf[n - 1].ms - buf[0].ms) * 1000 / (n - 1)) : 12500;
-  float kg[kMaxBatch];
-  for (size_t i = 0; i < n; i++) kg[i] = buf[i].kg;
+  size_t perPacket = min(ble::samplesPerPacket(mtu - 3), kMaxBatch);
+  if (perPacket == 0) return discardSamples();
+  // Time between samples (µs) from the measured rate: the millisecond timestamps are too
+  // coarse at high rates (several samples per ms at 2000 SPS).
+  float rate = sensorStatus().rateHz;
+  uint16_t dtUs = rate > 0 ? (uint16_t)min(1e6f / rate + 0.5f, 65535.0f) : 12500;
 
+  Sample buf[kMaxBatch];
+  float kg[kMaxBatch];
   uint8_t packet[ble::kSamplesHeader + 2 * kMaxBatch];
-  for (size_t start = 0; start < n; start += perPacket) {
-    size_t count = min(perPacket, n - start);
-    size_t len = ble::encodeSamples(packet, seq++, buf[start].ms, dtUs, kg + start, count);
+  size_t n;
+  while ((n = sensorDrain(buf, perPacket)) > 0) {
+    for (size_t i = 0; i < n; i++) kg[i] = buf[i].kg;
+    size_t len = ble::encodeSamples(packet, seq++, buf[0].ms, dtUs, kg, n);
     samplesChr->notify(packet, len);
   }
 }
@@ -177,11 +194,9 @@ void bleLoop() {
 
   if (now - lastSamples >= kSamplePushMs) {
     lastSamples = now;
+    // During a firmware update the link is for the update: drop the readings.
     if (otaActive()) {
-      // During a firmware update the link is for the update: drop the readings.
-      Sample discard[kMaxBatch];
-      while (sensorDrain(discard, kMaxBatch)) {
-      }
+      discardSamples();
     } else {
       sendSamples();
     }

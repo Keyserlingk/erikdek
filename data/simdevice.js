@@ -266,6 +266,8 @@ export class SimulatedTransport extends EventTarget {
       uptime: Math.round(s.t * 1000),
       mock: true,
       protocol: PROTOCOL_VERSION,
+      adc: "hx711", // like the HX711 board: rate set in hardware, setRate ignored
+      adcRate: 0,
       fw: "simulated",
       scenario: s.scenario,
     };

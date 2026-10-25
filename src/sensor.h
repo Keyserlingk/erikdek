@@ -3,7 +3,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "adc_type.h"
 #include "calibration.h"
+
+class LoadCellAdc;
 
 struct Sample {
   uint32_t ms;  // millis() when the sample was read
@@ -24,21 +27,25 @@ struct SensorStatus {
   float countsPerKg;
   size_t dropped;
   uint32_t samplesRead;  // since start; for the serial log's rate over the last second
-  int32_t lastRaw;       // last HX711 reading (counts)
+  int32_t lastRaw;       // last ADC reading (counts)
   float lastKg;
   Noise tareNoise;  // noise during the last tare (NAN until the first one)
+  AdcType adc;
+  uint16_t adcRateSps;  // configured rate; 0 for the HX711 (RATE pin)
 };
 
-// Results of tare/calibration, reported from the sensor task to the network loop.
+// Results of tare/calibration and rate changes, reported from the sensor task to the
+// network loop.
 struct SensorEvent {
-  enum Type : uint8_t { Tared, Calibrated, CalibrationFailed } type;
+  enum Type : uint8_t { Tared, Calibrated, CalibrationFailed, RateChanged } type;
   CalResult result;
   Calibration calibration;  // new calibration for Calibrated
   Noise noise;              // spread of the tare/calibration readings (NAN for a reset)
+  uint16_t rateSps;         // new ADC rate for RateChanged
 };
 
-// Starts the HX711 reading task on core 1 and auto-tares.
-void sensorBegin(uint8_t doutPin, uint8_t sckPin, const Calibration& cal);
+// Starts the reading task on core 1 with a started ADC and auto-tares.
+void sensorBegin(LoadCellAdc* adc, const Calibration& cal);
 // Tare over the next 0.5 s; the load must be off.
 void sensorRequestTare();
 // Measures for 1 s with a known weight hanging and computes the scale factor.
@@ -47,6 +54,9 @@ void sensorRequestCalibration(float kg);
 void sensorResetCalibration();
 // Sets a known factor (restoring a backup). Returns false if the value is implausible.
 bool sensorSetCalibration(float countsPerKg);
+// Changes the ADC's data rate (ADS1220 only). Returns false when the ADC has no
+// settable rate or doesn't support this one; a RateChanged event follows otherwise.
+bool sensorSetRate(uint16_t sps);
 // Copies up to max buffered samples into out; returns the count.
 size_t sensorDrain(Sample* out, size_t max);
 bool sensorPollEvent(SensorEvent& out);

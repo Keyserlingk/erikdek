@@ -65,3 +65,27 @@ pio device monitor        # serial log (BLE name and firmware version)
 | SCK | GPIO 17 |
 
 Bridge the HX711 RATE pin to VCC for 80 Hz. The web app warns if the measured rate is low.
+
+### ADS1220 instead (20–2000 Hz)
+
+The firmware looks for an ADS1220 at start and uses it if it answers; otherwise the HX711.
+The serial log says which (`ADC: ADS1220 at 330 SPS` / `ADC: HX711`). The rate is chosen
+in the app (Settings → Sensor) or on the console (`rate 330`) and saved on the sensor.
+
+| ADS1220 | ESP32 / load cell |
+|---|---|
+| AVDD, DVDD | 3.3V |
+| AVSS, DGND | GND |
+| SCLK | GPIO 18 |
+| DOUT/DRDY | GPIO 19 |
+| DIN | GPIO 23 |
+| CS | GPIO 5 |
+| DRDY | GPIO 4 |
+| REFP0 | 3.3V, and load cell E+ (excitation +) |
+| REFN0 | GND, and load cell E− (excitation −) |
+| AIN1 | load cell S+ (signal +) |
+| AIN2 | load cell S− (signal −) |
+
+The bridge excitation is also the reference (ratiometric), so supply drift cancels out.
+Swapped S+/S− only flip the sign of the calibration factor; no rewiring needed. Switching
+ADC drops the saved calibration (the factors differ ~2x): calibrate again.

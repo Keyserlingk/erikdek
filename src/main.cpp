@@ -1,8 +1,10 @@
 #include <Arduino.h>
 
+#include "ads1220.h"
 #include "battery.h"
 #include "ble.h"
 #include "console.h"
+#include "hx711.h"
 #include "led.h"
 #include "ota.h"
 #include "sensor.h"
@@ -10,13 +12,33 @@
 
 static constexpr uint8_t kHxDoutPin = 16;
 static constexpr uint8_t kHxSckPin = 17;
+// ADS1220 on VSPI: SCK, MISO (DOUT), MOSI (DIN), CS, DRDY.
+static constexpr Ads1220::Pins kAdsPins = {18, 19, 23, 5, 4};
 
-// Tare/calibration results, whether requested by the app or the serial console:
-// new calibrations are saved, and both the app and the console hear about it.
+static Ads1220 ads;
+static HX711 hx;
+static LoadCellAdc* adc = &hx;
+
+// The ADS1220 if one answers on the SPI bus, else the HX711. Neither hangs when its
+// chip is missing (the HX711 then just never has a reading).
+static LoadCellAdc* detectAdc() {
+  if (ads.begin(kAdsPins, storageLoadRate())) {
+    Serial.printf("ADC: ADS1220 at %u SPS\n", ads.rateSps());
+    return &ads;
+  }
+  hx.begin(kHxDoutPin, kHxSckPin);
+  Serial.println("ADC: HX711");
+  return &hx;
+}
+
+// Tare/calibration results and rate changes, whether requested by the app or the serial
+// console: new calibrations and rates are saved, and both the app and the console hear
+// about it.
 static void handleSensorEvents() {
   SensorEvent ev;
   while (sensorPollEvent(ev)) {
-    if (ev.type == SensorEvent::Calibrated) storageSaveCalibration(ev.calibration);
+    if (ev.type == SensorEvent::Calibrated) storageSaveCalibration(ev.calibration, adc->type());
+    if (ev.type == SensorEvent::RateChanged) storageSaveRate(ev.rateSps);
     bleSendEvent(ev);
     consoleLogEvent(ev);
     if (ev.type != SensorEvent::CalibrationFailed) ledFlash();
@@ -33,7 +55,8 @@ void setup() {
   Serial.println("\nErkdek starting");
   storageBegin();
   batteryBegin();
-  sensorBegin(kHxDoutPin, kHxSckPin, storageLoadCalibration());
+  adc = detectAdc();
+  sensorBegin(adc, storageLoadCalibration(adc->type()));
   bleBegin();
   consoleBegin();
   ledBegin();

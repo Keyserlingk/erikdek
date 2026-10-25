@@ -1,3 +1,4 @@
+import { ADS1220_RATES } from "./bleprotocol.js";
 import { device } from "./device.js";
 import { applyDisplay, displayPrefs, setDisplayPrefs } from "./display.js";
 import { buildInfo, canChooseSensor, isNativeApp, sensorMode, setSensorMode } from "./platform.js";
@@ -40,6 +41,9 @@ const sensorEl = {
   modeGroup: document.getElementById("sensorMode"),
   state: document.getElementById("sensorState"),
   battery: document.getElementById("sensorBattery"),
+  adc: document.getElementById("sensorAdc"),
+  rateRow: document.getElementById("sensorRateRow"),
+  rate: document.getElementById("sensorRate"),
   choose: document.getElementById("sensorChoose"),
 };
 
@@ -64,6 +68,7 @@ function renderSensor() {
   sensorEl.state.textContent = parts.join(" · ");
   sensorEl.choose.hidden = mode !== "ble";
   renderBattery();
+  renderAdc();
 }
 
 // Shown only when the sensor measures its battery.
@@ -73,7 +78,28 @@ function renderBattery() {
   if (!sensorEl.battery.hidden) sensorEl.battery.textContent = `Battery ${v.toFixed(2)} V`;
 }
 
+const ADC_NAMES = { hx711: "HX711", ads1220: "ADS1220" };
+
+// The sensor's ADC and its rate; the ADS1220's rate can be chosen (saved on the sensor).
+function renderAdc() {
+  const st = device.connected ? device.status : null;
+  const name = ADC_NAMES[st?.adc];
+  sensorEl.adc.hidden = !name;
+  if (name) {
+    const rate = st.adcRate ? `${st.adcRate} Hz` : `~${Math.round(st.rate)} Hz`;
+    sensorEl.adc.textContent = `ADC: ${name} · ${rate}`;
+  }
+  const ads = st?.adc === "ads1220";
+  sensorEl.rateRow.hidden = !ads;
+  // Not while the user has the list open, so it doesn't jump.
+  if (ads && document.activeElement !== sensorEl.rate) sensorEl.rate.value = String(st.adcRate);
+}
+
 function initSensor() {
+  sensorEl.rate.replaceChildren(
+    ...ADS1220_RATES.map((r) => Object.assign(document.createElement("option"), { value: String(r), textContent: `${r} Hz` })),
+  );
+  sensorEl.rate.addEventListener("change", () => device.send("setRate", { sps: Number(sensorEl.rate.value) }));
   for (const b of sensorEl.modes) {
     b.addEventListener("click", () => {
       if (b.dataset.mode === sensorMode()) return;
@@ -83,7 +109,10 @@ function initSensor() {
   }
   sensorEl.choose.addEventListener("click", () => device.transport.chooseSensor());
   device.on("connection", renderSensor);
-  device.on("status", renderBattery);
+  device.on("status", () => {
+    renderBattery();
+    renderAdc();
+  });
   renderSensor();
 }
 

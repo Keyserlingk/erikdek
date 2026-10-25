@@ -2,16 +2,18 @@
 
 #include <Arduino.h>
 
-#include "hx711.h"
+#include "adc.h"
+#include "ads1220_config.h"
 #include "rate_meter.h"
 #include "ring_buffer.h"
 
-static constexpr size_t kTareSamples = 40;         // 0.5 s at 80 Hz
-static constexpr size_t kCalibrationSamples = 80;  // 1 s at 80 Hz
+static constexpr float kTareSeconds = 0.5f;
+static constexpr float kCalibrationSeconds = 1.0f;
+static constexpr float kAssumedHx711Hz = 80.0f;  // until the rate has been measured
 
-static HX711 hx;
+static LoadCellAdc* adc = nullptr;
 static Calibration calibration;  // owned by the sensor task once started
-static RingBuffer<Sample, 256> samples;  // ~3 s at 80 Hz
+static RingBuffer<Sample, 6144> samples;  // ~3 s at 2000 SPS (48 KB)
 static RingBuffer<SensorEvent, 8> events;
 static RingBuffer<RawSample, 64> monitor;  // only filled in fast mode
 static volatile bool monitorOn = false;
@@ -26,6 +28,7 @@ static volatile bool calResetRequested = false;
 static volatile bool calSetRequested = false;
 static volatile float calSetCountsPerKg = 0;
 static volatile float calRequestKg = 0;
+static volatile uint16_t rateRequestSps = 0;  // 0 = none
 static volatile bool tared = false;
 static volatile uint32_t samplesRead = 0;
 static volatile int32_t lastRaw = 0;
@@ -35,18 +38,36 @@ static volatile float lastKg = 0;
 static volatile float tareNoiseRmsCounts = NAN;
 static volatile float tareNoisePpCounts = NAN;
 
+// Sample rate for counting tare/calibration readings: the configured one, or the
+// measured one for the HX711 (its rate is set by a pin, 10 or ~80-90 Hz).
+static float nominalRateHz() {
+  if (adc->rateSps()) return adc->rateSps();
+  float measured = rateMeter.rateHz();
+  return measured > 0 ? measured : kAssumedHx711Hz;
+}
+
 static void handleRequests() {
+  if (rateRequestSps) {
+    uint16_t sps = rateRequestSps;
+    rateRequestSps = 0;
+    if (adc->setRate(sps)) {
+      rateMeter.restart(sps);
+      SensorEvent ev{SensorEvent::RateChanged, CalResult::Ok, calibration, Noise()};
+      ev.rateSps = sps;
+      events.push(ev);
+    }
+  }
   if (tareRequested) {
     tareRequested = false;
-    tareAverager.reset(kTareSamples);
+    tareAverager.reset(samplesFor(kTareSeconds, nominalRateHz()));
   }
   if (calRequested) {
     calRequested = false;
-    calAverager.reset(kCalibrationSamples);
+    calAverager.reset(samplesFor(kCalibrationSeconds, nominalRateHz()));
   }
   if (calResetRequested) {
     calResetRequested = false;
-    calibration.countsPerKg = Calibration::kDefaultCountsPerKg;
+    calibration.countsPerKg = adcDefaultCountsPerKg(adc->type());
     calibration.calibrated = false;
     events.push({SensorEvent::Calibrated, CalResult::Ok, calibration, Noise()});
   }
@@ -75,11 +96,8 @@ static void finishCalibration() {
 
 static void sensorTask(void*) {
   for (;;) {
-    if (!hx.isReady()) {
-      vTaskDelay(1);
-      continue;
-    }
-    int32_t raw = hx.read();
+    if (!adc->waitReady()) continue;
+    int32_t raw = adc->read();
     uint32_t now = millis();
     rateMeter.tick(now);
     handleRequests();
@@ -99,15 +117,13 @@ static void sensorTask(void*) {
     lastKg = kg;
     samplesRead = samplesRead + 1;
     if (monitorOn) monitor.push({now, raw, kg});
-    // Always yield after a reading (the next one is 12.5 ms away at 80 Hz): if DOUT
-    // never goes high this task must not starve setup()/loop() on the same core.
-    vTaskDelay(1);
+    adc->afterRead();
   }
 }
 
-void sensorBegin(uint8_t doutPin, uint8_t sckPin, const Calibration& cal) {
+void sensorBegin(LoadCellAdc* a, const Calibration& cal) {
+  adc = a;
   calibration = cal;
-  hx.begin(doutPin, sckPin);
   sensorRequestTare();
   xTaskCreatePinnedToCore(sensorTask, "sensor", 4096, nullptr, 5, nullptr, 1);
 }
@@ -126,6 +142,12 @@ bool sensorSetCalibration(float countsPerKg) {
   if (!isfinite(countsPerKg) || fabsf(countsPerKg) < 100.0f) return false;
   calSetCountsPerKg = countsPerKg;
   calSetRequested = true;
+  return true;
+}
+
+bool sensorSetRate(uint16_t sps) {
+  if (adc->type() != AdcType::Ads1220 || !ads1220::isSupportedRate(sps)) return false;
+  rateRequestSps = sps;
   return true;
 }
 
@@ -151,5 +173,5 @@ SensorStatus sensorStatus() {
   tareNoise.rmsKg = tareNoiseRmsCounts / cpk;  // stays NAN until the first tare
   tareNoise.ppKg = tareNoisePpCounts / cpk;
   return {rateMeter.rateHz(), tared, calibration.calibrated, calibration.countsPerKg,
-          samples.dropped(), samplesRead, lastRaw, lastKg, tareNoise};
+          samples.dropped(), samplesRead, lastRaw, lastKg, tareNoise, adc ? adc->type() : AdcType::None, adc ? adc->rateSps() : (uint16_t)0};
 }

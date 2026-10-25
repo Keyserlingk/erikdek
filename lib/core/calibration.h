@@ -4,10 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Converts raw HX711 counts to kg: kg = (raw - offset) / countsPerKg.
+// Converts raw ADC counts to kg: kg = (raw - offset) / countsPerKg.
 struct Calibration {
-  // Rough default for a 300 kg, 2 mV/V cell at gain 128 and 3.3 V excitation.
-  // Only good to within ~20 %; calibrate with a known weight.
+  // Rough default for a 300 kg, 2 mV/V cell on the HX711 (adc_type.h has the one per
+  // ADC). Only good to within ~20 %; calibrate with a known weight.
   static constexpr float kDefaultCountsPerKg = 14300.0f;
 
   int32_t offset = 0;
@@ -32,6 +32,13 @@ inline CalResult computeCountsPerKg(int32_t offset, int32_t loadedRaw, float kg,
   if (delta > -kMinCalibrationCounts && delta < kMinCalibrationCounts) return CalResult::TooSmall;
   out = (float)delta / kg;
   return CalResult::Ok;
+}
+
+// Readings in `seconds` at `rateHz`, so tare (0.5 s) and calibration (1 s) take the same
+// time at any sample rate; at least 4 for a usable average and spread.
+inline size_t samplesFor(float seconds, float rateHz) {
+  float n = seconds * rateHz + 0.5f;
+  return n < 4 ? 4 : (size_t)n;
 }
 
 // Averages a fixed number of raw readings, used for tare and calibration, and measures
