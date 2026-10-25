@@ -33,18 +33,22 @@ export function unlockAudio() {
 }
 
 export function beep() {
+  tone(1000, 0.3, 0.3);
+}
+
+// A short sine tone (also the games' blips).
+export function tone(frequency, durS, volume = 0.2) {
   if (!ctx || muted) return;
-  const durS = 0.3;
-  const volume = 0.3;
   const t0 = ctx.currentTime;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.type = "sine";
-  osc.frequency.value = 1000;
+  osc.frequency.value = frequency;
   // Short ramps avoid clicks.
+  const ramp = Math.min(0.01, durS / 4);
   gain.gain.setValueAtTime(0, t0);
-  gain.gain.linearRampToValueAtTime(volume, t0 + 0.01);
-  gain.gain.setValueAtTime(volume, t0 + durS - 0.02);
+  gain.gain.linearRampToValueAtTime(volume, t0 + ramp);
+  gain.gain.setValueAtTime(volume, t0 + durS - ramp);
   gain.gain.linearRampToValueAtTime(0, t0 + durS);
   osc.connect(gain).connect(ctx.destination);
   osc.start(t0);

@@ -3,6 +3,7 @@
 // Switching waits while a run or an unsaved summary is open, so a session can't end up
 // with the wrong person.
 
+import { removePlayData } from "./games/playdata.js";
 import { profiles, DEFAULT_PROFILE, GUEST_PROFILE } from "./profiles.js";
 import { sessions } from "./sessions.js";
 import { settings } from "./settingsstore.js";
@@ -94,6 +95,7 @@ async function remove(p) {
   try {
     await sessions.removeProfile(p.id);
     await settings.removeFor(p.id);
+    removePlayData(localStorage, p.id);
     await profiles.remove(p.id);
     showMessage(`Deleted "${p.name}".`);
   } catch (e) {
@@ -106,6 +108,7 @@ async function clearGuest(p) {
   try {
     await sessions.removeProfile(GUEST_PROFILE);
     await settings.removeFor(GUEST_PROFILE);
+    removePlayData(localStorage, GUEST_PROFILE);
     showMessage(`${p.name}'s data cleared.`);
   } catch (e) {
     showMessage(e.message, true);

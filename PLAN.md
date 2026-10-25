@@ -237,6 +237,59 @@ erkdek/
   ⓘ explanations, progress charts per hand, personal bests, session details.
 - **Settings:** bodyweight, rep threshold, own holds/grips, calibration, backup, About.
 - **Export/import:** CSV/JSON per session, all sessions as CSV, routine files, backup.
+- **Play:** Pong and Flappy steered by the pull (full range in kg or % bodyweight), best
+  scores per profile; touch fallback without a sensor.
+
+## Play: multiplayer (proposal)
+
+Not built. Single-player games live in `data/games/` (pure logic) and `data/play.js` (UI).
+Two climbers, each with their own phone and sensor, playing against each other.
+
+**Connection options**
+- *WebRTC peer-to-peer, QR-code signalling* – no server. Host taps "Host game", the phone
+  shows a QR code with its SDP offer (compressed); the guest scans it and shows an answer
+  QR for the host to scan. Then a data channel runs directly between the phones. Works
+  best on the same Wi-Fi (host candidates only, no STUN/TURN); two scans is a bit clumsy
+  but needs nothing online. Needs a QR scanner (camera plugin or BarcodeDetector).
+- *Small WebSocket relay* (e.g. a Cloudflare Worker with a Durable Object per room) –
+  internet play. Host gets a 4-letter game code, the guest types it; the relay just
+  forwards messages within the room. Tiny, nearly free, but a server to keep running.
+  Could also carry WebRTC signalling and fall back to relaying when P2P fails.
+
+**What is sent** (JSON or a few bytes per message, unreliable/unordered channel where
+possible)
+- Each phone sends its own level (0..1 after its own full range, so different strengths
+  are fair) about 30 times a second, with a sequence number and its game time.
+- *Pong:* the host is authoritative for the ball and score: it runs `stepPong` with both
+  paddles and sends ball position/velocity, score and events (~30 Hz). The guest shows its
+  own paddle at once from its sensor, the host's paddle and the ball from the last
+  message. The field is mirrored for the guest, so each player sees themselves at the
+  bottom.
+- *Flappy:* both phones start from a shared seed and start time (host sends
+  `{seed, startAt}`), so `newFlappy({seed})` gives the same course on both and nothing
+  else needs syncing; each phone simulates its own bird and sends its height and
+  crash/score. The other bird is drawn semi-transparent. The longest flight wins.
+
+**Latency**
+- Wi-Fi P2P is ~5–30 ms, the internet relay ~30–150 ms. Remote paddles/birds are drawn
+  ~100 ms in the past and interpolated between messages (jitter buffer).
+- Pong: the guest predicts the ball locally from the last host state (same physics) and
+  snaps softly to the host's corrections; at paddle hits the host decides. A slightly
+  bigger guest paddle hitbox could compensate for lag.
+- Clocks: a ping exchange at start estimates the offset, used for `startAt`.
+- Lost connection: pause with "Waiting for <name>…", give up after ~10 s.
+
+**UI**
+- Play home gets a "Play with a friend" button per game → Host / Join.
+- Host: QR code (or game code) and "Waiting for player…"; Join: camera scanner (or code
+  entry). Both show the other's name (profile) once connected, then a 3-2-1 countdown.
+- In game: both scores in the bar ("You 3 – 2 Anna"), a connection dot, Pause pauses both.
+- After the round: winner, "Rematch" and "Leave".
+
+**Later: two players on one phone** – the app connects to two sensors at once (two BLE
+connections, one per player), Pong with paddles at both ends (each player's full range set
+separately), Flappy with two birds. No networking, but needs multi-device BLE in
+`bletransport.js` and a sensor picker per player.
 
 ## Future options (not in planned work)
 

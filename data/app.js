@@ -6,6 +6,7 @@ import { device } from "./device.js";
 import { initHistory, showHistory } from "./history.js";
 import { initLive } from "./live.js";
 import { initMock } from "./mock.js";
+import { initPlay, playHome } from "./play.js";
 import { initFirmwareUpdate } from "./firmwareui.js";
 import { initProfiles } from "./profileui.js";
 import { profiles } from "./profiles.js";
@@ -13,7 +14,7 @@ import { initSettings, showAbout } from "./settings.js";
 import { goHome, initTrain, isBusy } from "./train.js";
 
 const LOW_RATE_HZ = 60; // below this the HX711 RATE pin is probably still at 10 Hz
-const VIEWS = ["live", "train", "tests", "history", "calibrate", "settings"];
+const VIEWS = ["live", "train", "tests", "play", "history", "calibrate", "settings"];
 // Views without their own tab highlight this tab instead.
 const TAB_OF = { calibrate: "settings" };
 
@@ -37,8 +38,8 @@ function showView() {
 }
 
 // Sensor warnings (calibration, tare, sample rate) only where the sensor is used: Live,
-// Tests, Calibrate, and a running routine with the sensor.
-const SENSOR_VIEWS = ["live", "tests", "calibrate"];
+// Tests, Play, Calibrate, and a running routine with the sensor.
+const SENSOR_VIEWS = ["live", "tests", "play", "calibrate"];
 
 function sensorInUse() {
   const view = location.hash.slice(1) || "live";
@@ -103,6 +104,7 @@ initMock();
 initSettings();
 initTrain();
 initHistory();
+initPlay();
 initBackup();
 initFirmwareUpdate({ busy: isBusy });
 
@@ -110,6 +112,7 @@ initFirmwareUpdate({ busy: isBusy });
 const REHOME = {
   "#train": () => goHome("train"),
   "#tests": () => goHome("tests"),
+  "#play": playHome,
   "#history": () => {
     showHistory();
     window.scrollTo(0, 0);
