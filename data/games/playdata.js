@@ -3,6 +3,7 @@
 // this runs under node --test too.
 
 import { clamp } from "./common.js";
+import { LEVEL_IDS } from "./pong.js";
 
 export const playKey = (profileId) => `erkdek.play:${profileId}`;
 
@@ -14,13 +15,17 @@ const DEFAULT_RANGE = { unit: "kg", kg: 20, pct: 30 };
 
 export const GAME_IDS = ["pong", "flappy"];
 
-// pong: best = the best win margin as { you, cpu }; flappy: best = most pipes passed.
+// pong: the difficulty and, per difficulty, games won and played and the best win margin
+// as { you, cpu }; flappy: best = most pipes passed.
+const pongResults = () => ({ best: null, wins: 0, played: 0 });
 export function defaultPlayData() {
   return {
-    pong: { range: { ...DEFAULT_RANGE }, best: null, wins: 0, played: 0 },
+    pong: { range: { ...DEFAULT_RANGE }, level: "normal", results: Object.fromEntries(LEVEL_IDS.map((l) => [l, pongResults()])) },
     flappy: { range: { ...DEFAULT_RANGE }, best: 0, played: 0 },
   };
 }
+
+const count = (n) => (Number.isInteger(n) && n >= 0 ? n : 0);
 
 function validRange(r) {
   const d = DEFAULT_RANGE;
@@ -41,16 +46,19 @@ export function loadPlayData(storage, profileId) {
     // start fresh
   }
   if (!stored || typeof stored !== "object") return data;
-  for (const id of GAME_IDS) {
-    const g = stored[id];
-    if (!g || typeof g !== "object") continue;
-    data[id].range = validRange(g.range);
-    data[id].played = Number.isInteger(g.played) && g.played >= 0 ? g.played : 0;
-  }
+  for (const id of GAME_IDS) data[id].range = validRange(stored[id]?.range);
   const pong = stored.pong || {};
-  if (Number.isInteger(pong.wins) && pong.wins >= 0) data.pong.wins = pong.wins;
-  if (Number.isInteger(pong.best?.you) && Number.isInteger(pong.best?.cpu)) data.pong.best = { you: pong.best.you, cpu: pong.best.cpu };
-  if (Number.isInteger(stored.flappy?.best) && stored.flappy.best >= 0) data.flappy.best = stored.flappy.best;
+  if (LEVEL_IDS.includes(pong.level)) data.pong.level = pong.level;
+  for (const l of LEVEL_IDS) {
+    const r = pong.results?.[l];
+    if (!r || typeof r !== "object") continue;
+    const d = data.pong.results[l];
+    d.played = count(r.played);
+    d.wins = Math.min(count(r.wins), d.played);
+    if (Number.isInteger(r.best?.you) && Number.isInteger(r.best?.cpu)) d.best = { you: r.best.you, cpu: r.best.cpu };
+  }
+  data.flappy.played = count(stored.flappy?.played);
+  data.flappy.best = count(stored.flappy?.best);
   return data;
 }
 
@@ -84,9 +92,10 @@ export function stepRange(range, dir) {
   return r;
 }
 
-// Records a finished Pong game; true when it is a new best (a bigger winning margin).
-export function recordPong(data, you, cpu) {
-  const g = data.pong;
+// Records a finished Pong game at a difficulty; true when it is a new best (a bigger
+// winning margin).
+export function recordPong(data, level, you, cpu) {
+  const g = data.pong.results[level];
   g.played++;
   if (you <= cpu) return false;
   g.wins++;
