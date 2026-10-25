@@ -70,11 +70,14 @@ firmware (`tools/bundle_firmware.py`, needs PlatformIO), vendors the Capacitor p
   `bleprotocol.js` = Erkdek byte layouts (keep in step with the firmware).
 - Play tab: `play.js` (screens) and `games/` (`pong.js`, `flappy.js`, `tug.js`, `common.js`,
   `playdata.js`); game logic is pure and tested in `test/js/games.test.js`.
-- Online play by game code: `net.js` (`hostGame`/`joinGame`, Trystero over Nostr relays +
-  WebRTC; tested with a fake room in `test/js/net.test.js`). It loads
-  `vendor/trystero.js`, which `npm run vendor` builds (git-ignored) – run that once before
-  trying it in the browser. Live check: two `tools/headless.py` runs in parallel, the host
-  prints its code, the second joins with it (see PLAN.md "Play: multiplayer").
+- Online play by game code: `net.js` (Trystero over Nostr relays + WebRTC; tested with a
+  fake network and manual clock in `test/js/net.test.js`). `hostGame({name, maxPlayers})`
+  → `{code, room}`: a room of up to 6 phones (star, host in the middle) that emits `peer`
+  with an open link per guest, `room.links`, `room.close()`; `joinGame(code, {name})` →
+  one link. It loads `vendor/trystero.js`, which `npm run vendor` builds (git-ignored) –
+  run that once before trying it in the browser. Live check: one script driving 3–4
+  headless Chromes over CDP (one per player, page from `tools/serve.py`, then
+  `import('./net.js')`); the host's code goes to the guests (see PLAN.md "Play: multiplayer").
 - Play with a friend: `playduel.js` (lobby card, connection, messages) + each game's
   `duel` part in `play.js` (host runs Tug/Pong and sends the state, Flappy shares a seed).
   Check with two Chromes driven over CDP in one script: rename the profiles, host, read
