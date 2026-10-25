@@ -307,7 +307,7 @@ button.link.danger { color: var(--bad); }
   gap: 10px;
   margin-bottom: 14px;
 }
-input[type="number"], input[type="text"], select {
+input[type="number"], input[type="text"], input[type="date"], input[type="datetime-local"], select {
   font: inherit;
   font-size: 17px;
   padding: 10px 12px;
@@ -773,3 +773,8 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
 .fw-steps { margin: 8px 0 12px; padding-left: 20px; line-height: 1.5; }
 .fw-update progress { width: 100%; height: 12px; accent-color: var(--accent); }
 .fw-update .message:empty { display: none; }
+
+/* History: edit a session */
+.detail-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.detail-head .link { margin-bottom: 0; }
+.rep-check { font-variant-numeric: tabular-nums; margin-bottom: 6px; }

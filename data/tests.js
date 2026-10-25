@@ -389,3 +389,38 @@ export const HANDS = {
   alternate: "Alternating hands",
   each: "Each hand in turn",
 };
+
+// ---------------------------------------------------------------- editing saved sessions
+
+// The session as shown: reps marked excluded (edited in History) left out, together with
+// their rep curves.
+export function withoutExcluded(s) {
+  if (!s.reps?.some((r) => r.excluded)) return s;
+  const keep = s.reps.map((r) => !r.excluded);
+  const repCurves = s.repCurves ? { ...s.repCurves, reps: s.repCurves.reps.filter((_, i) => keep[i]) } : s.repCurves;
+  return { ...s, reps: s.reps.filter((_, i) => keep[i]), repCurves };
+}
+
+const round2 = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
+
+// The summary again, from the reps that aren't excluded: routines and critical force
+// from the per-rep numbers, max pull and RFD from the stored rep curves (40 Hz, so they
+// can differ a little from the first result). Rounded like a new session.
+export function recomputeSummary(s) {
+  const v = withoutExcluded(s);
+  const routine = s.routine ?? KINDS[s.type].routine;
+  let summary;
+  if (s.noForce || (s.type === "workout" && isTraining(s))) {
+    summary = summarizeTraining(v.reps, s.sets ?? [], routine);
+  } else if (s.type === "workout") {
+    summary = KINDS.workout.analyze({ reps: v.reps, routine, target: s.targetKg ?? null, sets: s.sets ?? [] });
+  } else if (s.type === "criticalForce") {
+    summary = KINDS.criticalForce.analyze({ reps: v.reps, routine });
+  } else if (v.repCurves) {
+    summary = KINDS[s.type].analyze({ attempts: v.repCurves.reps, dtS: 1 / v.repCurves.hz, reps: v.reps });
+  } else {
+    // No rep curves (older session): only the peak can be redone.
+    summary = { ...s.summary, peakKg: Math.max(0, ...v.reps.map((r) => r.peakKg ?? 0)) };
+  }
+  return Object.fromEntries(Object.entries(summary).map(([k, x]) => [k, Array.isArray(x) ? x.map(round2) : round2(x)]));
+}

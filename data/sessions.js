@@ -69,7 +69,13 @@ class SessionStore extends EventTarget {
   async update(id, { note, tags }) {
     const error = validateNotes({ note, tags });
     if (error) throw new Error(error);
-    const session = { ...(await this.get(id)), note, tags };
+    await this.replace({ ...(await this.get(id)), note, tags });
+  }
+
+  // Stores an edited session in place of the saved one with the same id.
+  async replace(session) {
+    const id = session.id;
+    if (!(await db.get("sessionIndex", id))) throw new Error("This session no longer exists.");
     const entry = indexEntry(session);
     await db.write([
       { store: "sessions", key: id, value: session },

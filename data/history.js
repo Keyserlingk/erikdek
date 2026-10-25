@@ -5,6 +5,7 @@ import { buildBackup, fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCs
 import { settings } from "./settingsstore.js";
 import { sessions } from "./sessions.js";
 import { MAX_COMPARE, renderCompare } from "./sessioncompare.js";
+import { editCard } from "./sessionedit.js";
 import { notesCard } from "./sessionnotes.js";
 import { formatDate, formatDateTime, renderSession, sessionTags, sessionTitle } from "./sessionview.js";
 import { HANDS, KINDS, TEST_IDS, metricPoints, metricsFor } from "./tests.js";
@@ -46,6 +47,8 @@ const el = {
   detailRepsCsv: $("histDetailRepsCsv"),
   detailJson: $("histDetailJson"),
   detailNotes: $("histDetailNotes"),
+  edit: $("histEdit"),
+  detailEdit: $("histDetailEdit"),
   tag: $("histTag"),
   board: $("histBoard"),
   boardRow: $("histBoardRow"),
@@ -429,6 +432,7 @@ async function openDetail(id) {
     const s = await sessions.get(id);
     if (openId !== id) return;
     openSession = s;
+    showEditor(false);
     // Without the sensor there is no force curve to download.
     el.detailCsv.hidden = !hasCurveData(s.curve);
     el.detailRepsCsv.hidden = !s.reps?.length;
@@ -445,6 +449,23 @@ async function openDetail(id) {
     el.detailView.replaceChildren();
     showError(el.detailError, e.message);
   }
+}
+
+// The edit form in place of the session view (its Save stores and reopens it).
+function showEditor(on) {
+  el.detailEdit.replaceChildren();
+  for (const node of [el.detailView, el.detailNotes, el.edit]) node.hidden = on;
+  if (!on) return;
+  el.detailEdit.append(
+    editCard(openSession, {
+      save: async (edited) => {
+        await sessions.replace(edited);
+        await openDetail(edited.id);
+      },
+      cancel: () => showEditor(false),
+    }),
+  );
+  window.scrollTo(0, 0);
 }
 
 function closeDetail() {
@@ -474,6 +495,7 @@ export function initHistory() {
   );
   for (const select of [el.kind, el.hold, el.grip, el.board, el.tag, el.routine, el.metric]) select.addEventListener("change", render);
   el.back.addEventListener("click", closeDetail);
+  el.edit.addEventListener("click", () => showEditor(true));
   el.metricInfo.addEventListener("click", () => {
     el.metricInfoText.hidden = !el.metricInfoText.hidden;
     el.metricInfo.setAttribute("aria-expanded", String(!el.metricInfoText.hidden));

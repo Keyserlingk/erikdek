@@ -114,8 +114,10 @@ class SettingsStore extends EventTarget {
   }
 
   // A session with the bodyweight of its day (from the log), else the one it was
-  // saved with. Sessions are always the active profile's here.
+  // saved with; a bodyweight set by editing the session wins. Sessions are always the
+  // active profile's here.
   withBodyweight(session) {
+    if (session.bodyweightFixed) return session;
     const logged = bodyweightOn(this.values.bodyweightLog, session.startedAt);
     return logged ? { ...session, bodyweightKg: logged } : session;
   }

@@ -5,7 +5,7 @@ import { curvePoints } from "./analysis.js";
 import { UNIT_PADDING, unitsPlugin } from "./chart.js";
 import { formatDuration, formatKg } from "./format.js";
 import { repCompareCard } from "./repcompare.js";
-import { HANDS, KINDS } from "./tests.js";
+import { HANDS, KINDS, withoutExcluded } from "./tests.js";
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -108,7 +108,8 @@ function renderStrip(strip) {
 }
 
 // Fills `root` with the session view. Returns { destroy } for its charts.
-export function renderSession(root, s) {
+export function renderSession(root, session) {
+  const s = withoutExcluded(session); // reps excluded in History don't show
   const kind = KINDS[s.type];
   const meta = [formatDateTime(s.startedAt), formatDuration(s.durationS), ...sessionTags(s)];
   if (s.targetKg) meta.push(`target ${formatKg(s.targetKg)} kg`);

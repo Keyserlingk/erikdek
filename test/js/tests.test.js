@@ -161,3 +161,28 @@ test("tests done with both hands get results per hand", () => {
   assert.equal(cf.byHand.right.cfKg, 18);
   assert.equal(KINDS.maxPull.tiles({ summary: max, bodyweightKg: 0 })[0][1], "peak force · left");
 });
+
+test("editing: excluded reps are left out of the view and the recomputed summary", async () => {
+  const { recomputeSummary, withoutExcluded } = await import("../../data/tests.js");
+  const reps = [
+    { set: 1, rep: 1, hand: "both", peakKg: 40, meanKg: 38 },
+    { set: 2, rep: 1, hand: "both", peakKg: 55, meanKg: 20, excluded: true }, // a jerk
+    { set: 3, rep: 1, hand: "both", peakKg: 42, meanKg: 40 },
+  ];
+  const curve = (kg) => Array.from({ length: 80 }, () => kg);
+  const s = { type: "maxPull", reps, repCurves: { hz: 40, reps: [curve(38), curve(55), curve(40)] }, summary: { peakKg: 55 } };
+  const view = withoutExcluded(s);
+  assert.equal(view.reps.length, 2);
+  assert.equal(view.repCurves.reps.length, 2);
+  const summary = recomputeSummary(s);
+  assert.equal(summary.peakKg, 40);
+  assert.equal(summary.best1sKg, 40);
+
+  const cf = recomputeSummary({
+    type: "criticalForce",
+    routine: { workS: 7 },
+    reps: Array.from({ length: 24 }, (_, i) => ({ hand: "both", meanKg: i < 18 ? 30 : 20, peakKg: 35, excluded: i === 23 })),
+    summary: {},
+  });
+  assert.equal(cf.cfKg, 21.67); // the last 6 included reps: one 30, five 20
+});
