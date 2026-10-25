@@ -1,7 +1,9 @@
 // Profiles: several people on one phone, kept apart locally. Each profile has its own
 // sessions and settings (bodyweight, thresholds); routines, tests, workouts, holds and
 // grips, the calibration and the display settings are shared. Stored in db "kv" →
-// "profiles" as { list: [{ id, name, guest? }], active }. "Guest" is for a friend:
+// "profiles" as { list: [{ id, name, guest?, friend?, shareId? }], active }. Friend
+// profiles hold results shared from someone else's phone (share.js): read-only, never
+// the active profile. "Guest" is for a friend on this phone:
 // its data can be cleared in one go. No DOM access, so it runs under node --test too.
 
 import { db } from "./db.js";
@@ -32,6 +34,11 @@ class ProfileStore extends EventTarget {
 
   get list() {
     return this.data.list;
+  }
+
+  // The people using this phone (not the friends whose results were imported).
+  get local() {
+    return this.data.list.filter((p) => !p.friend);
   }
 
   get activeId() {
@@ -65,7 +72,7 @@ class ProfileStore extends EventTarget {
   async add(name) {
     const error = this.validateName(name);
     if (error) throw new Error(error);
-    if (this.list.length >= MAX_PROFILES) throw new Error(`At most ${MAX_PROFILES} profiles.`);
+    if (this.local.length >= MAX_PROFILES) throw new Error(`At most ${MAX_PROFILES} profiles.`);
     const profile = { id: newProfileId(), name: name.trim() };
     await this._put({ ...this.data, list: [...this.list, profile] });
     return profile;
@@ -85,8 +92,34 @@ class ProfileStore extends EventTarget {
   }
 
   async setActive(id) {
-    if (!this.find(id)) throw new Error("Unknown profile.");
+    if (!this.find(id) || this.find(id).friend) throw new Error("Unknown profile.");
     await this._put({ ...this.data, active: id });
+  }
+
+  // A stable random id for sharing this profile's results: the friend's phone files
+  // every share from it under the same friend profile.
+  async shareIdOf(id) {
+    const p = this.find(id);
+    if (p.shareId) return p.shareId;
+    const shareId = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => (b % 36).toString(36)).join("");
+    await this._put({ ...this.data, list: this.list.map((x) => (x.id === id ? { ...x, shareId } : x)) });
+    return shareId;
+  }
+
+  // The friend profile for a share (created on the first import, renamed if the friend
+  // renamed themselves). Returns its id.
+  async upsertFriend(shareId, name) {
+    const id = `f${shareId}`;
+    const existing = this.find(id);
+    const taken = (n) => this.list.some((p) => p.id !== id && p.name.toLowerCase() === n.toLowerCase());
+    const base = name.trim().slice(0, MAX_PROFILE_NAME) || "Friend";
+    let unique = base;
+    for (let i = 2; taken(unique); i++) unique = `${base.slice(0, MAX_PROFILE_NAME - 3)} ${i}`;
+    if (existing && existing.name === unique) return id;
+    const friend = { id, name: unique, friend: true };
+    const list = existing ? this.list.map((p) => (p.id === id ? { ...p, name: unique } : p)) : [...this.list, friend];
+    await this._put({ ...this.data, list });
+    return id;
   }
 
   // Adds profiles from a backup that this phone doesn't have yet (by id).

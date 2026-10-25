@@ -5,6 +5,7 @@ import { buildBackup, fileDate, hasCurveData, historyCsv, repsCsv, storedCurveCs
 import { profileOf, profiles } from "./profiles.js";
 import { bodyweightOn, settings } from "./settingsstore.js";
 import { sessions } from "./sessions.js";
+import { buildShare } from "./share.js";
 import { renderPeople } from "./peoplecompare.js";
 import { MAX_COMPARE, renderCompare } from "./sessioncompare.js";
 import { editCard } from "./sessionedit.js";
@@ -70,6 +71,11 @@ const el = {
   compareBack: $("histCompareBack"),
   compareView: $("histCompareView"),
   selJson: $("histSelJson"),
+  selShare: $("histSelShare"),
+  sharePanel: $("histSharePanel"),
+  shareCurves: $("histShareCurves"),
+  shareWeight: $("histShareWeight"),
+  shareSend: $("histShareSend"),
   selCsv: $("histSelCsv"),
   selDelete: $("histSelDelete"),
 };
@@ -376,6 +382,8 @@ function renderList(list, metric) {
 function setSelecting(on) {
   selecting = on;
   selected.clear();
+  el.sharePanel.hidden = true;
+  el.selShare.setAttribute("aria-expanded", "false");
   el.select.hidden = on;
   el.csv.hidden = on;
   render();
@@ -394,7 +402,7 @@ function renderSelectBar() {
   for (const id of [...selected]) if (!visibleIds.includes(id)) selected.delete(id);
   const n = selected.size;
   el.selectCount.textContent = n > MAX_COMPARE ? `${n} selected (compare up to ${MAX_COMPARE})` : `${n} selected`;
-  for (const b of [el.selJson, el.selCsv, el.selDelete]) b.disabled = n === 0;
+  for (const b of [el.selJson, el.selShare, el.shareSend, el.selCsv, el.selDelete]) b.disabled = n === 0;
   el.selCompare.disabled = n < 2 || n > MAX_COMPARE;
 }
 
@@ -407,6 +415,26 @@ async function downloadSelectedJson() {
     for (const s of selectedIndex()) full.push(await sessions.get(s.id));
     const backup = buildBackup({ settings: null, calibration: null, routines: [], workouts: [], holdTypes: [], grips: [], hangboards: [], sessions: full });
     await downloadJson(`erkdek-sessions-${fileDate()}.json`, backup);
+  } catch (e) {
+    showError(el.error, e.message);
+  }
+}
+
+// The selected sessions for a friend's phone (share.js): notes stay here, curves and
+// bodyweight only when ticked.
+async function shareSelected() {
+  try {
+    const list = [];
+    for (const s of selectedIndex()) list.push(settings.withBodyweight(await sessions.get(s.id)));
+    const me = profiles.active;
+    const share = buildShare({
+      from: { shareId: await profiles.shareIdOf(me.id), name: me.name },
+      list,
+      curves: el.shareCurves.checked,
+      bodyweight: el.shareWeight.checked,
+    });
+    const who = me.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "results";
+    await downloadJson(`erkdek-${who}-${fileDate()}.json`, share);
   } catch (e) {
     showError(el.error, e.message);
   }
@@ -590,6 +618,11 @@ export function initHistory() {
     render();
   });
   el.selJson.addEventListener("click", downloadSelectedJson);
+  el.selShare.addEventListener("click", () => {
+    el.sharePanel.hidden = !el.sharePanel.hidden;
+    el.selShare.setAttribute("aria-expanded", String(!el.sharePanel.hidden));
+  });
+  el.shareSend.addEventListener("click", shareSelected);
   el.selCompare.addEventListener("click", openCompare);
   el.compareBack.addEventListener("click", closeCompare);
   el.selCsv.addEventListener("click", () => downloadCsv(`erkdek-history-${fileDate()}.csv`, historyCsv(selectedIndex())));

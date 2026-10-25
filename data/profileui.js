@@ -6,6 +6,7 @@
 import { removePlayData } from "./games/playdata.js";
 import { profiles, DEFAULT_PROFILE, GUEST_PROFILE } from "./profiles.js";
 import { sessions } from "./sessions.js";
+import { importShare, parseShare } from "./share.js";
 import { settings } from "./settingsstore.js";
 import { $, button, create } from "./ui.js";
 
@@ -17,6 +18,7 @@ const el = {
   addName: $("profileAddName"),
   add: $("profileAdd"),
   message: $("profileMessage"),
+  import: $("profileImport"),
 };
 
 let isBusy = () => false;
@@ -41,7 +43,7 @@ function renderHeader() {
   el.name.textContent = active.name;
   el.button.dataset.guest = String(Boolean(active.guest));
   el.menu.replaceChildren(
-    ...profiles.list.map((p) => {
+    ...profiles.local.map((p) => {
       const b = button(p.id === profiles.activeId ? "active" : "", p.name, async () => {
         if (await switchTo(p.id)) closeMenu();
       });
@@ -62,7 +64,7 @@ function renderSettings() {
     ...profiles.list.map((p) => {
       const active = p.id === profiles.activeId;
       const actions = [];
-      if (!active) actions.push(button("pill-button", "Use", () => switchTo(p.id)));
+      if (!active && !p.friend) actions.push(button("pill-button", "Use", () => switchTo(p.id)));
       actions.push(button("pill-button", "Rename", () => rename(p)));
       if (p.guest) actions.push(button("pill-button danger", "Clear data", () => clearGuest(p)));
       else if (p.id !== DEFAULT_PROFILE && !active) actions.push(button("pill-button danger", "Delete", () => remove(p)));
@@ -70,7 +72,10 @@ function renderSettings() {
       return create("li", { className: active ? "active" : "" }, [
         create("span", { className: "profile-info" }, [
           create("strong", { textContent: p.name }),
-          create("span", { className: "muted", textContent: `${active ? "In use · " : ""}${n} session${n === 1 ? "" : "s"}` }),
+          create("span", {
+            className: "muted",
+            textContent: `${active ? "In use · " : p.friend ? "Friend · " : ""}${n} session${n === 1 ? "" : "s"}`,
+          }),
         ]),
         create("span", { className: "profile-actions" }, actions),
       ]);
@@ -115,6 +120,20 @@ async function clearGuest(p) {
   }
 }
 
+// A results file a friend shared (share.js): files it under their friend profile.
+async function importFriend() {
+  const file = el.import.files[0];
+  el.import.value = "";
+  if (!file) return;
+  try {
+    const r = await importShare(parseShare(await file.text()));
+    const parts = [r.added && `${r.added} new`, r.updated && `${r.updated} updated`, r.skipped && `${r.skipped} skipped`].filter(Boolean);
+    showMessage(`${r.name}: ${parts.join(", ") || "no sessions"}. Compare under History → Compare people.`);
+  } catch (e) {
+    showMessage(e.message, true);
+  }
+}
+
 async function add() {
   try {
     const p = await profiles.add(el.addName.value);
@@ -143,6 +162,7 @@ export function initProfiles({ busy }) {
     if (!el.menu.hidden && !el.menu.contains(ev.target)) closeMenu();
   });
   el.add.addEventListener("click", add);
+  el.import.addEventListener("change", importFriend);
   el.addName.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter") add();
   });

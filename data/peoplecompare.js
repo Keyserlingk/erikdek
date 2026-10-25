@@ -65,7 +65,7 @@ export function renderPeople(root, { list, metric, unit, onCompare }) {
         el("p", {
           className: "muted",
           textContent:
-            "Nobody else has sessions for this yet. Add a profile for a friend under Settings → Profiles and let them train, then compare here.",
+            "Nobody else has sessions for this yet. Add a profile for a friend under Settings → Profiles and let them train, or import results a friend shared from their phone (Settings → Profiles), then compare here.",
         }),
       ]),
     );

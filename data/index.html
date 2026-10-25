@@ -392,9 +392,18 @@
           </div>
           <div class="select-bar-row">
             <button id="histSelCompare" class="primary" type="button">Compare</button>
-            <button id="histSelJson" class="secondary" type="button">Download</button>
+            <button id="histSelShare" class="secondary" type="button" aria-expanded="false">Share</button>
             <button id="histSelCsv" class="secondary" type="button">CSV</button>
             <button id="histSelDelete" class="secondary danger" type="button">Delete</button>
+          </div>
+          <div id="histSharePanel" class="share-panel" hidden>
+            <label class="check"><input id="histShareCurves" type="checkbox"> Force curves (to overlay them)</label>
+            <label class="check"><input id="histShareWeight" type="checkbox"> My bodyweight (for % of bodyweight)</label>
+            <p class="muted">Notes stay on this phone. Your friend opens the file under Settings → Profiles → Import a friend's results.</p>
+            <div class="select-bar-row">
+              <button id="histShareSend" class="primary" type="button">Send to a friend</button>
+              <button id="histSelJson" class="secondary" type="button">Save as backup</button>
+            </div>
           </div>
         </div>
         </div>
@@ -464,12 +473,13 @@
       <h1>Settings</h1>
       <div class="card">
         <h2>Profiles</h2>
-        <p class="muted">For several people on this phone: each profile has its own History and settings (bodyweight, thresholds). Routines, tests and workouts are shared. Switch with the name at the top.</p>
+        <p class="muted">For several people on this phone: each profile has its own History and settings (bodyweight, thresholds). Routines, tests and workouts are shared. Switch with the name at the top. Friends on other phones can share their results with you (History → Select → Share); import them here to compare under History → Compare people.</p>
         <ul id="profileList" class="profile-list"></ul>
         <div class="field">
           <input id="profileAddName" type="text" maxlength="20" placeholder="Name, e.g. Anna" aria-label="New profile name">
           <button id="profileAdd" class="secondary" type="button">Add</button>
         </div>
+        <label class="pill-button">Import a friend's results…<input id="profileImport" type="file" accept=".json,application/json" hidden></label>
         <p id="profileMessage" class="message" aria-live="polite"></p>
       </div>
       <div class="card">

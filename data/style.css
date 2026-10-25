@@ -838,3 +838,6 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
 }
 .play-overlay h2 { font-size: 24px; }
 .play-overlay .actions { width: 100%; max-width: 320px; }
+.share-panel { border-top: 1px solid var(--border); padding-top: 10px; }
+.share-panel[hidden] { display: none; }
+.share-panel p { margin: 0 0 8px; font-size: 14px; }
