@@ -5,6 +5,8 @@
 // game instead. With a friend (playduel.js) the host's Play starts the game on both phones;
 // each game's `duel` part says what goes between them (see the messages in playduel.js).
 // Two-phone games don't pause and don't count towards the solo results.
+// Games are steered by the sensor only; pressing and dragging on the game works in
+// debug builds and the desktop browser (TOUCH), for trying things without a sensor.
 
 import { tone, unlockAudio } from "./audio.js";
 import { device } from "./device.js";
@@ -40,6 +42,7 @@ import {
   tugSnapshot,
 } from "./games/tug.js";
 import { HOST_ID, duel, duelCard, sendHi } from "./playduel.js";
+import { buildInfo } from "./platform.js";
 import { profiles } from "./profiles.js";
 import { sessions } from "./sessions.js";
 import { settings } from "./settingsstore.js";
@@ -60,7 +63,10 @@ const el = {
   overlayTitle: $("playOverlayTitle"),
   overlayText: $("playOverlayText"),
   overlayActions: $("playOverlayActions"),
+  hint: $("playHint"),
 };
+
+const TOUCH = buildInfo().variant !== "release";
 
 const GAMES = {
   pong: {
@@ -466,6 +472,7 @@ function renderHome() {
   // A guest waits for the host to pick.
   const games = withFriend && duel.role === "guest" ? [] : Object.entries(GAMES);
   const names = (ids) => ids.map((pid) => duel.nameOf(pid)).join(", ");
+  el.hint.textContent = TOUCH ? "No sensor? Press and drag on the game (debug builds only)." : "";
   el.cards.replaceChildren(
     duelCard(),
     ...(withFriend && duel.role === "guest" && watching
@@ -480,10 +487,21 @@ function renderHome() {
         create("p", { className: "muted", textContent: g.about }),
         ...(g.levels ? [levelRow(id, g.levels)] : []),
         ...(g.rows ? g.rows(id) : [rangeRow(id)]),
-        ...(withFriend ? duelPlayRow(id, g) : [create("div", { className: "actions" }, [button("primary", "Play", () => start(id))])]),
+        ...(withFriend ? duelPlayRow(id, g) : soloPlayRow(id)),
       ]),
     ),
   );
+}
+
+// Play: needs the sensor (outside debug builds).
+function soloPlayRow(id) {
+  const play = button("primary", "Play", () => start(id));
+  const missing = !TOUCH && !device.connected;
+  play.disabled = missing;
+  return [
+    ...(missing ? [create("p", { className: "muted", textContent: "Connect your sensor to play (Live tab)." })] : []),
+    create("div", { className: "actions" }, [play]),
+  ];
 }
 
 // ---- With friends: who plays ----
@@ -561,7 +579,7 @@ function duelPlayRow(id, g) {
   if (ids.length < min) missing = `Pick at least ${min} players.`;
   else if (ids.length > max) missing = `At most ${max} players in ${g.name}.`;
   else if (g.duel.teams && (!ids.some((pid) => lineup[pid] === "A") || !ids.some((pid) => lineup[pid] === "B"))) missing = "Each team needs a player.";
-  else if (g.duel.needsSensor) {
+  else if (g.duel.needsSensor || !TOUCH) {
     const without = duel.players.filter((p) => ids.includes(p.id) && !(p.id === HOST_ID ? device.connected : p.sensor));
     if (without.length) {
       const names = without.map((p) => (p.id === HOST_ID ? "you" : p.name));
@@ -631,7 +649,7 @@ function currentLevel() {
 
 // The force in kg (Tug of war: no cap at the full range); touch is a share of fullKg.
 function currentKg() {
-  const touchAllowed = !(run.net && run.game.duel.needsSensor);
+  const touchAllowed = TOUCH && !(run.net && run.game.duel.needsSensor);
   if (input.touching && touchAllowed) return clamp(input.touchLevel, 0, 1) * run.fullKg;
   return sensorLive() ? Math.max(0, input.kg) : 0;
 }
@@ -649,7 +667,7 @@ function draw() {
 function renderBar() {
   el.score.textContent = run.net ? run.game.duel.scoreText(run.s, run) : run.game.scoreText(run.s);
   el.pause.hidden = Boolean(run.net);
-  const sensorOnly = run.net && run.game.duel.needsSensor;
+  const sensorOnly = !TOUCH || (run.net && run.game.duel.needsSensor);
   if (sensorOnly) el.kg.textContent = sensorLive() ? `${Math.max(0, input.kg).toFixed(1)} kg` : "No sensor";
   else el.kg.textContent = sensorLive() && !input.touching ? `${Math.max(0, input.kg).toFixed(1)} kg` : "Touch";
   el.pause.textContent = run.paused ? "Resume" : "Pause";
@@ -883,7 +901,7 @@ export function playHome() {
 }
 
 function onPointer(ev) {
-  if (!run) return;
+  if (!run || !TOUCH) return;
   if (ev.type === "pointerdown") {
     input.touching = true;
     el.stage.setPointerCapture(ev.pointerId);
@@ -933,6 +951,12 @@ export function initPlay() {
     if (!run) renderHome();
   });
   duel.addEventListener("change", () => !run && renderHome());
+  // Pings: just the friends card, so a tap on a game card isn't lost to a redraw.
+  duel.addEventListener("ping", () => {
+    if (run) return;
+    const old = el.cards.querySelector(".duel-card");
+    if (old) old.replaceWith(duelCard());
+  });
   duel.addEventListener("message", onDuelMessage);
   duel.addEventListener("left", ({ detail: id }) => playerLeft(id));
   duel.addEventListener("lost", () => {

@@ -12,6 +12,7 @@ simulated sensor; in the Android app it talks to the sensor over Bluetooth LE.
 ```sh
 npm test                               # all app tests (node --test test/js/), fast
 python3 tools/serve.py --port 8765     # serves data/ + a dev buildinfo.js
+python3 tools/serve.py --port 8765 --variant release   # behave like the release app (no touch steering in Play)
 ```
 Use a free port when several agents may run servers. Stop the server by PID
 (`ss -ltnp | grep 8765`), never with `pkill -f <pattern>` that matches your own shell.

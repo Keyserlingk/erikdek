@@ -23,6 +23,7 @@ export const HOST_ID = "host";
 
 // The connection: phase off | hosting (code shown, nobody yet) | joining | qrHost |
 // qrGuest | open (connected). Events: "change" (redraw the card, the roster changed),
+// "ping" (only the pings changed: redraw just the card, so taps elsewhere aren't lost),
 // "message" (detail: { from, msg }), "left" (detail: id – a guest's connection ended;
 // host only), "lost" (this phone's connection to the game ended).
 export const duel = Object.assign(new EventTarget(), {
@@ -208,7 +209,7 @@ function pingPeer(p) {
       p.pingMs = ms;
       const player = duel.players.find((x) => duel.peers.get(x.id) === p);
       if (player) player.pingMs = ms;
-      changed();
+      duel.dispatchEvent(new Event("ping"));
     })
     .catch(() => {});
 }
@@ -216,7 +217,7 @@ function pingPeer(p) {
 function startPinging() {
   clearInterval(pinger);
   const ping = () => {
-    if (duel.role === "guest") duel.link?.ping().then((ms) => ((duel.pingMs = ms), changed())).catch(() => {});
+    if (duel.role === "guest") duel.link?.ping().then((ms) => ((duel.pingMs = ms), duel.dispatchEvent(new Event("ping")))).catch(() => {});
     else for (const p of duel.peers.values()) pingPeer(p);
   };
   ping();

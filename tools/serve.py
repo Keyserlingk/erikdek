@@ -41,7 +41,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.split("?")[0] == "/buildinfo.js":
-            info = json.dumps({"version": git_version(), "variant": "dev", "firmware": firmware_version()})
+            info = json.dumps({"version": git_version(), "variant": VARIANT, "firmware": firmware_version()})
             data = f"window.ERKDEK_BUILD = {info};\n".encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/javascript")
@@ -52,11 +52,17 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
 
+VARIANT = "dev"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--variant", default="dev", help='build variant to report, e.g. "release" to check release-only behaviour')
     args = parser.parse_args()
+    global VARIANT
+    VARIANT = args.variant
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.daemon_threads = True
     print(f"Erkdek dev server on http://localhost:{args.port}  (serving {DATA_DIR})")
