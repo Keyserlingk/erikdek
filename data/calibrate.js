@@ -4,7 +4,7 @@ import { SampleWindow, formatKg } from "./format.js";
 // Readings count as settled when the last second varies less than this
 // (relative to the reading, with a floor for small weights). The sensor refuses a
 // calibration whose readings vary more, with the same limits (firmware calibration.h).
-const STABLE_WINDOW = 80;
+const STABLE_WINDOW_S = 1;
 const STABLE_STD_KG = 0.15;
 const STABLE_STD_REL = 0.005;
 
@@ -68,7 +68,7 @@ function renderNoise() {
   el.settingsNoise.hidden = !lines.length;
 }
 
-const window_ = new SampleWindow(STABLE_WINDOW);
+const window_ = new SampleWindow(80);
 let step = "tare"; // tare -> taring -> weight -> measuring -> done
 let measuredKg = 0;
 
@@ -114,6 +114,7 @@ function showError(text) {
 
 export function initCalibrate() {
   device.on("samples", (msg) => {
+    window_.size = Math.max(4, Math.round(STABLE_WINDOW_S * (device.status?.rate || 80)));
     window_.push(msg.kg);
     if (step === "weight" || step === "measuring") {
       el.reading.textContent = formatKg(window_.mean(), 2);

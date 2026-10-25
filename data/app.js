@@ -12,7 +12,7 @@ import { profiles } from "./profiles.js";
 import { initSettings, showAbout } from "./settings.js";
 import { goHome, initTrain, isBusy } from "./train.js";
 
-const LOW_RATE_HZ = 60; // below this the HX711 RATE pin is probably still at 10 Hz
+const LOW_RATE_HZ = 60; // below this the HX711 RATE pin is probably still at 10 Hz (not for the ADS1220)
 const VIEWS = ["live", "train", "tests", "history", "calibrate", "settings"];
 // Views without their own tab highlight this tab instead.
 const TAB_OF = { calibrate: "settings" };
@@ -55,7 +55,7 @@ function renderStatus() {
     el.warning.hidden = true;
     return;
   }
-  const lowRate = st.rate > 0 && st.rate < LOW_RATE_HZ;
+  const lowRate = st.adc !== "ads1220" && st.rate > 0 && st.rate < LOW_RATE_HZ;
   el.rate.textContent = `${st.rate.toFixed(1)} Hz`;
   el.rate.classList.toggle("low", lowRate);
 

@@ -3,7 +3,6 @@
 import { TARGET_TOLERANCE } from "./workout.js";
 
 const MAX_WINDOW_S = 60;
-const MAX_POINTS = MAX_WINDOW_S * 80 * 1.2;
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -100,8 +99,10 @@ export class LiveChart {
       this.x.push((ts + i * step) / 1000);
       this.y.push(kg[i]);
     }
-    if (this.x.length > MAX_POINTS) {
-      const drop = this.x.length - MAX_WINDOW_S * 80;
+    // Keep the longest window (with 20 % slack, trimmed in chunks), at any sample rate.
+    const end = this.x[this.x.length - 1];
+    if (end - this.x[0] > MAX_WINDOW_S * 1.2) {
+      const drop = this.x.findIndex((t) => t >= end - MAX_WINDOW_S);
       this.x.splice(0, drop);
       this.y.splice(0, drop);
     }
