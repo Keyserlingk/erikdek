@@ -6,6 +6,7 @@ tools/.mock_state.json
 tools/.mock_sessions/
 node_modules/
 data/vendor/capacitor/
+data/vendor/trystero.js
 data/buildinfo.js
 android/keystore.properties
 # Firmware bundled into the app by tools/bundle_firmware.py

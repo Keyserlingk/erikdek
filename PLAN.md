@@ -244,21 +244,39 @@ erkdek/
   (pulls compared in kg, % bodyweight or % of your max pull; the computer pulls a share
   of your max in waves), built so a second phone's level can replace the computer.
 
-## Play: multiplayer (proposal)
+## Play: multiplayer
 
-Not built. Single-player games live in `data/games/` (pure logic) and `data/play.js` (UI).
-Two climbers, each with their own phone and sensor, playing against each other.
+The connection layer is built (no game UI or lobby yet). Single-player games live in
+`data/games/` (pure logic) and `data/play.js` (UI). Two climbers, each with their own
+phone and sensor, playing against each other.
 
-**Connection options**
-- *WebRTC peer-to-peer, QR-code signalling* – no server. Host taps "Host game", the phone
-  shows a QR code with its SDP offer (compressed); the guest scans it and shows an answer
-  QR for the host to scan. Then a data channel runs directly between the phones. Works
-  best on the same Wi-Fi (host candidates only, no STUN/TURN); two scans is a bit clumsy
-  but needs nothing online. Needs a QR scanner (camera plugin or BarcodeDetector).
-- *Small WebSocket relay* (e.g. a Cloudflare Worker with a Durable Object per room) –
-  internet play. Host gets a 4-letter game code, the guest types it; the relay just
-  forwards messages within the room. Tiny, nearly free, but a server to keep running.
-  Could also carry WebRTC signalling and fall back to relaying when P2P fails.
+**Connection options** – both give games the same connection object (events `open`
+{peerName}, `message`, `close`, `status` waiting/connecting/open/reconnecting/closed,
+`error` text; `send(obj)`, `ping()`, `close()`, `open`, `peerName`, `role`), so a game
+doesn't care which one is used.
+- *Game code over the internet* (`data/net.js`, built) – `hostGame({name})` gives a
+  4-letter code (letters that can't be confused: `ACDEFGHJKMNPQRTUVWXY`), the friend
+  types it into `joinGame(code, {name})`. Uses Trystero (pinned 0.25.4, vendored as one
+  ES module `data/vendor/trystero.js` by `npm run vendor` with esbuild): public Nostr
+  relays carry only the handshake, encrypted with the code as password (room
+  `erkdek-play-v1` + code); then WebRTC runs directly between the phones with public
+  STUN. No login, no server of our own. No TURN relay, so very strict networks (some
+  mobile carriers, guest Wi-Fi) can fail to connect – the guest then gets "couldn't reach
+  the other phone" after 20 s.
+  - Exactly two per room: the host answers a third player's hello with "full", which
+    closes it with "This game already has two players."
+  - A hello carries the name, role and a protocol number (a different app version is
+    refused). Everything goes over one Trystero action as `{k: hello|full|msg|ka|bye}`.
+  - Keep-alive every 2 s when nothing else is sent; 6 s of silence or Trystero losing the
+    peer → `reconnecting`; back within 10 s → `open` again (a reloaded app with a new id
+    may take the slot), else `close`. `close()` sends "bye" so the other side closes at
+    once. Errors: offline, no relay reachable after 10 s, no host after 20 s.
+  - Checked live (two headless Chromes on one laptop, real relays): connected in 1–4 s,
+    150 messages each way at 30/s all arrived, ping 0–3 ms (same machine; phones on
+    different networks will be tens of ms).
+- *QR codes on the same Wi-Fi* (`data/netqr.js`, being built) – no internet at all: the
+  host shows a QR code with its WebRTC offer, the guest scans it and shows an answer QR.
+  Same interface as above.
 
 **What is sent** (JSON or a few bytes per message, unreliable/unordered channel where
 possible)
@@ -275,7 +293,7 @@ possible)
   crash/score. The other bird is drawn semi-transparent. The longest flight wins.
 
 **Latency**
-- Wi-Fi P2P is ~5–30 ms, the internet relay ~30–150 ms. Remote paddles/birds are drawn
+- Wi-Fi P2P is ~5–30 ms, P2P across the internet ~20–150 ms. Remote paddles/birds are drawn
   ~100 ms in the past and interpolated between messages (jitter buffer).
 - Pong: the guest predicts the ball locally from the last host state (same physics) and
   snaps softly to the host's corrections; at paddle hits the host decides. A slightly

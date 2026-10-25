@@ -70,5 +70,10 @@ firmware (`tools/bundle_firmware.py`, needs PlatformIO), vendors the Capacitor p
   `bleprotocol.js` = Erkdek byte layouts (keep in step with the firmware).
 - Play tab: `play.js` (screens) and `games/` (`pong.js`, `flappy.js`, `tug.js`, `common.js`,
   `playdata.js`); game logic is pure and tested in `test/js/games.test.js`.
+- Online play by game code: `net.js` (`hostGame`/`joinGame`, Trystero over Nostr relays +
+  WebRTC; tested with a fake room in `test/js/net.test.js`). It loads
+  `vendor/trystero.js`, which `npm run vendor` builds (git-ignored) – run that once before
+  trying it in the browser. Live check: two `tools/headless.py` runs in parallel, the host
+  prints its code, the second joins with it (see PLAN.md "Play: multiplayer").
 - Tindeq from the laptop: `tools/tindeq_probe.py` (bleak venv; `--seconds 8 --tare-at 2
   --battery-at 5`). Never send 0x6E (sleep) or the calibration commands.
