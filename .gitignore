@@ -10,3 +10,6 @@ data/buildinfo.js
 android/keystore.properties
 # Firmware bundled into the app by tools/bundle_firmware.py
 data/firmware/
+
+# Claude Code agents' working copies (skills in .claude/skills are tracked)
+.claude/worktrees/

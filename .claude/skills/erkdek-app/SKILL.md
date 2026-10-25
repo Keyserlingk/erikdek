@@ -1,0 +1,67 @@
+---
+name: erkdek-app
+description: Develop, test and check the Erkdek app (data/): run it in the browser with the simulated sensor, run the JS tests, check UI changes in headless Chrome with screenshots, and build or install the Android APK. Use for any change under data/, test/js/ or the Android build.
+---
+
+# Erkdek app
+
+The app is plain ES modules in `data/` (no bundler). In a desktop browser it uses a
+simulated sensor; in the Android app it talks to the sensor over Bluetooth LE.
+
+## Run and test
+```sh
+npm test                               # all app tests (node --test test/js/), fast
+python3 tools/serve.py --port 8765     # serves data/ + a dev buildinfo.js
+```
+Use a free port when several agents may run servers. Stop the server by PID
+(`ss -ltnp | grep 8765`), never with `pkill -f <pattern>` that matches your own shell.
+
+## Check a UI change in headless Chrome
+`tools/headless.py` drives a fresh Chrome profile at 390×760 (a phone) and runs JSON
+steps (see its docstring). Typical check:
+```sh
+cat > /tmp/steps.json <<'EOF'
+[
+ {"wait": 2, "js": "window.confirm=()=>true; location.hash='#history'; 1"},
+ {"wait": 0.5, "js": "document.querySelectorAll('.session-row').length", "print": "rows:"},
+ {"shot": "history"}
+]
+EOF
+python3 tools/headless.py http://localhost:8765/ /tmp/shots 0 < /tmp/steps.json   # 1 = dark
+```
+Then look at the screenshots. Check light and dark (`0`/`1`).
+
+Useful in steps:
+- Seed data through the stores (they are ES modules):
+  `import('./sessions.js').then(({sessions}) => sessions.save({...}))`.
+- Steer the simulated sensor:
+  `import('./device.js').then(({device}) => device.send('mock', {scenario: 'pull', kg: 30}))`
+  (scenarios: workout, idle, weight, pull). "Pull during each hang" (`#mockFollow`)
+  makes it pull in every hang of a routine.
+- `window.confirm = () => true` before actions that ask.
+- To capture downloads, wrap `URL.createObjectURL` and read the Blob text.
+- Each step is a separate evaluation: no `const` reuse across steps; promises aren't
+  awaited (store on `window`, read in a later step).
+
+## Android
+Needs Node 22 (`nvm use`, from `.nvmrc`), JDK 21 and the Android SDK (see README).
+```sh
+npm run android:release            # signed APK: android/app/build/outputs/apk/release/app-release.apk
+npm run android:release:install    # + install over USB debugging
+npm run android                    # debug build (offers the simulated sensor)
+```
+`tools/build_android.sh` writes `data/buildinfo.js` (app + firmware version), bundles the
+firmware (`tools/bundle_firmware.py`, needs PlatformIO), vendors the Capacitor plugins
+(`tools/vendor.mjs`) and runs Gradle. Release signing uses `android/keystore.properties`
+(git-ignored) – never commit it or the key.
+
+## Where things are
+- Screens: `live.js`, `runner.js` + `runsummary.js` (runs), `routinelist.js`,
+  `routineeditor.js`, `workoutflow.js`, `testlist.js` (Train/Tests), `history.js`,
+  `sessionview.js`, `sessioncompare.js`, `repcompare.js`, `settings.js`, `calibrate.js`.
+- Data stores (no DOM, tested): `sessions.js`, `settingsstore.js`, `profiles.js`,
+  `routines.js`, `workouts.js`, `tags.js`, `db.js` (IndexedDB, memory backend in tests).
+- Analysis and per-kind results: `analysis.js`, `tests.js` (`KINDS`), `workout.js`
+  (phases, engine, rep stats), `protocols.js` (test protocols).
+- Sensor link: `device.js` → `bletransport.js` (Bluetooth) / `simdevice.js` (simulator);
+  `bleprotocol.js` = byte layouts (keep in step with the firmware, see the firmware skill).
