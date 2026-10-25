@@ -141,9 +141,10 @@ function hitPaddle(s, who, prevY) {
   return true;
 }
 
-function stepOnce(s, dt, level, events) {
+function stepOnce(s, dt, level, theirLevel, events) {
   s.player.x = smoothToward(s.player.x, levelToPaddleX(level), dt, PONG.playerTauS);
-  moveCpu(s, dt);
+  if (theirLevel == null) moveCpu(s, dt);
+  else s.cpu.x = smoothToward(s.cpu.x, levelToPaddleX(theirLevel), dt, PONG.playerTauS);
   if (s.phase === "serve") {
     s.serveIn -= dt;
     if (s.serveIn <= 0) serve(s);
@@ -176,12 +177,45 @@ function stepOnce(s, dt, level, events) {
   s.ball = { x: s.w / 2, y: s.h / 2, vx: 0, vy: 0 };
 }
 
-// Advances the game by dt seconds with the player's level (0..1). Returns the events of
+// Advances the game by dt seconds with the player's level (0..1); `theirLevel` moves the
+// top paddle for a second player (else the computer plays it). Returns the events of
 // this step: "wall", "hit", "point" (you scored), "miss", "won", "lost".
-export function stepPong(s, dt, level) {
+export function stepPong(s, dt, level, theirLevel = null) {
   const events = [];
-  substeps(dt, PONG.maxStepS, (d) => stepOnce(s, d, level, events));
+  substeps(dt, PONG.maxStepS, (d) => stepOnce(s, d, level, theirLevel, events));
   return events;
+}
+
+// Two phones: the host runs the game (the guest's level moves the top paddle) and sends
+// pongSnapshot() ~30 times a second. The guest turns the field round (mirrorPong: its
+// paddle at the bottom; left and right stay, so 0 kg is the left edge on both phones)
+// and moves the ball on between snapshots (coastPong) so it doesn't stutter.
+export function pongSnapshot(s) {
+  const { player, cpu, ball, phase } = s;
+  return { player: { x: player.x, score: player.score }, cpu: { x: cpu.x, score: cpu.score }, ball: { ...ball }, phase };
+}
+
+export function mirrorPong(snap, h) {
+  const b = snap.ball;
+  return {
+    ...snap,
+    player: { ...snap.cpu },
+    cpu: { ...snap.player },
+    ball: { x: b.x, y: h - b.y, vx: b.vx, vy: -b.vy },
+  };
+}
+
+export function coastPong(s, dt, level) {
+  s.player.x = smoothToward(s.player.x, levelToPaddleX(level), dt, PONG.playerTauS);
+  if (s.phase !== "play") return;
+  const b = s.ball;
+  const r = PONG.ballR;
+  b.x += b.vx * dt;
+  b.y = clamp(b.y + b.vy * dt, -r, s.h + r);
+  if (b.x < r || b.x > s.w - r) {
+    b.x = b.x < r ? 2 * r - b.x : 2 * (s.w - r) - b.x;
+    b.vx = -b.vx;
+  }
 }
 
 // Paints the field. `c` holds theme colours ({bg, text, muted, accent, border}); the field

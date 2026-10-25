@@ -175,6 +175,24 @@ export function cpuOpponent({ strengthKg, toLevel = (kg) => kg, random = Math.ra
   };
 }
 
+// Two phones: the host runs the game and sends tugSnapshot() ~30 times a second; the
+// guest shows it from its side (mirrorTug: its own end at the bottom).
+export function tugSnapshot(s) {
+  const { x, phase, t, roundS, round, you, them, last } = s;
+  return { x, phase, t, roundS, round, you: { ...you }, them: { ...them }, last };
+}
+
+export function mirrorTug(snap) {
+  const swap = { you: "them", them: "you" };
+  return {
+    ...snap,
+    x: -snap.x,
+    you: { ...snap.them },
+    them: { ...snap.you },
+    last: snap.last && { ...snap.last, winner: swap[snap.last.winner] ?? null },
+  };
+}
+
 // Same seed, same computer (tests).
 export const seededCpu = (opts, seed) => cpuOpponent({ ...opts, random: seededRandom(seed) });
 

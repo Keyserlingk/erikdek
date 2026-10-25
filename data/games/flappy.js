@@ -119,13 +119,23 @@ export function stepFlappy(s, dt, level) {
   return events;
 }
 
+// Two phones fly the same course (same seed and field width) side by side, each on its
+// own phone; the other bird is drawn faintly. Whoever gets further wins: more pipes, or
+// the same and crashed later. -> "won" | "lost" | "draw"
+export function flappyDuelResult(me, them) {
+  if (me.score !== them.score) return me.score > them.score ? "won" : "lost";
+  if (Math.abs(me.t - them.t) < 0.05) return "draw";
+  return me.t > them.t ? "won" : "lost";
+}
+
 // The next pipe the bird still has to pass, or null.
 export const nextPipe = (s) => s.pipes.find((p) => !p.passed && p.x + FLAPPY.pipeW >= FLAPPY.birdX - FLAPPY.birdR) || null;
 
 // Paints the field. `c` holds theme colours ({bg, muted, accent, ok, bad, border});
 // `fullKg` labels the force scale on the right, where the band shows the load the next
-// gap needs and the arrow shows your current level.
-export function drawFlappy(ctx, s, c, cssW, cssH, { fullKg, level }) {
+// gap needs and the arrow shows your current level. `ghost`: the other player's bird
+// ({ y, over }) in a two-phone game.
+export function drawFlappy(ctx, s, c, cssW, cssH, { fullKg, level, ghost = null }) {
   const scale = cssH / s.h;
   ctx.clearRect(0, 0, cssW, cssH);
   ctx.save();
@@ -176,8 +186,17 @@ export function drawFlappy(ctx, s, c, cssW, cssH, { fullKg, level }) {
   ctx.lineTo(sx + 2.5, ly + 2);
   ctx.fill();
 
-  // The bird: a ball with an eye, tilted by its speed.
   const r = FLAPPY.birdR;
+  if (ghost) {
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = ghost.over ? c.bad : c.muted;
+    ctx.beginPath();
+    ctx.arc(FLAPPY.birdX, ghost.y, r, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // The bird: a ball with an eye, tilted by its speed.
   ctx.save();
   ctx.translate(FLAPPY.birdX, s.bird.y);
   ctx.rotate(clamp(s.bird.v / 150, -0.6, 0.6));

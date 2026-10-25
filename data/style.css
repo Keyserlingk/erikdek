@@ -841,3 +841,7 @@ label.file-button { flex: 1; display: block; padding: 14px; text-align: center; 
 .share-panel { border-top: 1px solid var(--border); padding-top: 10px; }
 .share-panel[hidden] { display: none; }
 .share-panel p { margin: 0 0 8px; font-size: 14px; }
+.duel-code { font-size: 44px; font-weight: 700; letter-spacing: 0.25em; text-align: center; margin: 4px 0 8px; font-variant-numeric: tabular-nums; }
+.duel-code-input { text-transform: uppercase; letter-spacing: 0.2em; font-size: 20px; }
+.duel-peer { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin: 0 0 6px; }
+.duel-card .message { margin: 8px 0 0; }

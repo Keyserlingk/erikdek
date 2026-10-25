@@ -2,12 +2,14 @@
 // with their best score and full range (the force that maps to the top or right edge; Tug
 // of war has a scale and your max pull instead);
 // a game runs on a canvas with Pause and Quit. Without a sensor, press and drag on the
-// game instead.
+// game instead. With a friend (playduel.js) the host's Play starts the game on both phones;
+// each game's `duel` part says what goes between them (see the messages in playduel.js).
+// Two-phone games don't pause and don't count towards the solo results.
 
 import { tone, unlockAudio } from "./audio.js";
 import { device } from "./device.js";
-import { clamp, forceToLevel } from "./games/common.js";
-import { drawFlappy, newFlappy, stepFlappy } from "./games/flappy.js";
+import { clamp, forceToLevel, mirrorEvent } from "./games/common.js";
+import { drawFlappy, flappyDuelResult, newFlappy, stepFlappy } from "./games/flappy.js";
 import {
   MAX_KG,
   bestMaxPullKg,
@@ -21,8 +23,9 @@ import {
   tugMaxKg,
   tugScale,
 } from "./games/playdata.js";
-import { LEVEL_IDS, PONG, drawPong, newPong, stepPong } from "./games/pong.js";
-import { SCALES, SCALE_IDS, TUG, TUG_LEVELS, cpuOpponent, drawTug, newTug, stepTug, toScale } from "./games/tug.js";
+import { LEVEL_IDS, PONG, coastPong, drawPong, mirrorPong, newPong, pongSnapshot, stepPong } from "./games/pong.js";
+import { SCALES, SCALE_IDS, TUG, TUG_LEVELS, cpuOpponent, drawTug, mirrorTug, newTug, stepTug, toScale, tugSnapshot } from "./games/tug.js";
+import { duel, duelCard } from "./playduel.js";
 import { profiles } from "./profiles.js";
 import { sessions } from "./sessions.js";
 import { settings } from "./settingsstore.js";
@@ -73,6 +76,33 @@ const GAMES = {
       };
     },
     sounds: { hit: [660, 0.05], wall: [440, 0.03], point: [880, 0.15], miss: [220, 0.25] },
+    // The host runs the ball; the guest's paddle is the top one on the host's phone.
+    duel: {
+      opts: (d, w, h) => ({ level: d.level, h: clamp((PONG.w * h) / w, 120, 200) }),
+      create: (o) => newPong({ h: o.h, level: o.level }),
+      step(s, dt, level, r) {
+        r.net.mine = level;
+        if (r.net.role === "host") return stepPong(s, dt, level, r.net.theirs ?? 0.5);
+        coastPong(s, dt, level);
+        return [];
+      },
+      outgoing: (s, r) => (r.net.role === "host" ? { snap: pongSnapshot(s) } : { v: r.net.mine }),
+      incoming(s, d, ev, r) {
+        if (r.net.role === "host") {
+          r.net.theirs = d.v;
+          return [];
+        }
+        const m = mirrorPong(d.snap, s.h);
+        Object.assign(s, m, { player: { ...m.player, x: s.player.x } }); // own paddle stays as you pull
+        return ev.map(mirrorEvent);
+      },
+      isOver: (s) => s.phase === "over",
+      scoreText: (s, r) => `You ${s.player.score} – ${s.cpu.score} ${r.net.peerName}`,
+      result: (s, r) => ({
+        won: s.player.score > s.cpu.score,
+        text: `${s.player.score} – ${s.cpu.score} · ${GAMES.pong.levels[r.opts.level]}`,
+      }),
+    },
   },
   flappy: {
     name: "Flappy",
@@ -91,6 +121,25 @@ const GAMES = {
       return { title: "Crashed", text: `${s.score} pipe${s.score === 1 ? "" : "s"}` + (newBest ? " · new best" : "") };
     },
     sounds: { pass: [880, 0.06], crash: [180, 0.3] },
+    // Both fly the same course on their own phone; the friend's bird is drawn faintly.
+    duel: {
+      opts: () => ({ seed: Math.floor(Math.random() * 2 ** 31), w: 80 }), // 80: wider than a phone held upright
+      create: (o) => newFlappy({ w: o.w, seed: o.seed }),
+      step: (s, dt, level) => stepFlappy(s, dt, level),
+      outgoing: (s) => ({ y: s.bird.y, score: s.score, over: s.over, t: s.t }),
+      incoming(s, d, ev, r) {
+        r.net.them = d;
+        return [];
+      },
+      isOver: (s, r) => s.over && Boolean(r.net.them?.over),
+      scoreText: (s, r) => `You ${s.score} · ${r.net.peerName} ${r.net.them?.score ?? 0}` + (s.over && !r.net.them?.over ? " · still flying" : ""),
+      drawOpts: (r) => ({ ghost: r.net.them }),
+      result(s, r) {
+        const them = r.net.them;
+        const outcome = flappyDuelResult({ score: s.score, t: s.t }, them);
+        return { won: outcome === "won", draw: outcome === "draw", text: `${s.score} – ${them.score} pipes` };
+      },
+    },
   },
   tug: {
     name: "Tug of war",
@@ -131,6 +180,36 @@ const GAMES = {
       };
     },
     sounds: { count: [440, 0.08], go: [880, 0.2], roundWon: [880, 0.15], roundLost: [220, 0.25], draw: [440, 0.15] },
+    // The host runs the knot with both levels, each put on the scale on its own phone
+    // (own bodyweight and max), and sends the state; the guest shows it from its end.
+    duel: {
+      // % BW needs both bodyweights (else kg).
+      opts: (d) => ({ scale: tugScale(d, duel.phase !== "open" || duel.peer?.bodyweight ? settings.values.bodyweightKg : 0) }),
+      prepare(o) {
+        const bodyweightKg = settings.values.bodyweightKg;
+        const maxKg = tugMaxKg(data.tug, sessions.index);
+        return { fullKg: maxKg, toLevel: (kg) => toScale(kg, o.scale, { bodyweightKg, maxKg }) ?? 0 };
+      },
+      create: (o) => newTug({ scale: o.scale }),
+      usesKg: true,
+      step(s, dt, kg, r) {
+        r.net.mine = r.toLevel(kg);
+        return r.net.role === "host" ? stepTug(s, dt, r.net.mine, r.net.theirs ?? 0) : [];
+      },
+      outgoing: (s, r) => (r.net.role === "host" ? { snap: tugSnapshot(s) } : { v: r.net.mine }),
+      incoming(s, d, ev, r) {
+        if (r.net.role === "host") {
+          r.net.theirs = d.v;
+          return [];
+        }
+        Object.assign(s, mirrorTug(d.snap));
+        return ev.map(mirrorEvent);
+      },
+      isOver: (s) => s.phase === "over",
+      scoreText: (s, r) => `You ${s.you.rounds} – ${s.them.rounds} ${r.net.peerName}`,
+      drawOpts: (r) => ({ names: { you: "You", them: r.net.peerName } }),
+      result: (s, r) => ({ won: s.you.rounds > s.them.rounds, text: `${s.you.rounds} – ${s.them.rounds} · ${SCALES[r.opts.scale].name}` }),
+    },
   },
 };
 
@@ -210,7 +289,7 @@ function levelRow(id, names) {
 function scaleRow(id) {
   const d = data[id];
   const bw = settings.values.bodyweightKg;
-  const scale = tugScale(d, bw);
+  const scale = GAMES.tug.duel.opts(d).scale;
   const pick = (next) => {
     d.scale = next;
     saveData();
@@ -221,6 +300,9 @@ function scaleRow(id) {
     if (sc === "bw" && !(bw > 0)) {
       b.disabled = true;
       b.title = "Set your bodyweight in Settings first";
+    } else if (sc === "bw" && duel.phase === "open" && duel.peer && !duel.peer.bodyweight) {
+      b.disabled = true;
+      b.title = `${duel.peerName} has no bodyweight set`;
     }
     return b;
   });
@@ -264,8 +346,12 @@ function maxRow(id) {
 
 function renderHome() {
   loadData();
+  const withFriend = duel.phase === "open";
+  // A guest waits for the host to pick.
+  const games = withFriend && duel.role === "guest" ? [] : Object.entries(GAMES);
   el.cards.replaceChildren(
-    ...Object.entries(GAMES).map(([id, g]) =>
+    duelCard(),
+    ...games.map(([id, g]) =>
       create("div", { className: "card play-card" }, [
         create("div", { className: "routine-head" }, [
           create("h2", { textContent: g.name }),
@@ -274,7 +360,9 @@ function renderHome() {
         create("p", { className: "muted", textContent: g.about }),
         ...(g.levels ? [levelRow(id, g.levels)] : []),
         ...(g.rows ? g.rows(id) : [rangeRow(id)]),
-        create("div", { className: "actions" }, [button("primary", "Play", () => start(id))]),
+        create("div", { className: "actions" }, [
+          withFriend ? button("primary", `Play with ${duel.peerName}`, () => hostDuel(id)) : button("primary", "Play", () => start(id)),
+        ]),
       ]),
     ),
   );
@@ -336,11 +424,13 @@ function draw() {
   if (!run || !view.w) return;
   const ctx = el.canvas.getContext("2d");
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-  run.game.draw(ctx, run.s, colors, view.w, view.h, { fullKg: run.fullKg, level: currentLevel() });
+  const extra = run.net && run.game.duel.drawOpts ? run.game.duel.drawOpts(run) : {};
+  run.game.draw(ctx, run.s, colors, view.w, view.h, { fullKg: run.fullKg, level: currentLevel(), ...extra });
 }
 
 function renderBar() {
-  el.score.textContent = run.game.scoreText(run.s);
+  el.score.textContent = run.net ? run.game.duel.scoreText(run.s, run) : run.game.scoreText(run.s);
+  el.pause.hidden = Boolean(run.net);
   el.kg.textContent = sensorLive() && !input.touching ? `${Math.max(0, input.kg).toFixed(1)} kg` : "Touch";
   el.pause.textContent = run.paused ? "Resume" : "Pause";
   el.pause.disabled = run.ended;
@@ -351,14 +441,66 @@ function frame(t) {
   if (run.paused || run.ended) return;
   const dt = run.last ? Math.min(0.05, (t - run.last) / 1000) : 0;
   run.last = t;
-  for (const ev of run.game.step(run.s, dt, run.game.usesKg ? currentKg() : currentLevel(), run)) {
-    const sound = run.game.sounds[ev];
-    if (sound) tone(sound[0], sound[1]);
+  const input = run.game.usesKg ? currentKg() : currentLevel();
+  const events = run.net ? run.game.duel.step(run.s, dt, input, run) : run.game.step(run.s, dt, input, run);
+  sounds(events);
+  if (run.net) {
+    run.net.events.push(...events);
+    if (t - run.net.sentAt >= TICK_MS) sendTick(t);
   }
   draw();
   renderBar();
-  if (run.game.isOver(run.s)) finish();
+  if (isOver()) finish();
   else run.raf = requestAnimationFrame(frame);
+}
+
+function sounds(events) {
+  for (const ev of events) {
+    const sound = run.game.sounds[ev];
+    if (sound) tone(sound[0], sound[1]);
+  }
+}
+
+const isOver = () => (run.net ? run.game.duel.isOver(run.s, run) : run.game.isOver(run.s));
+
+// ---- With a friend ----
+
+const TICK_MS = 33; // ~30 messages a second each way
+
+function sendTick(t = performance.now()) {
+  duel.send({ t: "tick", d: run.game.duel.outgoing(run.s, run), ev: run.net.events });
+  run.net.events = [];
+  run.net.sentAt = t;
+}
+
+// Host: start game `id` on both phones with this phone's settings.
+function hostDuel(id) {
+  loadData();
+  showGame();
+  const opts = GAMES[id].duel.opts(data[id], el.stage.clientWidth, el.stage.clientHeight);
+  duel.send({ t: "start", game: id, opts });
+  start(id, opts);
+}
+
+function onDuelMessage({ detail: msg }) {
+  if (msg.t === "start" && duel.role === "guest" && GAMES[msg.game]) {
+    if (location.hash !== "#play") location.hash = "#play";
+    start(msg.game, msg.opts);
+  } else if (msg.t === "tick" && run?.net && !run.ended) {
+    sounds(run.game.duel.incoming(run.s, msg.d, msg.ev ?? [], run));
+  } else if (msg.t === "leave" && run?.net) {
+    if (run.ended) quit();
+    else stopDuel(`${duel.peerName} left the game.`);
+  }
+}
+
+// The game can't go on (the friend left, or the connection ended).
+function stopDuel(text) {
+  run.ended = true;
+  cancelAnimationFrame(run.raf);
+  allowScreenOff();
+  renderBar();
+  showOverlay("Game over", text, [button("primary", "Back", quit)]);
 }
 
 function showOverlay(title, text, actions) {
@@ -368,22 +510,33 @@ function showOverlay(title, text, actions) {
   el.overlay.hidden = false;
 }
 
-function start(id) {
-  unlockAudio(); // from the Play tap
-  loadData();
+function showGame() {
   el.home.hidden = true;
   el.game.hidden = false;
   readColors();
   window.scrollTo(0, 0);
   fitStage();
+}
+
+// `opts`: a game with a friend, with the host's settings.
+function start(id, opts = null) {
+  unlockAudio(); // from the Play tap
+  loadData();
+  if (run) cancelAnimationFrame(run.raf);
+  showGame();
   const game = GAMES[id];
+  const own = () => ({ fullKg: fullRangeKg(data[id].range, settings.values.bodyweightKg) });
   // Per-game extras (Tug of war: scale, opponent); fullKg = the force of a full touch.
-  const extra = game.prepare ? game.prepare(data[id]) : { fullKg: fullRangeKg(data[id].range, settings.values.bodyweightKg) };
+  let extra;
+  if (opts) extra = game.duel.prepare ? game.duel.prepare(opts) : own();
+  else extra = game.prepare ? game.prepare(data[id]) : own();
   run = {
     ...extra,
     id,
     game,
-    s: game.create(el.stage.clientWidth, el.stage.clientHeight, data[id], extra),
+    opts,
+    net: opts && { role: duel.role, peerName: duel.peerName, theirs: null, them: null, mine: 0, events: [], sentAt: 0 },
+    s: opts ? game.duel.create(opts) : game.create(el.stage.clientWidth, el.stage.clientHeight, data[id], extra),
     profileId: profiles.activeId, // scores go to the profile the game started with
     paused: false,
     ended: false,
@@ -408,7 +561,7 @@ function resume() {
 }
 
 function pause() {
-  if (!run || run.paused || run.ended) return;
+  if (!run || run.paused || run.ended || run.net) return;
   run.paused = true;
   cancelAnimationFrame(run.raf);
   run.raf = 0;
@@ -420,6 +573,17 @@ function pause() {
 function finish() {
   run.ended = true;
   allowScreenOff();
+  if (run.net) {
+    sendTick(); // the end reaches the friend too
+    const r = run.game.duel.result(run.s, run);
+    renderBar();
+    const id = run.id;
+    const again = duel.role === "host" ? [button("primary", "Play again", () => hostDuel(id))] : [];
+    const title = r.draw ? "Draw" : r.won ? "You won!" : `${duel.peerName} wins`;
+    const text = r.text + (duel.role === "guest" ? ` · ${duel.peerName} can start another game` : "");
+    showOverlay(title, text, [button("secondary", "Back", quit), ...again]);
+    return;
+  }
   data = loadPlayData(storage(), run.profileId);
   const { title, text } = run.game.record(data, run.s, run);
   saveData(run.profileId);
@@ -429,6 +593,7 @@ function finish() {
 }
 
 function quit() {
+  if (run?.net) duel.send({ t: "leave" });
   if (run) cancelAnimationFrame(run.raf);
   run = null;
   allowScreenOff();
@@ -490,5 +655,9 @@ export function initPlay() {
   profiles.addEventListener("change", () => !run && renderHome());
   settings.addEventListener("change", () => !run && renderHome());
   sessions.addEventListener("change", () => !run && renderHome()); // a new Max pull test
+  duel.me = () => ({ bodyweight: settings.values.bodyweightKg > 0 });
+  duel.addEventListener("change", () => !run && renderHome());
+  duel.addEventListener("message", onDuelMessage);
+  duel.addEventListener("lost", () => run?.net && !run.ended && stopDuel(duel.error || "The connection ended."));
   renderHome();
 }

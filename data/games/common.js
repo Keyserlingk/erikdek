@@ -36,6 +36,10 @@ export function seededRandom(seed) {
   };
 }
 
+// Two-phone games: an event seen from the other side ("you scored" is "they scored").
+const MIRRORED = { roundWon: "roundLost", roundLost: "roundWon", won: "lost", lost: "won", point: "miss", miss: "point" };
+export const mirrorEvent = (ev) => MIRRORED[ev] ?? ev;
+
 // Runs `step(dt)` in fixed slices so fast balls don't skip through paddles on slow frames.
 export function substeps(dt, maxStep, step) {
   const n = Math.max(1, Math.ceil(dt / maxStep));

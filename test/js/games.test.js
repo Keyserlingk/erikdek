@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { forceToLevel, seededRandom, smoothToward, springStep } from "../../data/games/common.js";
-import { FLAPPY, gapLevels, hitsPipe, levelToY, newFlappy, nextPipe, stepFlappy, yToLevel } from "../../data/games/flappy.js";
+import { forceToLevel, mirrorEvent, seededRandom, smoothToward, springStep } from "../../data/games/common.js";
+import { FLAPPY, flappyDuelResult, gapLevels, hitsPipe, levelToY, newFlappy, nextPipe, stepFlappy, yToLevel } from "../../data/games/flappy.js";
 import {
   defaultPlayData,
   fullRangeKg,
@@ -18,8 +18,8 @@ import {
   tugMaxKg,
   tugScale,
 } from "../../data/games/playdata.js";
-import { LEVEL_IDS, PONG, PONG_LEVELS, levelToPaddleX, newPong, predictX, stepPong } from "../../data/games/pong.js";
-import { SCALES, TUG, TUG_LEVELS, knotSpeed, newTug, seededCpu, stepTug, toScale } from "../../data/games/tug.js";
+import { LEVEL_IDS, PONG, PONG_LEVELS, coastPong, levelToPaddleX, mirrorPong, newPong, pongSnapshot, predictX, stepPong } from "../../data/games/pong.js";
+import { SCALES, TUG, TUG_LEVELS, knotSpeed, mirrorTug, newTug, seededCpu, stepTug, toScale, tugSnapshot } from "../../data/games/tug.js";
 
 class MemoryStorage {
   constructor() {
@@ -554,4 +554,54 @@ test("play data: tug settings and results", () => {
   assert.equal(bestMaxPullKg([]), null);
   assert.equal(tugMaxKg({ maxKg: 30 }, index), 47.5);
   assert.equal(tugMaxKg({ maxKg: 30 }, index.slice(2)), 30);
+});
+
+// ---- Two phones ----
+
+test("duel: events are mirrored for the other phone", () => {
+  assert.deepEqual(["hit", "point", "miss", "roundWon", "won", "count"].map(mirrorEvent), ["hit", "miss", "point", "roundLost", "lost", "count"]);
+});
+
+test("duel tug: the guest sees the host's game from its own end", () => {
+  const s = newTug({ scale: "kg" });
+  stepTug(s, 3.1, 0, 0); // countdown over
+  for (let i = 0; i < 60; i++) stepTug(s, 0.05, 10, 30); // the guest (them) pulls harder
+  assert.ok(s.x < -0.1);
+  const g = mirrorTug(JSON.parse(JSON.stringify(tugSnapshot(s))));
+  assert.equal(g.x, -s.x);
+  assert.ok(g.you.level > g.them.level);
+  for (let i = 0; i < 200 && s.phase === "pull"; i++) stepTug(s, 0.05, 0, 40);
+  assert.equal(s.them.rounds, 1);
+  const after = mirrorTug(tugSnapshot(s));
+  assert.equal(after.you.rounds, 1);
+  assert.equal(after.last.winner, "you");
+});
+
+test("duel pong: the guest's level moves the top paddle; the field is turned round for it", () => {
+  const s = newPong({ h: 150, random: seededRandom(3) });
+  for (let i = 0; i < 60; i++) stepPong(s, 1 / 60, 0.5, 1);
+  assert.ok(s.cpu.x > PONG.w - PONG.paddleW / 2 - 1, "top paddle at the right edge");
+  stepPong(s, 0.2, 0.5, 1); // served
+  const g = mirrorPong(pongSnapshot(s), s.h);
+  assert.equal(g.player.x, s.cpu.x);
+  assert.equal(g.ball.y, s.h - s.ball.y);
+  assert.equal(g.ball.vy, -s.ball.vy);
+  const guest = { ...newPong({ h: 150 }), ...g };
+  const y0 = guest.ball.y;
+  coastPong(guest, 0.1, 0);
+  assert.ok(Math.abs(guest.ball.y - (y0 + guest.ball.vy * 0.1)) < 1e-9);
+});
+
+test("duel flappy: same seed, same course; further wins", () => {
+  const a = newFlappy({ w: 80, seed: 42 });
+  const b = newFlappy({ w: 80, seed: 42 });
+  for (let i = 0; i < 300; i++) {
+    stepFlappy(a, 1 / 60, 0.5);
+    stepFlappy(b, 1 / 50, 0.5);
+    if (i % 5 === 0) stepFlappy(b, 1 / 300, 0.5);
+  }
+  assert.deepEqual(a.pipes.map((p) => p.gapY), b.pipes.map((p) => p.gapY));
+  assert.equal(flappyDuelResult({ score: 5, t: 10 }, { score: 4, t: 20 }), "won");
+  assert.equal(flappyDuelResult({ score: 5, t: 10 }, { score: 5, t: 12 }), "lost");
+  assert.equal(flappyDuelResult({ score: 5, t: 10 }, { score: 5, t: 10.01 }), "draw");
 });
