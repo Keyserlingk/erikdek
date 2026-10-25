@@ -53,7 +53,7 @@ const GAMES = {
     name: "Pong",
     about: "Pull to move your paddle: no load is the left edge, full range the right. First to 7 wins.",
     create: (w, h, d) => newPong({ h: clamp((PONG.w * h) / w, 120, 200), level: d.level }),
-    step: stepPong,
+    step: (s, dt, level) => stepPong(s, dt, level), // the computer plays the top paddle
     draw: drawPong,
     isOver: (s) => s.phase === "over",
     scoreText: (s) => `You ${s.player.score} – ${s.cpu.score} CPU`,
@@ -108,7 +108,7 @@ const GAMES = {
     name: "Flappy",
     about: "The bird's height follows your pull: no load is the bottom, full range the top. Hold the load that fits each gap.",
     create: (w, h) => newFlappy({ w: (100 * w) / h }),
-    step: stepFlappy,
+    step: (s, dt, level) => stepFlappy(s, dt, level),
     draw: drawFlappy,
     isOver: (s) => s.over,
     scoreText: (s) => `Score ${s.score}`,
