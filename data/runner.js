@@ -2,7 +2,7 @@
 // routine uses it), the per-set log of routines without the sensor, and the session
 // built at the end. The session goes to onEnd (workouts) or else to the summary.
 
-import { compressCurve, compressRepCurves } from "./analysis.js";
+import { compressCurve, compressRepCurves, measuredDtS, newSampleTiming, timeSamples } from "./analysis.js";
 import { beep, unlockAudio } from "./audio.js";
 import { LiveChart, smoothKg } from "./chart.js";
 import { device } from "./device.js";
@@ -10,6 +10,7 @@ import { formatClock, formatDuration, formatKg } from "./format.js";
 import { instructionFor, usesSensor } from "./routines.js";
 import { showResult } from "./runsummary.js";
 import { newSessionId } from "./sessions.js";
+import { sensorMode } from "./platform.js";
 import { settings } from "./settingsstore.js";
 import { HANDS, KINDS, summarizeTraining } from "./tests.js";
 import { groupOf, mountRunScreens, show } from "./trainscreens.js";
@@ -32,6 +33,7 @@ const CURVE_MIN_KG = 1;
 const CURVE_MAX_POINTS = 1000;
 // A hang waiting for force keeps this much from before the force came, for the rise (RFD).
 const PRE_LOAD_S = 0.25;
+const FULL_RATE_KINDS = ["maxPull", "rfd"];
 // The force number pulses in the last seconds of a hang.
 const PULSE_S = 3;
 // After the last hang (Settings → recordRelease): keep recording until this long after
@@ -138,8 +140,17 @@ export async function startRun(kind, routine, hand, { onEnd = null, workout = nu
   return true;
 }
 
+// Time between samples: measured over this run from the sensor's timestamps once a
+// second of them has come in, else the rate the sensor reports.
 function sampleDtS() {
-  return 1 / (device.status?.rate || 80);
+  return measuredDtS(run?.timing) ?? 1 / (device.status?.rate || 80);
+}
+
+// What measured a session (results differ a little between sensors, e.g. for fast pulls).
+function sensorInfo(dtS) {
+  const mode = sensorMode();
+  const adc = mode === "tindeq" ? "tindeq" : device.status?.adc ?? null;
+  return { mode, adc, hz: Math.round(10 / dtS) / 10 };
 }
 
 // Lets the simulator follow the workout (see mock.js).
@@ -346,7 +357,13 @@ function buildSession(stopped) {
   if (noForce) session.noForce = true;
   else session.curve = compressCurve(run.curve, 1 / dtS, { minKg: CURVE_MIN_KG, maxPoints: CURVE_MAX_POINTS });
   // Each rep's own curve, for comparing reps in History.
-  if (!noForce && run.attempts.length === reps.length && reps.length) session.repCurves = compressRepCurves(run.attempts, 1 / dtS);
+  // Max pull and RFD keep them at up to 400 Hz, so the results can be worked out again
+  // (editing a session) without changing.
+  if (!noForce && run.attempts.length === reps.length && reps.length) {
+    const fine = FULL_RATE_KINDS.includes(run.kind) ? { targetHz: 400, maxPoints: 20000 } : {};
+    session.repCurves = compressRepCurves(run.attempts, 1 / dtS, fine);
+  }
+  if (!noForce) session.sensor = sensorInfo(dtS);
   // The routine or test as it was run (tests: their setup, for History's filters).
   {
     const { name, type, instruction, setInstructions, addedWeightKg, holdType, grip, board, hands, startHand, test, handRestS } = r;
@@ -462,6 +479,7 @@ export function initRunner() {
   device.on("samples", (msg) => {
     if (!run || !run.sensor) return;
     chart.push(msg.ts, msg.te ?? msg.ts, msg.kg);
+    if (Number.isFinite(msg.ts) && msg.kg.length) timeSamples((run.timing ??= newSampleTiming()), msg);
     for (const kg of msg.kg) run.smoothed = smoothKg(run.smoothed, kg, sampleDtS());
     if (run.engine.paused || run.index < 0) return; // not started yet (or paused)
     if (run.finish && run.finish.releasedS === null && msg.kg.some((kg) => kg < settings.values.repThresholdKg)) {

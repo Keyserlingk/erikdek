@@ -9,7 +9,11 @@ import {
   forceRetention,
   criticalForceSummary,
   maxPullSummary,
+  measuredDtS,
+  newSampleTiming,
+  peakForce,
   rfdOfPull,
+  timeSamples,
   rfdSummary,
   alignRepCurves,
   compressRepCurves,
@@ -22,12 +26,12 @@ import {
 const DT = 1 / 80;
 const close = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
 
-// Linear ramp from 0 to peakKg over rampS after restS, then hold.
-function pull({ restS = 0.5, rampS = 0.2, peakKg = 40, holdS = 2 } = {}) {
+// Linear ramp from baseKg to peakKg over rampS after restS, then hold.
+function pull({ restS = 0.5, rampS = 0.2, peakKg = 40, holdS = 2, baseKg = 0 } = {}) {
   const out = [];
-  for (let t = 0; t < restS; t += DT) out.push(0);
+  for (let t = 0; t < restS; t += DT) out.push(baseKg);
   const n = Math.round(rampS / DT);
-  for (let i = 1; i <= n; i++) out.push((peakKg * i) / n);
+  for (let i = 1; i <= n; i++) out.push(baseKg + ((peakKg - baseKg) * i) / n);
   for (let t = 0; t < holdS; t += DT) out.push(peakKg);
   return out;
 }
@@ -46,13 +50,22 @@ test("bestWindowMean finds the best 1 s average", () => {
   assert.equal(bestWindowMean([1, 2], DT, 1), null);
 });
 
-test("maxPullSummary takes the best peak and best 1 s average across attempts", () => {
-  const a = [...Array(100).fill(40), 45];
+test("maxPullSummary takes the best 50 ms peak and best 1 s average across attempts", () => {
+  const a = [...Array(100).fill(40), 45, 45, 45, 45];
   const b = Array(100).fill(42);
   const s = maxPullSummary([a, b], DT);
   assert.equal(s.peakKg, 45);
   close(s.best1sKg, 42);
   assert.deepEqual(s.attemptPeaksKg, [45, 42]);
+});
+
+test("peakForce averages over 50 ms, so a one-sample jerk counts a quarter at 80 Hz", () => {
+  const s = Array(100).fill(40);
+  s[50] = 48;
+  close(peakForce(s, DT), 42);
+  close(peakForce(s, 1 / 1000), 40 + 8 / 50);
+  assert.equal(peakForce([3, 7], DT), 7); // shorter than the window
+  assert.equal(peakForce([], DT), 0);
 });
 
 test("criticalForceSummary averages the last reps and computes W'", () => {
@@ -71,8 +84,27 @@ test("rfdOfPull measures a linear ramp", () => {
   const r = rfdOfPull(pull({ rampS: 0.2, peakKg: 40 }), DT);
   assert.ok(Math.abs(r.rfdKgS - 200) < 10, `rfd ${r.rfdKgS}`);
   assert.ok(Math.abs(r.peakRfdKgS - 200) < 10, `peak rfd ${r.peakRfdKgS}`);
-  assert.ok(Math.abs(r.timeToPeakS - 0.2) < 0.03, `ttp ${r.timeToPeakS}`);
+  assert.ok(Math.abs(r.rfd100KgS - 200) < 10, `rfd100 ${r.rfd100KgS}`);
+  assert.ok(Math.abs(r.timeTo90S - 0.18) < 0.03, `t90 ${r.timeTo90S}`);
   assert.equal(r.peakKg, 40);
+  assert.equal(r.still, true);
+});
+
+test("rfdOfPull measures from the force it starts at (a relaxed hang)", () => {
+  // 15 kg hanging, then 15 → 55 kg in 0.2 s = 200 kg/s
+  const r = rfdOfPull(pull({ baseKg: 15, peakKg: 55, rampS: 0.2 }), DT);
+  assert.ok(Math.abs(r.rfdKgS - 200) < 10, `rfd ${r.rfdKgS}`);
+  assert.ok(Math.abs(r.baselineKg - 15) < 1e-9);
+  assert.ok(Math.abs(r.timeTo90S - 0.18) < 0.03, `t90 ${r.timeTo90S}`);
+});
+
+test("rfdOfPull flags a pull that didn't start from still", () => {
+  // bouncing ±3 kg before the pull
+  const bouncy = pull({ baseKg: 10, peakKg: 50 }).map((kg, i) => (i < 40 ? kg + 3 * Math.sin(i / 2) : kg));
+  assert.equal(rfdOfPull(bouncy, DT).still, false);
+  // pulling right from the first sample: no quiet time to measure the start from
+  const early = pull({ restS: 0, rampS: 0.3 });
+  assert.equal(rfdOfPull(early, DT).still, false);
 });
 
 test("rfdOfPull ranks a faster pull higher and ignores an attempt without a pull", () => {
@@ -87,7 +119,21 @@ test("rfdSummary picks the best attempt and keeps per-attempt values", () => {
   assert.equal(s.attemptRfdKgS.length, 3);
   assert.equal(s.attemptRfdKgS[1], null);
   assert.equal(s.rfdKgS, s.attemptRfdKgS[2]);
+  assert.equal(s.unsteadyAttempts, 0);
+  assert.equal(s.baselineKg, undefined);
   assert.equal(rfdSummary([Array(200).fill(0)], DT), null);
+});
+
+test("rfdSummary leaves out pulls that didn't start from still, unless all are like that", () => {
+  const early = pull({ restS: 0, rampS: 0.05, peakKg: 60 }); // fastest, but no still start
+  const s = rfdSummary([pull({ rampS: 0.3 }), early], DT);
+  assert.equal(s.unsteadyAttempts, 1);
+  assert.equal(s.attemptRfdKgS[1], null);
+  assert.equal(s.rfdKgS, s.attemptRfdKgS[0]);
+  assert.equal(s.peakKg, 60); // the peak still counts
+  const only = rfdSummary([early], DT);
+  assert.equal(only.still, false);
+  assert.ok(only.rfdKgS > 0);
 });
 
 test("compressCurve keeps only loaded stretches with padding and merges close ones", () => {
@@ -154,4 +200,21 @@ test("representativeCurve: average of the reps, or the best one", () => {
 test("resample interpolates onto a common time grid", () => {
   assert.deepEqual(resample([0, 0.1, 0.2], [0, 10, 20], [-0.05, 0, 0.05, 0.2, 0.3]), [null, 0, 5, 20, null]);
   assert.deepEqual(resample([0, 0.1, 0.2], [0, null, 20], [0, 0.05, 0.2]), [0, null, 20]);
+});
+
+test("the sample rate is measured from timestamps; pauses don't count", () => {
+  const t = newSampleTiming();
+  // 89 Hz in batches of 8, then a 3 s pause, then more
+  let ms = 0;
+  const batch = () => {
+    const ts = ms;
+    ms += (8 * 1000) / 89;
+    return { ts: Math.round(ts), te: Math.round(ts + (7 * 1000) / 89), kg: Array(8).fill(1) };
+  };
+  for (let i = 0; i < 10; i++) timeSamples(t, batch());
+  assert.equal(measuredDtS(t), null); // under a second so far
+  for (let i = 0; i < 10; i++) timeSamples(t, batch());
+  ms += 3000;
+  for (let i = 0; i < 20; i++) timeSamples(t, batch());
+  assert.ok(Math.abs(1 / measuredDtS(t) - 89) < 0.5, `${1 / measuredDtS(t)} Hz`);
 });

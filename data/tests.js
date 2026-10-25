@@ -31,15 +31,17 @@ const INFO = {
   tut: "Total time you were loading the hold during the hangs.",
   holdPerRep: "Hold % of each rep, in order, grouped by set: how much of each hang you stayed on.",
   forceVsRep1: "Average force of each rep as a percentage of rep 1. Shows how much you faded during the session.",
-  peakForce: "Highest force in any of the pulls.",
+  peakForce: "Highest force in any of the pulls (averaged over 50 ms, so a jerk at the top doesn't count in full).",
   best1s: "Highest average force over any 1 second. Less affected by a short spike than the peak.",
   cf: "Average force of the last 6 reps of the all-out test: roughly the load you can keep up for a long time.",
   cfShare: "Critical force as a percentage of your peak force. Higher means more endurance relative to your strength.",
   cfPeak: "Highest force in the test, usually in the first reps.",
   wPrime: "Work done above critical force (kg·s): your reserve for efforts harder than critical force.",
-  rfd: "How fast you build force: the increase over the first 200 ms after you start pulling, per second.",
+  rfd: "How fast you build force: the increase over the first 200 ms after you start pulling, per second. Measured from the force you start at, so a relaxed hang before the pull is fine.",
+  rfd100: "The same over the first 100 ms: the very start of the pull.",
   peakRfd: "Steepest rise in force over any 50 ms.",
-  timeToPeak: "Time from starting to pull until peak force.",
+  timeTo90: "Time from starting to pull until you reach 90 % of your peak force.",
+  still: "Pulls where the force was moving just before you pulled (bouncing, or pulling already) give no reliable RFD, so they're left out. Start each pull from a still, relaxed hang.",
   perHand: "Average force and hold % of the reps done with this hand, to compare left and right.",
   repsDone: "Reps (or hangs) done out of the planned number. Stopped or skipped reps aren't counted.",
   workTime: "Total time spent in the reps: for self-paced reps until you tapped Done, for timed reps the work time.",
@@ -365,15 +367,28 @@ export const KINDS = {
     metrics: [summaryMetric("rfdKgS", "RFD 0–200 ms", kgPerS, INFO.rfd)],
     analyze: ({ attempts, dtS, reps }) => {
       const rfdOf = (list) =>
-        rfdSummary(list, dtS) ?? { rfdKgS: null, peakRfdKgS: null, timeToPeakS: null, peakKg: null, attemptRfdKgS: [] };
+        rfdSummary(list, dtS) ?? {
+          rfdKgS: null,
+          rfd100KgS: null,
+          peakRfdKgS: null,
+          timeTo90S: null,
+          peakKg: null,
+          still: true,
+          unsteadyAttempts: 0,
+          attemptRfdKgS: [],
+        };
       return withHands(rfdOf(attempts), reps, (pick) => rfdOf(pick(attempts)));
     },
     tiles: (s) =>
       handTiles(s, (sum, label) => [
         [kgPerS(sum.rfdKgS), `RFD 0–200 ms${label}`, INFO.rfd],
+        [kgPerS(sum.rfd100KgS), `RFD 0–100 ms${label}`, INFO.rfd100],
         [kgPerS(sum.peakRfdKgS), `peak RFD${label}`, INFO.peakRfd],
-        [sum.timeToPeakS !== null ? `${Math.round(sum.timeToPeakS * 1000)} ms` : "–", `time to peak${label}`, INFO.timeToPeak],
+        [sum.timeTo90S != null ? `${Math.round(sum.timeTo90S * 1000)} ms` : "–", `time to 90 % of peak${label}`, INFO.timeTo90],
         [kg(sum.peakKg), `peak force${label}`, INFO.peakForce],
+        ...(sum.unsteadyAttempts
+          ? [[`${sum.unsteadyAttempts}`, `pull${sum.unsteadyAttempts === 1 ? "" : "s"} left out: not still before${label}`, INFO.still]]
+          : []),
       ]),
     table: (s) => ({
       head: ["Attempt", "Peak", "RFD 0–200 ms"],

@@ -108,11 +108,19 @@ function renderStrip(strip) {
 }
 
 // Fills `root` with the session view. Returns { destroy } for its charts.
+// What measured the session, e.g. "Erkdek (HX711) · 89 Hz".
+const SENSOR_NAMES = { hx711: "Erkdek (HX711)", ads1220: "Erkdek (ADS1220)", tindeq: "Tindeq Progressor" };
+function sensorText({ mode, adc, hz }) {
+  const name = mode === "sim" ? "Simulated sensor" : SENSOR_NAMES[adc] ?? "Erkdek";
+  return hz ? `${name} · ${Math.round(hz)} Hz` : name;
+}
+
 export function renderSession(root, session) {
   const s = withoutExcluded(session); // reps excluded in History don't show
   const kind = KINDS[s.type];
   const meta = [formatDateTime(s.startedAt), formatDuration(s.durationS), ...sessionTags(s)];
   if (s.targetKg) meta.push(`target ${formatKg(s.targetKg)} kg`);
+  if (s.sensor) meta.push(sensorText(s.sensor));
 
   // Routines show their reps and time; tests have nothing but force to show.
   const noForceTest = s.noForce && s.type !== "workout";

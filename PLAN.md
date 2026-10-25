@@ -234,6 +234,26 @@ erkdek/
 - **Workouts:** routines in a row with a confirmation before each next routine.
 - **Run screen:** countdown, one beep per phase change, live hold %, target band.
 - **Tests:** max pull, critical force (24 × 7:3), RFD; per hand, hold and grip.
+- **How force results are worked out** (`data/analysis.js`, tested):
+  - *Peak force* = the highest 50 ms average (`peakForce`), not the highest sample: a jerk
+    at the top doesn't count in full, so HX711, ADS1220 and Tindeq agree. Also per rep.
+    Best 1 s average next to it.
+  - *RFD* (`rfdOfPull`): baseline = average over up to 250 ms before the pull (the runner
+    keeps 250 ms before a force start); onset = baseline + max(1 kg, 3 × its noise),
+    traced back down the rise on a 20 ms average to the last sample at the starting
+    level. So a pull from a relaxed hang (not 0 kg) works. Reported: rise over 0–200 ms
+    (headline) and 0–100 ms from onset, peak RFD (steepest 50 ms), time to 90 % of the
+    way from baseline to peak. A baseline that moves more than max(0.5 kg, 3 % of the
+    pull), or less than 100 ms of quiet before it, marks the attempt not still: its RFD
+    is left out (unless all are) and the result says how many.
+  - Checked against simulated pulls with known RFD at 80 Hz (HX711 with its ~50 ms
+    settling, Tindeq) and 330/1000 Hz (ADS1220): within ~2 % for fast pulls and from a
+    10 kg baseline; slow, gently starting pulls read ~5–15 % high (no sharp onset). The
+    HX711 reads peak RFD ~10 % low on very fast pulls.
+  - Sample spacing is measured from the sensor's timestamps over the run (pauses left
+    out), not taken from the nominal rate. Max pull and RFD keep their rep curves at up
+    to 400 Hz so editing a session gives the same results; sessions record the sensor
+    (`sensor: {mode, adc, hz}`), shown in the session's details.
 - **Summary and history:** hold %, work vs target, force retention, per-rep values,
   ⓘ explanations, progress charts per hand, personal bests, session details.
 - **Settings:** bodyweight, rep threshold, own holds/grips, calibration, backup, About.

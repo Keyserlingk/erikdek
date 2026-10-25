@@ -2,11 +2,26 @@
 
 // Number of final reps averaged for critical force (Giles et al. 24 × 7:3 protocol).
 export const CF_LAST_REPS = 6;
-// Window for rate of force development measured from pull onset.
+// Peak force is the highest average over this window, not the single highest sample:
+// a jerk at the top of a pull doesn't count in full, so every sensor (HX711, ADS1220,
+// Tindeq) gives about the same peak for the same pull.
+export const PEAK_WINDOW_S = 0.05;
+// Rate of force development: the rise over these windows from pull onset (the headline
+// is 0–200 ms), and the steepest rise over PEAK_RFD_WINDOW_S.
 export const RFD_WINDOW_S = 0.2;
-// Pull onset: first sample above this share of the attempt's peak (at least 1 kg).
-const ONSET_SHARE = 0.05;
+export const RFD_SHORT_WINDOW_S = 0.1;
+const PEAK_RFD_WINDOW_S = 0.05;
+// Onset: the force leaves its starting level (the baseline: the average over up to
+// BASELINE_S before the pull) by more than max(ONSET_MIN_KG, ONSET_NOISE × its noise);
+// then traced back to where the rise began. A baseline that moves more than
+// max(STILL_MIN_KG, STILL_SHARE × the pull) isn't still: that attempt's RFD isn't used.
+const BASELINE_S = 0.25;
+const BASELINE_MIN_S = 0.1;
+const BASELINE_GUARD_S = 0.05;
 const ONSET_MIN_KG = 1;
+const ONSET_NOISE = 3;
+const STILL_MIN_KG = 0.5;
+const STILL_SHARE = 0.03;
 
 // Force retention: average of the last reps as % of the average of the first reps
 // (up to 3 each, never overlapping). Null with fewer than 2 reps.
@@ -33,9 +48,48 @@ export function bestWindowMean(samples, dtS, windowS) {
   return best / n;
 }
 
+// The sample rate measured from the sensor's timestamps ({ts, te} in ms of each batch of
+// samples). Gaps longer than MAX_GAP_MS (the sensor paused) don't count.
+const MAX_GAP_MS = 500;
+export const newSampleTiming = () => ({ spanMs: 0, intervals: 0, lastMs: null });
+
+export function timeSamples(t, { ts, te = ts, kg }) {
+  const n = kg.length;
+  const gap = ts - t.lastMs;
+  if (t.lastMs !== null && gap > 0 && gap <= MAX_GAP_MS) {
+    t.spanMs += te - t.lastMs;
+    t.intervals += n;
+  } else if (n > 1) {
+    t.spanMs += te - ts;
+    t.intervals += n - 1;
+  }
+  t.lastMs = te;
+}
+
+// Seconds between samples, once at least a second has been measured; else null.
+export const measuredDtS = (t) => (t && t.spanMs >= 1000 ? t.spanMs / 1000 / t.intervals : null);
+
+// Each sample averaged with `half` samples on either side (fewer at the ends).
+function centredMean(samples, half) {
+  if (half < 1) return samples;
+  return samples.map((_, i) => {
+    const from = Math.max(0, i - half);
+    const to = Math.min(samples.length, i + half + 1);
+    let sum = 0;
+    for (let k = from; k < to; k++) sum += samples[k];
+    return sum / (to - from);
+  });
+}
+
+// Peak force: the highest PEAK_WINDOW_S average (the highest sample if there are fewer).
+export function peakForce(samples, dtS) {
+  if (!samples.length) return 0;
+  return Math.max(0, bestWindowMean(samples, dtS, PEAK_WINDOW_S) ?? Math.max(...samples));
+}
+
 // Max pull: best peak and best 1 s average over all attempts.
 export function maxPullSummary(attempts, dtS) {
-  const peaks = attempts.map((a) => a.reduce((m, kg) => Math.max(m, kg), 0));
+  const peaks = attempts.map((a) => peakForce(a, dtS));
   const best1s = attempts.map((a) => bestWindowMean(a, dtS, 1) ?? 0);
   return {
     peakKg: Math.max(0, ...peaks),
@@ -55,47 +109,87 @@ export function criticalForceSummary(repMeansKg, repPeaksKg, workS) {
   return { cfKg, peakKg, cfShareOfPeak: peakKg > 0 ? cfKg / peakKg : 0, wPrimeKgS };
 }
 
-// Rate of force development of one explosive pull.
-//   rfdKgS:      average slope over the first 200 ms after onset
-//   peakRfdKgS:  steepest slope over a 50 ms window
-//   timeToPeakS: onset to peak force
+// Rate of force development of one explosive pull, from where the force leaves its
+// starting level (it doesn't have to start at 0 kg: a relaxed hang is fine).
+//   rfdKgS:       rise over the first 200 ms after onset, per second (null: too short)
+//   rfd100KgS:    the same over the first 100 ms
+//   peakRfdKgS:   steepest rise over any 50 ms
+//   timeTo90S:    onset to 90 % of the way from the baseline to the peak
+//   peakKg:       peak force (PEAK_WINDOW_S average)
+//   baselineKg:   the force before the pull
+//   still:        false when the force wasn't steady before the pull (RFD unreliable)
+// null when there is no real pull.
 export function rfdOfPull(samples, dtS) {
-  let peak = 0;
-  let peakIdx = -1;
-  for (let i = 0; i < samples.length; i++) {
-    if (samples[i] > peak) {
-      peak = samples[i];
-      peakIdx = i;
-    }
-  }
-  const threshold = Math.max(ONSET_MIN_KG, ONSET_SHARE * peak);
-  if (peak < threshold * 2) return null; // no real pull
-  let onset = samples.findIndex((kg) => kg >= threshold);
-  if (onset > 0) onset--; // last sample before the rise
-  const end = onset + Math.round(RFD_WINDOW_S / dtS);
-  if (end >= samples.length) return null;
+  const n = samples.length;
+  if (n < 2) return null;
+  const peakKg = peakForce(samples, dtS);
+  const start = samples[0];
+  // Where the pull clearly gets going, to find the quiet part before it.
+  const clear = samples.findIndex((kg) => kg >= start + Math.max(ONSET_MIN_KG, 0.2 * (peakKg - start)));
+  if (clear < 0) return null;
+  const guard = Math.round(BASELINE_GUARD_S / dtS);
+  let quietEnd = clear;
+  while (quietEnd > 0 && samples[quietEnd - 1] > start + ONSET_MIN_KG / 2) quietEnd--; // before the rise
+  quietEnd = Math.max(1, Math.min(quietEnd, clear - guard));
+  const quiet = samples.slice(Math.max(0, quietEnd - Math.round(BASELINE_S / dtS)), quietEnd);
+  const baselineKg = quiet.reduce((a, b) => a + b, 0) / quiet.length;
+  const sd = Math.sqrt(quiet.reduce((a, b) => a + (b - baselineKg) ** 2, 0) / quiet.length);
+  const pull = peakKg - baselineKg;
+  if (pull < 2 * ONSET_MIN_KG) return null; // no real pull
+  const still = quiet.length * dtS >= BASELINE_MIN_S - 1e-9 && sd <= Math.max(STILL_MIN_KG, STILL_SHARE * pull);
 
-  const half = Math.max(1, Math.round(0.025 / dtS)); // ±25 ms
+  // Onset: the first crossing of baseline + threshold, traced back down the rise.
+  const threshold = baselineKg + Math.max(ONSET_MIN_KG, ONSET_NOISE * sd);
+  let onset = samples.findIndex((kg, i) => i >= quietEnd - 1 && kg >= threshold);
+  if (onset < 0) return null;
+  // Traced back on a 20 ms average, so noise at fast rates doesn't stop it early.
+  const smooth = centredMean(samples, Math.round(0.01 / dtS));
+  const level = baselineKg + Math.max(2 * sd, 0.005 * pull);
+  while (onset > 0 && smooth[onset - 1] > level && smooth[onset - 1] < smooth[onset]) onset--;
+  if (onset > 0) onset--; // the last sample at the starting level
+  while (onset + 1 < n && samples[onset + 1] <= level) onset++; // (the average rises a little early)
+
+  const rise = (windowS) => {
+    const end = onset + Math.round(windowS / dtS);
+    return end < n ? (samples[end] - samples[onset]) / windowS : null;
+  };
+  const half = Math.max(1, Math.round(PEAK_RFD_WINDOW_S / 2 / dtS));
+  let peakIdx = onset;
+  for (let i = onset; i < n; i++) if (samples[i] > samples[peakIdx]) peakIdx = i;
   let peakRfd = 0;
-  for (let i = onset + half; i + half < samples.length && i <= peakIdx; i++) {
+  for (let i = Math.max(half, onset); i + half < n && i <= peakIdx; i++) {
     const slope = (samples[i + half] - samples[i - half]) / (2 * half * dtS);
     if (slope > peakRfd) peakRfd = slope;
   }
+  const at90 = samples.findIndex((kg, i) => i > onset && kg >= baselineKg + 0.9 * pull);
   return {
-    rfdKgS: (samples[end] - samples[onset]) / RFD_WINDOW_S,
+    rfdKgS: rise(RFD_WINDOW_S),
+    rfd100KgS: rise(RFD_SHORT_WINDOW_S),
     peakRfdKgS: peakRfd,
-    timeToPeakS: (peakIdx - onset) * dtS,
-    peakKg: peak,
+    timeTo90S: at90 >= 0 ? (at90 - onset) * dtS : null,
+    peakKg,
+    baselineKg,
+    still,
   };
 }
 
-// Best attempt (by 200 ms RFD) plus all attempts.
+// Best attempt (by 0–200 ms RFD) plus all attempts' RFD. Attempts that didn't start from
+// still are left out (null), unless none did: then the best of them, with still: false.
+// The peak force is the best of all attempts.
 export function rfdSummary(attempts, dtS) {
   const results = attempts.map((a) => rfdOfPull(a, dtS));
-  const valid = results.filter(Boolean);
-  if (!valid.length) return null;
-  const best = valid.reduce((a, b) => (b.rfdKgS > a.rfdKgS ? b : a));
-  return { ...best, attemptRfdKgS: results.map((r) => (r ? r.rfdKgS : null)) };
+  const measured = results.filter((r) => r && r.rfdKgS !== null);
+  if (!measured.length) return null;
+  const steady = measured.filter((r) => r.still);
+  const pool = steady.length ? steady : measured;
+  const best = pool.reduce((a, b) => (b.rfdKgS > a.rfdKgS ? b : a));
+  const { baselineKg, ...rest } = best;
+  return {
+    ...rest,
+    peakKg: Math.max(...measured.map((r) => r.peakKg)),
+    attemptRfdKgS: results.map((r) => (r && r.rfdKgS !== null && (r.still || !steady.length) ? r.rfdKgS : null)),
+    unsteadyAttempts: measured.length - steady.length,
+  };
 }
 
 // Averages consecutive blocks of `factor` samples (rounded to 10 g).

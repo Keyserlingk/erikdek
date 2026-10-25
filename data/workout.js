@@ -1,5 +1,7 @@
 // Workout timing and rep analysis. No DOM access, so it runs under node --test too.
 
+import { peakForce } from "./analysis.js";
+
 export const PHASE = { PREP: "prep", WORK: "work", REST: "rest", SET_REST: "setRest" };
 
 // A completed rep must be loaded for at least this share of the work time.
@@ -224,19 +226,17 @@ export class WorkoutEngine {
 //   workPct: force × time against target × hang time, counting force up to the
 //            target only (null without a target)
 export function repStats(samples, dtS, thresholdKg, workS, targetKg = null) {
-  let peak = 0;
   let sum = 0;
   let loaded = 0;
   let work = 0;
   for (const kg of samples) {
-    if (kg > peak) peak = kg;
     sum += kg;
     if (kg >= thresholdKg) loaded++;
     if (targetKg !== null) work += Math.min(Math.max(kg, 0), targetKg);
   }
   const tutS = loaded * dtS;
   return {
-    peakKg: peak,
+    peakKg: peakForce(samples, dtS), // 50 ms peak, like the tests
     meanKg: samples.length ? sum / samples.length : 0,
     tutS,
     holdPct: Math.min(100, (100 * tutS) / workS),

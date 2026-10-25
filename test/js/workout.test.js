@@ -169,9 +169,9 @@ test("repStats computes peak, mean, time under tension and completion", () => {
   const dt = 1 / 80;
   // 7 s rep: 0.5 s ramp below threshold, then 6.5 s at 20 kg
   const samples = [...Array(40).fill(1), ...Array(520).fill(20)];
-  samples[100] = 24;
+  samples[100] = 24; // one sample: the 50 ms peak (4 samples) counts a quarter of it
   const s = repStats(samples, dt, 10, 7);
-  assert.equal(s.peakKg, 24);
+  assert.equal(s.peakKg, 21);
   assert.ok(Math.abs(s.tutS - 6.5) < 1e-9);
   assert.equal(s.completed, true);
   assert.ok(Math.abs(s.meanKg - (40 * 1 + 519 * 20 + 24) / 560) < 1e-9);
