@@ -14,7 +14,7 @@ import {
   savePlayData,
   stepRange,
 } from "../../data/games/playdata.js";
-import { PONG, levelToPaddleX, newPong, predictX, stepPong } from "../../data/games/pong.js";
+import { LEVEL_IDS, PONG, PONG_LEVELS, levelToPaddleX, newPong, predictX, stepPong } from "../../data/games/pong.js";
 
 class MemoryStorage {
   constructor() {
@@ -110,37 +110,139 @@ test("pong: a missed ball scores for the computer, a returned one bounces back",
   assert.ok(Math.hypot(t.ball.vx, t.ball.vy) > 60, "speeds up");
 });
 
-test("pong: ball speed is capped and the game ends at the win score", () => {
-  const s = newPong({ random: seededRandom(5) });
-  // A perfect player: always under the ball.
-  const follow = (st) => (st.phase === "play" && st.ball.vy > 0 ? (st.ball.x - PONG.paddleW / 2) / (PONG.w - PONG.paddleW) : 0.5);
-  let maxSpeed = 0;
-  for (let i = 0; i < 60 * 600 && s.phase !== "over"; i++) {
-    stepPong(s, 1 / 60, follow(s));
-    maxSpeed = Math.max(maxSpeed, Math.hypot(s.ball.vx, s.ball.vy));
+test("pong: every hit speeds the ball up, up to the cap; the game ends at the win score", () => {
+  for (const level of LEVEL_IDS) {
+    const c = PONG_LEVELS[level];
+    const s = newPong({ random: seededRandom(5), level });
+    // A perfect player: always under the ball.
+    const follow = (st) => (st.phase === "play" && st.ball.vy > 0 ? (st.ball.x - PONG.paddleW / 2) / (PONG.w - PONG.paddleW) : 0.5);
+    let maxSpeed = 0;
+    let speedUps = 0;
+    for (let i = 0; i < 60 * 600 && s.phase !== "over"; i++) {
+      const before = Math.hypot(s.ball.vx, s.ball.vy);
+      const events = stepPong(s, 1 / 60, follow(s));
+      const after = Math.hypot(s.ball.vx, s.ball.vy);
+      if (events.includes("hit") && !events.includes("point") && !events.includes("miss")) {
+        const want = Math.min(c.maxSpeed, before * c.speedUp);
+        assert.ok(Math.abs(after - want) < 1e-6, `${level}: ${before} → ${after}`);
+        if (after > before) speedUps++;
+      }
+      maxSpeed = Math.max(maxSpeed, after);
+    }
+    assert.equal(s.phase, "over", level);
+    assert.equal(Math.max(s.player.score, s.cpu.score), PONG.winScore);
+    assert.ok(speedUps > 10, `${level}: ${speedUps} speed-ups`);
+    assert.ok(Math.abs(maxSpeed - c.maxSpeed) < 1e-6, `${level}: long rallies reach the cap (${maxSpeed})`);
   }
-  assert.equal(s.phase, "over");
-  assert.equal(Math.max(s.player.score, s.cpu.score), PONG.winScore);
-  assert.ok(maxSpeed <= PONG.maxSpeed + 1e-9);
+  // Harder is faster from the first serve on.
+  const [easy, normal, hard] = ["easy", "normal", "hard"].map((l) => PONG_LEVELS[l]);
+  assert.ok(easy.serveSpeed < normal.serveSpeed && normal.serveSpeed < hard.serveSpeed);
+  assert.ok(easy.speedUp < normal.speedUp && normal.speedUp <= hard.speedUp && normal.speedUp >= 1.08);
+  assert.ok(easy.maxSpeed < normal.maxSpeed && normal.maxSpeed < hard.maxSpeed);
 });
 
-test("pong: the computer is beatable but returns easy balls", () => {
-  let wins = 0;
-  for (let seed = 1; seed <= 10; seed++) {
-    const s = newPong({ random: seededRandom(seed) });
-    const follow = (st) => (st.phase === "play" && st.ball.vy > 0 ? (st.ball.x - PONG.paddleW / 2) / (PONG.w - PONG.paddleW) : 0.5);
-    run(stepPong, s, 600, follow);
-    if (s.player.score > s.cpu.score) wins++;
-  }
-  assert.ok(wins >= 8, `a precise player wins most games (${wins}/10)`);
+// A climber steering by force: sees where the ball goes `reactS` after it turns their way
+// (reaction plus Bluetooth lag), the force follows with time constant `tauS` and reaches the
+// app in 20 Hz batches, and each return is off by a normal error (`errorU` at 100 u/s,
+// growing with the ball speed).
+function climber({ reactS, tauS, errorU }, random) {
+  const faceY = (s) => s.h - PONG.paddleGap - PONG.paddleH / 2 - PONG.ballR;
+  let t = 0;
+  let since = 0;
+  let towards = false;
+  let error = 0;
+  let level = 0.5;
+  let sent = 0.5;
+  let sendAt = 0;
+  return (s) => {
+    t += 1 / 60;
+    const now = s.phase === "play" && s.ball.vy > 0;
+    if (now && !towards) {
+      since = t;
+      const gauss = Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random());
+      error = gauss * errorU * (0.5 + Math.hypot(s.ball.vx, s.ball.vy) / 200);
+    }
+    towards = now;
+    let target = 0.5; // back to the middle while the computer plays
+    if (towards && t - since < reactS) target = level;
+    else if (towards) target = (predictX(s.ball, faceY(s), s.w) + error - PONG.paddleW / 2) / (PONG.w - PONG.paddleW);
+    level = smoothToward(level, Math.min(1, Math.max(0, target)), 1 / 60, tauS);
+    if (t >= sendAt) [sent, sendAt] = [level, t + 0.05];
+    return sent;
+  };
+}
 
-  // A slow ball straight at the computer's paddle comes back.
-  const s = newPong({ random: () => 0.5 });
-  s.phase = "play";
-  s.ball = { x: 50, y: 60, vx: 0, vy: -40 };
-  const events = run(stepPong, s, 2, 0.5);
-  assert.ok(events.includes("hit"));
-  assert.equal(s.player.score, 0);
+const PRECISE = { reactS: 0.25, tauS: 0.1, errorU: 4 };
+const DECENT = { reactS: 0.3, tauS: 0.15, errorU: 6 };
+const SLOPPY = { reactS: 0.4, tauS: 0.25, errorU: 9 };
+
+function wins(level, player, games = 20) {
+  let won = 0;
+  for (let seed = 1; seed <= games; seed++) {
+    const s = newPong({ h: 140, random: seededRandom(seed), level });
+    run(stepPong, s, 900, climber(player, seededRandom(seed + 1000)));
+    assert.equal(s.phase, "over");
+    if (s.player.score > s.cpu.score) won++;
+  }
+  return won;
+}
+
+test("pong: Normal is beatable with a good pull, Hard is harder, Easy is easy", () => {
+  const precise = wins("normal", PRECISE);
+  assert.ok(precise >= 18, `a precise player wins most Normal games (${precise}/20)`);
+  const sloppy = wins("normal", SLOPPY);
+  assert.ok(sloppy <= 4, `a sloppy player loses most Normal games (${sloppy}/20)`);
+  const decentNormal = wins("normal", DECENT);
+  const decentHard = wins("hard", DECENT);
+  assert.ok(decentNormal >= 12, `a decent player mostly wins on Normal (${decentNormal}/20)`);
+  assert.ok(decentHard <= decentNormal - 6, `Hard beats a decent player more often (${decentHard} vs ${decentNormal}/20)`);
+  assert.ok(wins("hard", PRECISE) >= 12, "a precise player can still win on Hard");
+  const sloppyEasy = wins("easy", SLOPPY);
+  assert.ok(sloppyEasy >= sloppy + 5, `Easy forgives a sloppy player (${sloppyEasy}/20)`);
+});
+
+test("pong: the computer returns slow balls and aims them away from you", () => {
+  for (const level of LEVEL_IDS) {
+    const s = newPong({ random: () => 0.5, level }); // no aim error
+    s.phase = "play";
+    s.ball = { x: 50, y: 60, vx: 0, vy: -40 };
+    const events = run(stepPong, s, 2, 0.5);
+    assert.ok(events.includes("hit"), level);
+    assert.equal(s.player.score, 0);
+  }
+  // You return a ball straight up from the left edge: Normal and Hard take it with the
+  // paddle edge so it comes back at an angle, Easy sends it straight back.
+  for (const [level, angled] of [
+    ["easy", false],
+    ["normal", true],
+    ["hard", true],
+  ]) {
+    const s = newPong({ random: () => 0.5, level });
+    const x = levelToPaddleX(0);
+    s.phase = "play";
+    s.player.x = x;
+    s.ball = { x, y: s.h - 20, vx: 0, vy: 80 };
+    let hits = 0;
+    for (let i = 0; i < 180 && hits < 2; i++) hits += stepPong(s, 1 / 60, 0).filter((e) => e === "hit").length;
+    assert.equal(hits, 2, level);
+    assert.ok(s.ball.vy > 0, level);
+    const share = Math.abs(s.ball.vx) / Math.hypot(s.ball.vx, s.ball.vy);
+    if (angled) assert.ok(share > 0.4, `${level}: angled (${share})`);
+    else assert.ok(share < 1e-9, `${level}: straight back (${share})`);
+  }
+});
+
+test("pong: the computer plays sooner on harder levels", () => {
+  // Ball just hit by you, heading up: Hard moves at once, Easy waits for its own half.
+  const moved = (level) => {
+    const s = newPong({ random: () => 0.5, level });
+    s.phase = "play";
+    s.ball = { x: 80, y: s.h * 0.8, vx: 0, vy: -60 };
+    stepPong(s, 0.1, 0.5);
+    return s.cpu.x - PONG.w / 2;
+  };
+  assert.equal(moved("easy"), 0);
+  assert.ok(moved("hard") > moved("normal") && moved("normal") > 0);
 });
 
 test("flappy: level maps to height and back", () => {
@@ -211,19 +313,23 @@ test("play data: per profile, validated, best scores", () => {
   const d = loadPlayData(st, "me");
   assert.equal(recordFlappy(d, 4), true);
   assert.equal(recordFlappy(d, 2), false);
-  assert.equal(recordPong(d, 3, 7), false);
-  assert.equal(recordPong(d, 7, 5), true);
-  assert.equal(recordPong(d, 7, 6), false);
-  assert.equal(recordPong(d, 7, 1), true);
+  assert.equal(d.pong.level, "normal");
+  assert.equal(recordPong(d, "normal", 3, 7), false);
+  assert.equal(recordPong(d, "normal", 7, 5), true);
+  assert.equal(recordPong(d, "normal", 7, 6), false);
+  assert.equal(recordPong(d, "normal", 7, 1), true);
+  assert.equal(recordPong(d, "hard", 7, 6), true, "each difficulty has its own best");
+  d.pong.level = "hard";
   d.flappy.range = { unit: "bw", kg: 20, pct: 40 };
   savePlayData(st, "me", d);
 
   const back = loadPlayData(st, "me");
   assert.equal(back.flappy.best, 4);
   assert.equal(back.flappy.played, 2);
-  assert.deepEqual(back.pong.best, { you: 7, cpu: 1 });
-  assert.equal(back.pong.wins, 3);
-  assert.equal(back.pong.played, 4);
+  assert.deepEqual(back.pong.results.normal, { best: { you: 7, cpu: 1 }, wins: 3, played: 4 });
+  assert.deepEqual(back.pong.results.hard, { best: { you: 7, cpu: 6 }, wins: 1, played: 1 });
+  assert.deepEqual(back.pong.results.easy, { best: null, wins: 0, played: 0 });
+  assert.equal(back.pong.level, "hard");
   assert.equal(back.flappy.range.unit, "bw");
   assert.deepEqual(loadPlayData(st, "guest"), defaultPlayData(), "other profiles are separate");
 
@@ -232,10 +338,18 @@ test("play data: per profile, validated, best scores", () => {
 
   st.setItem(playKey("x"), "{not json");
   assert.deepEqual(loadPlayData(st, "x"), defaultPlayData());
-  st.setItem(playKey("x"), JSON.stringify({ pong: { range: { unit: "lbs", kg: 999, pct: -1 }, wins: -2 }, flappy: { best: "lots" } }));
+  st.setItem(
+    playKey("x"),
+    JSON.stringify({
+      pong: { range: { unit: "lbs", kg: 999, pct: -1 }, level: "insane", results: { easy: { wins: -2, played: 3 }, hard: { wins: 5, played: 2 } } },
+      flappy: { best: "lots" },
+    }),
+  );
   const fixed = loadPlayData(st, "x");
   assert.deepEqual(fixed.pong.range, { unit: "kg", kg: 200, pct: 5 });
-  assert.equal(fixed.pong.wins, 0);
+  assert.equal(fixed.pong.level, "normal");
+  assert.deepEqual(fixed.pong.results.easy, { best: null, wins: 0, played: 3 });
+  assert.equal(fixed.pong.results.hard.wins, 2, "no more wins than games");
   assert.equal(fixed.flappy.best, 0);
 });
 

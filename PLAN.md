@@ -239,7 +239,8 @@ erkdek/
 - **Settings:** bodyweight, rep threshold, own holds/grips, calibration, backup, About.
 - **Export/import:** CSV/JSON per session, all sessions as CSV, routine files, backup.
 - **Play:** Pong and Flappy steered by the pull (full range in kg or % bodyweight), best
-  scores per profile; touch fallback without a sensor.
+  scores per profile; Pong has Easy / Normal / Hard (ball speed, computer skill), results
+  per difficulty; touch fallback without a sensor.
 
 ## Play: multiplayer (proposal)
 

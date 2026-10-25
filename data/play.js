@@ -8,7 +8,7 @@ import { device } from "./device.js";
 import { clamp, forceToLevel } from "./games/common.js";
 import { drawFlappy, newFlappy, stepFlappy } from "./games/flappy.js";
 import { fullRangeKg, loadPlayData, recordFlappy, recordPong, savePlayData, stepRange } from "./games/playdata.js";
-import { PONG, drawPong, newPong, stepPong } from "./games/pong.js";
+import { LEVEL_IDS, PONG, drawPong, newPong, stepPong } from "./games/pong.js";
 import { profiles } from "./profiles.js";
 import { settings } from "./settingsstore.js";
 import { $, button, create } from "./ui.js";
@@ -34,23 +34,27 @@ const GAMES = {
   pong: {
     name: "Pong",
     about: "Pull to move your paddle: no load is the left edge, full range the right. First to 7 wins.",
-    create: (w, h) => newPong({ h: clamp((PONG.w * h) / w, 120, 200) }),
+    create: (w, h, d) => newPong({ h: clamp((PONG.w * h) / w, 120, 200), level: d.level }),
     step: stepPong,
     draw: drawPong,
     isOver: (s) => s.phase === "over",
     scoreText: (s) => `You ${s.player.score} – ${s.cpu.score} CPU`,
-    bestText: (d) =>
-      d.played ? `${d.wins} of ${d.played} won` + (d.best ? ` · best ${d.best.you}–${d.best.cpu}` : "") : "Not played yet",
+    // Results of the chosen difficulty.
+    bestText: ({ results, level }) => {
+      const r = results[level];
+      return r.played ? `${r.wins} of ${r.played} won` + (r.best ? ` · best ${r.best.you}–${r.best.cpu}` : "") : "Not played yet";
+    },
+    levels: { easy: "Easy", normal: "Normal", hard: "Hard" },
     // Touch: the paddle follows your finger across, and stays when you let go.
     touchLevel: (fx) => (fx * PONG.w - PONG.paddleW / 2) / (PONG.w - PONG.paddleW),
     holdTouch: true,
     record(data, s) {
       const { score: you } = s.player;
       const { score: cpu } = s.cpu;
-      const newBest = recordPong(data, you, cpu);
+      const newBest = recordPong(data, s.level, you, cpu);
       return {
         title: you > cpu ? "You won!" : "Computer wins",
-        text: `${you} – ${cpu}` + (newBest ? " · new best" : ""),
+        text: `${you} – ${cpu} · ${this.levels[s.level]}` + (newBest ? " · new best" : ""),
       };
     },
     sounds: { hit: [660, 0.05], wall: [440, 0.03], point: [880, 0.15], miss: [220, 0.25] },
@@ -130,6 +134,23 @@ function rangeRow(id) {
   ]);
 }
 
+// Difficulty (Pong): how fast the ball gets and how well the computer plays.
+function levelRow(id, names) {
+  const pick = (level) => {
+    data[id].level = level;
+    saveData();
+    renderHome();
+  };
+  return create("div", { className: "play-range" }, [
+    create("span", { className: "muted", textContent: "Difficulty" }),
+    create(
+      "div",
+      { className: "segmented" },
+      LEVEL_IDS.map((l) => button(data[id].level === l ? "active" : "", names[l], () => pick(l))),
+    ),
+  ]);
+}
+
 function renderHome() {
   loadData();
   el.cards.replaceChildren(
@@ -140,6 +161,7 @@ function renderHome() {
           create("span", { className: "muted", textContent: g.bestText(data[id]) }),
         ]),
         create("p", { className: "muted", textContent: g.about }),
+        ...(g.levels ? [levelRow(id, g.levels)] : []),
         rangeRow(id),
         create("div", { className: "actions" }, [button("primary", "Play", () => start(id))]),
       ]),
@@ -241,7 +263,7 @@ function start(id) {
   run = {
     id,
     game,
-    s: game.create(el.stage.clientWidth, el.stage.clientHeight),
+    s: game.create(el.stage.clientWidth, el.stage.clientHeight, data[id]),
     profileId: profiles.activeId, // scores go to the profile the game started with
     fullKg: fullRangeKg(data[id].range, settings.values.bodyweightKg),
     paused: false,
