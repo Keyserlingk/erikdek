@@ -273,27 +273,41 @@ phone and sensor, playing against each other.
 **Connection options** – both give games the same connection object (events `open`
 {peerName}, `message`, `close`, `status` waiting/connecting/open/reconnecting/closed,
 `error` text; `send(obj)`, `ping()`, `close()`, `open`, `peerName`, `role`), so a game
-doesn't care which one is used.
-- *Game code over the internet* (`data/net.js`, built) – `hostGame({name})` gives a
-  4-letter code (letters that can't be confused: `ACDEFGHJKMNPQRTUVWXY`), the friend
-  types it into `joinGame(code, {name})`. Uses Trystero (pinned 0.25.4, vendored as one
+doesn't care which one is used. The online host gets one such link per guest from its room.
+- *Game code over the internet* (`data/net.js`, built) – `hostGame({name, maxPlayers})`
+  gives `{code, room}`: a 4-letter code (letters that can't be confused:
+  `ACDEFGHJKMNPQRTUVWXY`) that friends type into `joinGame(code, {name})` (→ a link).
+  Uses Trystero (pinned 0.25.4, vendored as one
   ES module `data/vendor/trystero.js` by `npm run vendor` with esbuild): public Nostr
   relays carry only the handshake, encrypted with the code as password (room
   `erkdek-play-v1` + code); then WebRTC runs directly between the phones with public
   STUN. No login, no server of our own. No TURN relay, so very strict networks (some
   mobile carriers, guest Wi-Fi) can fail to connect – the guest then gets "couldn't reach
   the other phone" after 20 s.
-  - Exactly two per room: the host answers a third player's hello with "full", which
-    closes it with "This game already has two players."
-  - A hello carries the name, role and a protocol number (a different app version is
-    refused). Everything goes over one Trystero action as `{k: hello|full|msg|ka|bye}`.
-  - Keep-alive every 2 s when nothing else is sent; 6 s of silence or Trystero losing the
-    peer → `reconnecting`; back within 10 s → `open` again (a reloaded app with a new id
-    may take the slot), else `close`. `close()` sends "bye" so the other side closes at
-    once. Errors: offline, no relay reachable after 10 s, no host after 20 s.
-  - Checked live (two headless Chromes on one laptop, real relays): connected in 1–4 s,
-    150 messages each way at 30/s all arrived, ping 0–3 ms (same machine; phones on
-    different networks will be tens of ms).
+  - A room holds up to `MAX_PLAYERS` = 6 phones (host included) as a star: each guest
+    talks only to the host, the host has one link per guest. `room` events: `peer`
+    {link, already open}, `status` waiting (no guest) / open (≥1 guest) / closed, `error`
+    (room-level: offline, no relay, no Trystero) then `close`. `room.links`,
+    `room.close()` (bye to every guest, then leaves). A guest leaving closes only its link
+    and frees its slot. When all slots are taken (reconnecting guests keep theirs) the
+    host answers a hello with `{k: "full", n}` → "This game is full (6 players)."
+  - The host only ever answers a guest's hello (guests say hello to every peer, other
+    guests ignore it), so a guest never sees a host that then turns it away. Trystero
+    still connects every phone to every other one (15 WebRTC connections for 6).
+  - A hello carries the name, role and protocol number 2 (a different app version is
+    refused: the guest is told, the room stays). Everything goes over one Trystero action
+    as `{k: hello|full|msg|ka|bye}`.
+  - Keep-alive every 2 s per link when nothing else is sent; 6 s of silence or Trystero
+    losing the peer → `reconnecting`; back within 10 s → `open` again, else `close`. A
+    reloaded guest app (new id) takes over its reconnecting slot if its name matches.
+    `close()` sends "bye" so the other side closes at once. Guest errors: offline, no
+    relay reachable after 10 s, no host after 20 s, full.
+  - Checked live (headless Chromes on one laptop, real relays): two players connected in
+    1–4 s, 150 messages each way at 30/s all arrived, ping 0–3 ms (same machine; phones
+    on different networks will be tens of ms). Host + 3 guests: all three open in
+    0.9–1.3 s, 60 messages each way per guest at 30/s all arrived in order and only at
+    their own link, ping 2–3 ms; a guest's close reached the host in 10 ms (the others
+    unaffected), `room.close()` closed both remaining guests in 10 ms.
 - *QR codes on the same Wi-Fi* (`data/netqr.js` + `data/qr.js`, built) – no internet and
   no server: `hostOffline({name})` gives `{offer, link, acceptAnswer}`; the host shows
   `qrElement(offer)`, the guest scans it (`scanQr()`) into `joinOffline(text, {name})` →
