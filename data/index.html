@@ -127,6 +127,7 @@
           </div>
           <div id="editHold"></div>
           <div id="editGrip"></div>
+          <div id="editBoard"></div>
           <div id="editTiming" class="grid2">
             <label class="field stacked"><span>Sets</span><input id="editSets" type="number" min="1" max="20" step="1" inputmode="numeric"></label>
             <label class="field stacked"><span id="editRepsLabel">Reps per set</span><input id="editReps" type="number" min="1" max="50" step="1" inputmode="numeric"></label>
@@ -142,7 +143,14 @@
               <option value="left">Left hand</option>
               <option value="right">Right hand</option>
               <option value="alternate">Alternating (left, right, …)</option>
-              <option value="each">Each hand in turn (all left, then all right)</option>
+              <option value="each">Each hand in turn (all with one, then the other)</option>
+            </select>
+          </label>
+          <label id="editStartHandRow" class="field stacked" hidden>
+            <span>Start with</span>
+            <select id="editStartHand">
+              <option value="right">Right hand</option>
+              <option value="left">Left hand</option>
             </select>
           </label>
           <label id="editTargetBlock" class="field stacked">
@@ -317,6 +325,7 @@
             <label class="field stacked"><span>Grip</span><select id="histGrip"></select></label>
           </div>
           <div class="grid2">
+            <label id="histBoardRow" class="field stacked"><span>Hangboard</span><select id="histBoard"></select></label>
             <label id="histTagRow" class="field stacked"><span>Tag</span><select id="histTag"></select></label>
           </div>
           <label id="histRoutineRow" class="field stacked" hidden><span id="histRoutineLabel">Routine</span><select id="histRoutine"></select></label>
@@ -537,6 +546,7 @@
       </div>
       <div id="manageHolds" class="card"></div>
       <div id="manageGrips" class="card"></div>
+      <div id="manageBoards" class="card"></div>
       <div class="card">
         <h2>Backup</h2>
         <p class="muted">Download everything (settings, calibration, routines, workouts, holds, grips and all sessions) as one file, or restore from one. In the app the file opens Android's share menu: save it to Files or Drive, or send it. Your data is only on this phone, so keep a recent backup.</p>

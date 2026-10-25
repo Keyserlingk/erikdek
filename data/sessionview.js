@@ -35,6 +35,7 @@ export function formatDateTime(iso) {
 
 export function sessionTags(s) {
   const tags = [];
+  if (s.board) tags.push(s.board);
   if (s.holdType) tags.push(s.holdType);
   if (s.grip) tags.push(s.grip);
   if (s.hand && s.hand !== "both") tags.push(HANDS[s.hand]);

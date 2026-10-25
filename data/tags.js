@@ -1,6 +1,6 @@
-// Holds and grips: a standard list in the app plus the user's own entries, stored in the
-// app (db "kv" → "holdtypes" / "grips"). Also the dropdown and the Settings manager used
-// for both.
+// Holds, grips and hangboards: a standard list in the app plus the user's own entries,
+// stored in the app (db "kv" → "holdtypes" / "grips" / "hangboards"). Also the dropdown
+// and the Settings manager used for all three.
 
 import { loadList, saveList } from "./db.js";
 
@@ -76,6 +76,18 @@ export const grips = new TagList("grips", [
   "Middle two",
   "Back two",
   "Mono",
+]);
+
+// Which board (or block) it's on: makes comparing with friends fair.
+export const hangboards = new TagList("hangboards", [
+  "Beastmaker 1000",
+  "Beastmaker 2000",
+  "Lattice Rung",
+  "Tension Grindstone",
+  "Transgression board",
+  "Metolius Simulator",
+  "Portable block",
+  "Home board",
 ]);
 
 function el(tag, props = {}, children = []) {

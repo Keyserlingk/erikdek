@@ -26,7 +26,7 @@ test("buildPhases expands sets, reps and rests", () => {
   assert.equal(phases[2].rep, 2);
 });
 
-test("alternating hands: each rep is left then right, separated by hand changes", () => {
+test("alternating hands: each rep right then left (by default), separated by hand changes", () => {
   const r = { sets: 2, reps: 2, workS: 7, restS: 3, setRestS: 60, prepS: 5, hands: "alternate" };
   assert.equal(hangsPerRep(r), 2);
   const phases = buildPhases(r);
@@ -34,14 +34,17 @@ test("alternating hands: each rep is left then right, separated by hand changes"
   assert.equal(work.length, 8); // 2 sets × 2 reps × 2 hands
   assert.deepEqual(
     work.slice(0, 4).map((p) => `${p.set}.${p.rep}${p.hand[0]}`),
-    ["1.1l", "1.1r", "1.2l", "1.2r"],
+    ["1.1r", "1.1l", "1.2r", "1.2l"],
   );
   // get-ready and the gaps between hangs announce the next hang
-  assert.equal(phases[0].hand, "left");
+  assert.equal(phases[0].hand, "right");
   assert.deepEqual(
     phases.slice(1, 4).map((p) => [p.type, p.hand]),
-    [["work", "left"], ["rest", "right"], ["work", "right"]],
+    [["work", "right"], ["rest", "left"], ["work", "left"]],
   );
+  // Starting with the left hand.
+  const left = buildPhases({ ...r, startHand: "left" }).filter((p) => p.type === "work");
+  assert.deepEqual(left.slice(0, 2).map((p) => p.hand), ["left", "right"]);
   assert.equal(totalDurationS(r), 5 + 8 * 7 + 6 * 3 + 60);
   assert.equal(hangsPerRep({ ...r, hands: "left" }), 1);
   assert.ok(buildPhases({ ...r, hands: "left" }).filter((p) => p.type === "work").every((p) => p.hand === "left"));
@@ -244,8 +247,8 @@ test("pausing freezes the stopwatch of an open-ended rep; finishRep is ignored i
   assert.equal(engine.update(101).inPhaseS, 6);
 });
 
-test("each hand in turn: all sets left, a rest between hands, then all right", () => {
-  const r = { sets: 2, reps: 1, workS: 5, restS: 10, setRestS: 90, prepS: 5, hands: "each", handRestS: 600 };
+test("each hand in turn: all sets with one hand, a rest between hands, then the other", () => {
+  const r = { sets: 2, reps: 1, workS: 5, restS: 10, setRestS: 90, prepS: 5, hands: "each", handRestS: 600, startHand: "left" };
   const phases = buildPhases(r);
   assert.deepEqual(
     phases.map((p) => [p.type, p.durS, p.hand]),
@@ -263,4 +266,6 @@ test("each hand in turn: all sets left, a rest between hands, then all right", (
   assert.equal(phases[4].handChange, true);
   // Without handRestS (training routines) the rest between sets is used.
   assert.equal(buildPhases({ ...r, handRestS: undefined })[4].durS, 90);
+  // Right hand first by default.
+  assert.deepEqual(buildPhases({ ...r, startHand: undefined }).filter((p) => p.type === "work").map((p) => p.hand), ["right", "right", "left", "left"]);
 });

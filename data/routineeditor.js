@@ -4,7 +4,7 @@ import { downloadJson } from "./download.js";
 import { PROTOCOLS, applyProtocol } from "./protocols.js";
 import { BUILTIN_ROUTINES, ROUTINE_TYPES, buildRoutineFile, newRoutineId, routines, validateRoutine } from "./routines.js";
 import { routineDuration, routineFileName } from "./routinetext.js";
-import { TagSelect, grips, holdTypes } from "./tags.js";
+import { TagSelect, grips, hangboards, holdTypes } from "./tags.js";
 import { mountEditor, show } from "./trainscreens.js";
 import { $, create } from "./ui.js";
 
@@ -23,6 +23,8 @@ const el = {
   setRestS: $("editSetRest"),
   prepS: $("editPrep"),
   hands: $("editHands"),
+  startHandRow: $("editStartHandRow"),
+  startHand: $("editStartHand"),
   type: $("editType"),
   typeHint: $("editTypeHint"),
   instruction: $("editInstruction"),
@@ -84,6 +86,8 @@ export function openEditor(r) {
   el.name.value = editing.name;
   selects.hold.value = editing.holdType || "";
   selects.grip.value = editing.grip || "";
+  selects.board.value = editing.board || "";
+  el.startHand.value = editing.startHand || "right";
   el.hands.value = editing.hands || "both";
   el.type.value = editing.type || "hangboard";
   el.instruction.value = editing.instruction || "";
@@ -111,7 +115,9 @@ function readEditor() {
       instruction: el.instruction.value.trim(),
       holdType: selects.hold.value,
       grip: selects.grip.value,
+      board: selects.board.value,
       hands: el.hands.value,
+      startHand: el.startHand.value,
     });
   }
   const int = (input) => (input.value.trim() === "" ? NaN : Number(input.value));
@@ -128,7 +134,9 @@ function readEditor() {
     addedWeightKg: !sensor && el.useWeight.checked ? parseFloat(el.weight.value) : null,
     holdType: selects.hold.value,
     grip: selects.grip.value,
+    board: selects.board.value,
     hands: el.hands.value,
+    startHand: el.startHand.value,
     sets,
     reps: int(el.reps),
     workS: routineType === "selfpaced" ? 0 : int(el.workS),
@@ -145,7 +153,7 @@ function renderSetInstructions() {
   if (!el.perSet.checked) return;
   el.setInstructions.replaceChildren(
     ...Array.from({ length: sets }, (_, i) => {
-      const input = create("input", { type: "text", maxLength: 100, value: editSetTexts[i] || "", placeholder: el.instruction.value || "el.g. 1-4-7" });
+      const input = create("input", { type: "text", maxLength: 100, value: editSetTexts[i] || "", placeholder: el.instruction.value || "e.g. 1-4-7" });
       input.setAttribute("aria-label", `Instruction for set ${i + 1}`);
       input.addEventListener("input", () => {
         editSetTexts[i] = input.value;
@@ -159,10 +167,12 @@ function renderSetInstructions() {
 const TYPE_HINTS = {
   hangboard: "Measures force with the sensor: hold %, target load and the force graph.",
   timed: "Work and rest by the clock. No sensor needed.",
-  selfpaced: "Each rep lasts until you tap Done (el.g. a campus ladder), then the rest counts down. No sensor needed.",
+  selfpaced: "Each rep lasts until you tap Done (e.g. a campus ladder), then the rest counts down. No sensor needed.",
 };
 
 function updateEditorDerived() {
+  // Which hand goes first only matters when both hands take turns.
+  el.startHandRow.hidden = el.hands.value !== "alternate" && el.hands.value !== "each";
   if (isTest()) {
     for (const node of [el.targetBlock, el.targetRow, el.weightBlock, el.setInstructions]) node.hidden = true;
     const r = readEditor();
@@ -228,8 +238,9 @@ function downloadEditing() {
 export function initRoutineEditor({ saved }) {
   onSaved = saved;
   selects = {
-    hold: new TagSelect($("editHold"), holdTypes, "Hold", "el.g. 18 mm edge"),
-    grip: new TagSelect($("editGrip"), grips, "Grip", "el.g. Four-finger open"),
+    hold: new TagSelect($("editHold"), holdTypes, "Hold", "e.g. 18 mm edge"),
+    grip: new TagSelect($("editGrip"), grips, "Grip", "e.g. Four-finger open"),
+    board: new TagSelect($("editBoard"), hangboards, "Hangboard", "e.g. Beastmaker 2000"),
   };
   el.perSet.addEventListener("change", () => {
     renderSetInstructions();

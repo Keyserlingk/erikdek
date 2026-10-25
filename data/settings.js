@@ -11,7 +11,7 @@ import {
   dayOf,
   settings,
 } from "./settingsstore.js";
-import { grips, holdTypes, initTagManager } from "./tags.js";
+import { grips, hangboards, holdTypes, initTagManager } from "./tags.js";
 
 const el = {
   bodyweight: document.getElementById("setBodyweight"),
@@ -246,6 +246,13 @@ export function initSettings() {
     "Your grips",
     "Added to the standard grips (open hand, half crimp…) when choosing a grip.",
     "e.g. Four-finger open",
+  );
+  initTagManager(
+    document.getElementById("manageBoards"),
+    hangboards,
+    "Your hangboards",
+    "Added to the standard hangboards (Beastmaker, Lattice…) when choosing one for a routine or test.",
+    "e.g. Gym board, 20 mm edge",
   );
 
   // Saved right away (no Save button in this card).

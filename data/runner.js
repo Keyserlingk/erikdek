@@ -298,7 +298,8 @@ function renderGrip(index) {
   const hang = isWork ? current : run.phases.slice(index + 1).find((p) => p.type === PHASE.WORK);
   // Phases carry the hand; "both" falls back to the run's hand.
   const hand = hang && hang.hand && hang.hand !== "both" ? hang.hand : run.hand;
-  const parts = hang ? [hand && hand !== "both" ? HANDS[hand] : "", run.routine.holdType, run.routine.grip].filter(Boolean) : [];
+  const r = run.routine;
+  const parts = hang ? [hand && hand !== "both" ? HANDS[hand] : "", r.board, r.holdType, r.grip].filter(Boolean) : [];
   // Without grip info the rest panel says what comes next instead ("Hang 7 s").
   const nextPhase = run.phases[index + 1];
   const fallback = nextPhase ? phaseName(nextPhase) + (nextPhase.durS === null ? "" : ` ${formatDuration(nextPhase.durS)}`) : "";
@@ -334,6 +335,7 @@ function buildSession(stopped) {
     startedAt: run.startedAt.toISOString(),
     durationS: Math.round((Date.now() - run.startedAt.getTime()) / 1000), // wall time, incl. skips/pauses
     holdType: r.holdType || "",
+    board: r.board || "",
     grip: r.grip || "",
     hand: run.hand,
     bodyweightKg: settings.values.bodyweightKg || 0,
@@ -347,7 +349,7 @@ function buildSession(stopped) {
   if (!noForce && run.attempts.length === reps.length && reps.length) session.repCurves = compressRepCurves(run.attempts, 1 / dtS);
   // The routine or test as it was run (tests: their setup, for History's filters).
   {
-    const { name, type, instruction, setInstructions, addedWeightKg, holdType, grip, hands, test, handRestS } = r;
+    const { name, type, instruction, setInstructions, addedWeightKg, holdType, grip, board, hands, startHand, test, handRestS } = r;
     const { sets, reps: repCount, workS, restS, setRestS, prepS, target } = r;
     session.routine = {
       id: r.id,
@@ -359,6 +361,8 @@ function buildSession(stopped) {
       addedWeightKg,
       holdType,
       grip,
+      board,
+      startHand,
       hands,
       sets,
       reps: repCount,

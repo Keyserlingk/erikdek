@@ -7,7 +7,7 @@ import { BUILTIN_ROUTINES, TEMPLATE_CATEGORIES, buildRoutineFile, parseRoutineFi
 import { openEditor } from "./routineeditor.js";
 import { describe, routineDuration } from "./routinetext.js";
 import { startRun } from "./runner.js";
-import { grips, holdTypes } from "./tags.js";
+import { grips, hangboards, holdTypes } from "./tags.js";
 import { $, button, create } from "./ui.js";
 import { renderWorkouts } from "./workoutflow.js";
 
@@ -115,8 +115,8 @@ async function importRoutines() {
     const { routines: imported, skipped } = parseRoutineFile(await file.text(), routines.all.map((r) => r.name));
     if (!imported.length) throw new Error(skipped ? "No valid routines in this file." : "The file has no routines.");
     await routines.replaceAll([...routines.custom, ...imported]);
-    // Holds/grips the routines use but the lists don't have yet.
-    for (const [store, key] of [[holdTypes, "holdType"], [grips, "grip"]]) {
+    // Holds, grips and hangboards the routines use but the lists don't have yet.
+    for (const [store, key] of [[holdTypes, "holdType"], [grips, "grip"], [hangboards, "board"]]) {
       const missing = [...new Set(imported.map((r) => r[key]).filter((v) => v && !store.all.includes(v)))];
       if (missing.length) await store.replaceAll([...store.custom, ...missing]);
     }

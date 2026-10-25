@@ -15,7 +15,9 @@ const template = (id, category, fields) => ({
   category,
   holdType: "",
   grip: "",
+  board: "",
   hands: "both",
+  startHand: "right",
   type: "hangboard",
   instruction: "",
   setInstructions: [],
@@ -136,7 +138,9 @@ export const BUILTIN_TESTS = TEST_IDS.map((id) =>
     instruction: "",
     holdType: "",
     grip: "",
+    board: "",
     hands: "both",
+    startHand: "right",
   }),
 );
 
@@ -178,6 +182,7 @@ export function validateRoutine(r) {
   if (r.name.length > 40) return "Name is too long (max 40 characters).";
   if (!ROUTINE_TYPES[r.type]) return "Choose a routine type.";
   if (!HAND_OPTIONS.includes(r.hands)) return "Choose which hands to use.";
+  if (r.startHand !== undefined && r.startHand !== "left" && r.startHand !== "right") return "Choose the hand to start with.";
   if (r.test !== undefined && r.test !== null) {
     if (!PROTOCOLS[r.test]) return "Unknown test.";
     if (!PROTOCOLS[r.test].hands.includes(r.hands)) return "This test can't be done with these hands.";
@@ -198,8 +203,8 @@ export function validateRoutine(r) {
     return `Added weight must be from ${minW} to ${maxW} kg.`;
   }
   if (!usesSensor(r) && r.target.type !== "none") return "A target load needs the sensor (hangboard routines).";
-  for (const key of ["holdType", "grip"]) {
-    if (typeof r[key] !== "string" || r[key].length > MAX_TAG_LENGTH) return `Invalid ${key === "grip" ? "grip" : "hold"}.`;
+  for (const [key, label] of [["holdType", "hold"], ["grip", "grip"], ["board", "hangboard"]]) {
+    if (r[key] !== undefined && (typeof r[key] !== "string" || r[key].length > MAX_TAG_LENGTH)) return `Invalid ${label}.`;
   }
   for (const [key, [min, max]] of Object.entries(LIMITS)) {
     if (key === "workS" && r.type === "selfpaced") continue; // the climber ends each rep
@@ -297,7 +302,9 @@ const ROUTINE_FIELDS = [
   "addedWeightKg",
   "holdType",
   "grip",
+  "board",
   "hands",
+  "startHand",
   "sets",
   "reps",
   "workS",
@@ -334,7 +341,7 @@ export function parseRoutineFile(text, existingNames = []) {
   const routines = [];
   let skipped = 0;
   for (const raw of data.routines) {
-    const picked = { ...pickRoutine(raw || {}), holdType: raw?.holdType ?? "", grip: raw?.grip ?? "" };
+    const picked = { ...pickRoutine(raw || {}), holdType: raw?.holdType ?? "", grip: raw?.grip ?? "", board: raw?.board ?? "" };
     // A test always gets its protocol's timing, whatever the file says.
     const r = PROTOCOLS[picked.test] ? applyProtocol(picked) : picked;
     if (typeof r.name !== "string" || !r.target || typeof r.target.type !== "string" || validateRoutine(r)) {

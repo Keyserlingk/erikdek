@@ -47,6 +47,8 @@ const el = {
   detailJson: $("histDetailJson"),
   detailNotes: $("histDetailNotes"),
   tag: $("histTag"),
+  board: $("histBoard"),
+  boardRow: $("histBoardRow"),
   tagRow: $("histTagRow"),
   select: $("histSelect"),
   selectBar: $("histSelectBar"),
@@ -121,6 +123,7 @@ function filtered() {
       s.type === kind &&
       (el.hold.value === ALL || s.holdType === el.hold.value) &&
       (el.grip.value === ALL || s.grip === el.grip.value) &&
+      (el.board.value === ALL || s.board === el.board.value) &&
       (el.tag.value === ALL || (s.tags ?? []).includes(el.tag.value)) &&
       (el.routine.value === ALL || s.name === el.routine.value),
   );
@@ -169,6 +172,8 @@ function renderFilters() {
   const ofKind = mySessions().filter((s) => s.type === el.kind.value);
   fillSelect(el.hold, "All holds", distinct(ofKind, "holdType"));
   fillSelect(el.grip, "All grips", distinct(ofKind, "grip"));
+  fillSelect(el.board, "All hangboards", distinct(ofKind, "board"));
+  el.boardRow.hidden = !distinct(ofKind, "board").length;
   const tags = [...new Set(ofKind.flatMap((s) => s.tags ?? []))].sort();
   fillSelect(el.tag, "All tags", tags);
   el.tagRow.hidden = !tags.length;
@@ -346,7 +351,7 @@ async function downloadSelectedJson() {
   try {
     const full = [];
     for (const s of selectedIndex()) full.push(await sessions.get(s.id));
-    const backup = buildBackup({ settings: null, calibration: null, routines: [], workouts: [], holdTypes: [], grips: [], sessions: full });
+    const backup = buildBackup({ settings: null, calibration: null, routines: [], workouts: [], holdTypes: [], grips: [], hangboards: [], sessions: full });
     await downloadJson(`erkdek-sessions-${fileDate()}.json`, backup);
   } catch (e) {
     showError(el.error, e.message);
@@ -467,7 +472,7 @@ export function initHistory() {
   el.kind.replaceChildren(
     ...KIND_ORDER.map((k) => create("option", { value: k, textContent: k === "workout" ? "Routines" : KINDS[k].name })),
   );
-  for (const select of [el.kind, el.hold, el.grip, el.tag, el.routine, el.metric]) select.addEventListener("change", render);
+  for (const select of [el.kind, el.hold, el.grip, el.board, el.tag, el.routine, el.metric]) select.addEventListener("change", render);
   el.back.addEventListener("click", closeDetail);
   el.metricInfo.addEventListener("click", () => {
     el.metricInfoText.hidden = !el.metricInfoText.hidden;

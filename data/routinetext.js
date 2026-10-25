@@ -37,7 +37,9 @@ export function describe(r) {
   }
   // Tests are named after their protocol; other routines after their type.
   const typeLabel = r.test ? PROTOCOLS[r.test].name : type === "hangboard" ? "" : ROUTINE_TYPES[type].label;
-  const tags = [typeLabel, r.holdType, r.grip, r.hands && r.hands !== "both" ? HANDS[r.hands] : ""].filter(Boolean);
+  const firstHand = (r.hands === "alternate" || r.hands === "each") && r.startHand === "left" ? " (left first)" : "";
+  const hands = r.hands && r.hands !== "both" ? HANDS[r.hands] + firstHand : "";
+  const tags = [typeLabel, r.board, r.holdType, r.grip, hands].filter(Boolean);
   return [...tags, ...parts].join(" · ");
 }
 

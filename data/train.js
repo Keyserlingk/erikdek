@@ -5,7 +5,7 @@ import { initRoutineEditor } from "./routineeditor.js";
 import { initRoutineList, renderList, setListView, showListError } from "./routinelist.js";
 import { initRunner, isRunning } from "./runner.js";
 import { hasResult, initSummary } from "./runsummary.js";
-import { grips, holdTypes } from "./tags.js";
+import { grips, hangboards, holdTypes } from "./tags.js";
 import { initTestList } from "./testlist.js";
 import { HOME, getRunHost, show, showNotice } from "./trainscreens.js";
 import { initWorkouts, isWorkoutActive } from "./workoutflow.js";
@@ -43,7 +43,7 @@ export function initTrain() {
   routines.addEventListener("change", renderList);
   workouts.addEventListener("change", renderList);
   // Data is stored in the app, so it loads right away (no device needed).
-  for (const store of [routines, holdTypes, grips, workouts]) store.load().catch((e) => showListError(e.message));
+  for (const store of [routines, holdTypes, grips, hangboards, workouts]) store.load().catch((e) => showListError(e.message));
   window.addEventListener("hashchange", () => showNotice(null, ""));
 
   renderList();

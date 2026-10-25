@@ -8,7 +8,7 @@ import { routines } from "./routines.js";
 import { sessions } from "./sessions.js";
 import { settings } from "./settingsstore.js";
 import { formatDateTime } from "./sessionview.js";
-import { grips, holdTypes } from "./tags.js";
+import { grips, hangboards, holdTypes } from "./tags.js";
 import { workouts } from "./workouts.js";
 
 const $ = (id) => document.getElementById(id);
@@ -59,6 +59,7 @@ async function createBackup() {
       routines: routines.custom,
       workouts: workouts.list,
       holdTypes: holdTypes.custom,
+      hangboards: hangboards.custom,
       grips: grips.custom,
       sessions: full,
     });
@@ -84,7 +85,7 @@ async function openFile() {
     return;
   }
   const b = pending;
-  const tags = b.holdTypes.length + b.grips.length;
+  const tags = b.holdTypes.length + b.grips.length + b.hangboards.length;
   el.summary.textContent =
     `Backup from ${b.exportedAt ? formatDateTime(b.exportedAt) : "unknown date"}: ` +
     `${b.profiles.length ? `${b.profiles.length} profiles, ` : ""}` +
@@ -122,6 +123,7 @@ async function restore() {
       await routines.replaceAll(mergeBy(routines.custom, b.routines, (r) => r.id));
       await workouts.replaceAll(mergeBy(workouts.list, b.workouts, (w) => w.id));
       await holdTypes.replaceAll(mergeBy(holdTypes.custom, b.holdTypes, (h) => h.toLowerCase()));
+      await hangboards.replaceAll(mergeBy(hangboards.custom, b.hangboards, (h) => h.toLowerCase()));
       await grips.replaceAll(mergeBy(grips.custom, b.grips, (g) => g.toLowerCase()));
       done.push(`${b.routines.length} routines, ${b.workouts.length} workouts`);
     }

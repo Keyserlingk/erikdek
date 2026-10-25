@@ -7,8 +7,9 @@ export const COMPLETE_SHARE = 0.9;
 // Target band around the target load.
 export const TARGET_TOLERANCE = 0.05;
 
-// "alternate": every rep left then right. "each": all sets with the left hand, then all
-// with the right (a rest of handRestS, else setRestS, in between).
+// "alternate": every rep one hand, then the other. "each": all sets with one hand, then
+// all with the other (a rest of handRestS, else setRestS, in between). Both start with
+// startHand ("right" unless set to "left").
 export const HAND_OPTIONS = ["both", "left", "right", "alternate", "each"];
 
 // Hangs in one set: with alternating hands each rep is a left and a right hang.
@@ -32,14 +33,15 @@ export function isTwoHanded(r) {
 // Self-paced routines have work phases without a duration (durS null): the climber
 // ends each one.
 export function buildPhases(r) {
+  const [first, second] = r.startHand === "left" ? ["left", "right"] : ["right", "left"];
   if (r.hands === "each") {
     const restS = r.handRestS ?? r.setRestS;
-    const right = buildPhases({ ...r, hands: "right", prepS: 0 });
-    // The rest between the hands carries the first right-hand hang, like other rests.
-    const change = restS > 0 ? [{ ...right[0], type: PHASE.SET_REST, durS: restS, handChange: true }] : [];
-    return [...buildPhases({ ...r, hands: "left" }), ...change, ...right];
+    const then = buildPhases({ ...r, hands: second, prepS: 0 });
+    // The rest between the hands carries the other hand's first hang, like other rests.
+    const change = restS > 0 ? [{ ...then[0], type: PHASE.SET_REST, durS: restS, handChange: true }] : [];
+    return [...buildPhases({ ...r, hands: first }), ...change, ...then];
   }
-  const hands = r.hands === "alternate" ? ["left", "right"] : [r.hands === "left" || r.hands === "right" ? r.hands : "both"];
+  const hands = r.hands === "alternate" ? [first, second] : [r.hands === "left" || r.hands === "right" ? r.hands : "both"];
   const hangs = []; // per set: { rep, hand }
   for (let rep = 1; rep <= r.reps; rep++) for (const hand of hands) hangs.push({ rep, hand });
 
