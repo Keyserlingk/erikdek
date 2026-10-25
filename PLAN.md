@@ -274,9 +274,31 @@ doesn't care which one is used.
   - Checked live (two headless Chromes on one laptop, real relays): connected in 1–4 s,
     150 messages each way at 30/s all arrived, ping 0–3 ms (same machine; phones on
     different networks will be tens of ms).
-- *QR codes on the same Wi-Fi* (`data/netqr.js`, being built) – no internet at all: the
-  host shows a QR code with its WebRTC offer, the guest scans it and shows an answer QR.
-  Same interface as above.
+- *QR codes on the same Wi-Fi* (`data/netqr.js` + `data/qr.js`, built) – no internet and
+  no server: `hostOffline({name})` gives `{offer, link, acceptAnswer}`; the host shows
+  `qrElement(offer)`, the guest scans it (`scanQr()`) into `joinOffline(text, {name})` →
+  `{answer, link}` and shows the answer QR, which the host scans into `acceptAnswer`.
+  WebRTC with `iceServers: []` (LAN host candidates only), non-trickle (3 s gathering cap).
+  - Codes are `ERK1` + base64url of a binary digest (ICE ufrag/pwd 6-bit packed, sha-256
+    fingerprint, up to 8 UDP host candidates as IPv4/IPv6/mDNS-uuid + port); the fixed
+    rest of the SDP is rebuilt on the other side. 90–106 characters with one candidate
+    (QR version 5–6, M). Other QR codes, other versions and the wrong side's code are
+    refused with a plain message (and the scanner keeps scanning).
+  - Data channel negotiated (id 0); hello with the name, keep-alive every 2 s, 6 s silent
+    or ICE "disconnected" → `reconnecting`, 15 s silent or ICE "failed" → `error` +
+    `close`; host gives up 20 s after scanning the answer, guest 3 min after showing it.
+  - Scanner: `getUserMedia` + jsQR (pinned 1.4.0, Apache-2.0) on downscaled frames,
+    `BarcodeDetector` instead where the browser has it (Android WebView doesn't). Encoder
+    qrcode-generator (2.0.4, MIT). Both copied to `data/vendor/qr/` by `npm run vendor`.
+    Android: CAMERA permission in the manifest; Capacitor's WebView asks for it at
+    runtime when `getUserMedia` is first called. A "paste a code" field for the browser.
+  - Checked live: two headless Chromes, offer → answer passed as text: connected in
+    0.1 s, messages both ways, ping 0–5 ms; works with mDNS (`….local`) candidates on
+    both sides, real IPs, and mixed. A rendered QR decodes again from a screenshot and
+    from Chrome's fake camera.
+  - Fragile: Chrome hides LAN IPs behind mDNS names unless camera access was granted; two
+    phones then need multicast DNS on the Wi-Fi (some guest/corporate Wi-Fi block it, or
+    isolate clients altogether – then nothing local works).
 
 **What is sent** (JSON or a few bytes per message, unreliable/unordered channel where
 possible)

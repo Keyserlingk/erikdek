@@ -46,4 +46,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
+    <!-- Scanning the other phone's QR code (same-Wi-Fi play, getUserMedia in the WebView;
+         Capacitor asks at runtime). Not required, so phones without a camera still install. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>
