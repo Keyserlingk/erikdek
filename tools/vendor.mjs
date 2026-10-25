@@ -5,6 +5,7 @@
 // Trystero (online play, Nostr strategy) and its dependencies are packed by esbuild into
 // one ES module, data/vendor/trystero.js; esbuild is only used here, the app stays
 // bundler-free.
+// It also copies the QR code encoder and decoder into data/vendor/qr as ES modules.
 // Run with: npm run vendor (also part of tools/build_android.sh). Output is git-ignored.
 
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -14,6 +15,7 @@ import { build } from "esbuild";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = join(root, "data", "vendor", "capacitor");
+const qrOut = join(root, "data", "vendor", "qr");
 
 const PACKAGES = {
   core: "node_modules/@capacitor/core/dist",
@@ -78,3 +80,13 @@ await build({
   logLevel: "warning",
 });
 console.log("vendor: Trystero packed into data/vendor/trystero.js");
+
+// QR codes: qrcode-generator (MIT) ships an ES module; jsQR (Apache-2.0) only a UMD
+// build, which gets a CommonJS-style wrapper so it can be imported.
+rmSync(qrOut, { recursive: true, force: true });
+mkdirSync(qrOut, { recursive: true });
+cpSync(join(root, "node_modules/qrcode-generator/dist/qrcode.mjs"), join(qrOut, "qrcode.js"));
+const jsqr = readFileSync(join(root, "node_modules/jsqr/dist/jsQR.js"), "utf8");
+writeFileSync(join(qrOut, "jsqr.js"), `const module = { exports: {} }, exports = module.exports;\n${jsqr}\nexport default module.exports;\n`);
+cpSync(join(root, "node_modules/jsqr/LICENSE"), join(qrOut, "jsqr.LICENSE"));
+console.log(`vendor: QR encoder and decoder copied to ${relative(root, qrOut)}`);

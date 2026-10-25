@@ -75,5 +75,13 @@ firmware (`tools/bundle_firmware.py`, needs PlatformIO), vendors the Capacitor p
   `vendor/trystero.js`, which `npm run vendor` builds (git-ignored) – run that once before
   trying it in the browser. Live check: two `tools/headless.py` runs in parallel, the host
   prints its code, the second joins with it (see PLAN.md "Play: multiplayer").
+- Same-Wi-Fi play by QR code: `netqr.js` (`hostOffline`/`joinOffline`, WebRTC with the
+  offer/answer squeezed into ~100-character QR codes; same link interface as `net.js`;
+  tested with SDP fixtures and a fake peer connection in `test/js/netqr.test.js`) and
+  `qr.js` (`qrElement(text)`, `scanQr({check})` – camera + jsQR, paste field without a
+  camera). Needs `npm run vendor` (`vendor/qr/`). Live check: two Chromes, pass
+  `offer`/`answer` strings between them; Chrome's fake camera
+  (`--use-fake-device-for-media-stream --use-file-for-fake-video-capture=qr.y4m`) tests
+  the scanner.
 - Tindeq from the laptop: `tools/tindeq_probe.py` (bleak venv; `--seconds 8 --tare-at 2
   --battery-at 5`). Never send 0x6E (sleep) or the calibration commands.
