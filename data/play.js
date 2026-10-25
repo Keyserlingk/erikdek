@@ -25,7 +25,7 @@ import {
 } from "./games/playdata.js";
 import { LEVEL_IDS, PONG, coastPong, drawPong, mirrorPong, newPong, pongSnapshot, stepPong } from "./games/pong.js";
 import { SCALES, SCALE_IDS, TUG, TUG_LEVELS, cpuOpponent, drawTug, mirrorTug, newTug, stepTug, toScale, tugSnapshot } from "./games/tug.js";
-import { duel, duelCard } from "./playduel.js";
+import { duel, duelCard, sendHi } from "./playduel.js";
 import { profiles } from "./profiles.js";
 import { sessions } from "./sessions.js";
 import { settings } from "./settingsstore.js";
@@ -182,7 +182,9 @@ const GAMES = {
     sounds: { count: [440, 0.08], go: [880, 0.2], roundWon: [880, 0.15], roundLost: [220, 0.25], draw: [440, 0.15] },
     // The host runs the knot with both levels, each put on the scale on its own phone
     // (own bodyweight and max), and sends the state; the guest shows it from its end.
+    // Both need a sensor: a finger on the screen is no match for a pull.
     duel: {
+      needsSensor: true,
       // % BW needs both bodyweights (else kg).
       opts: (d) => ({ scale: tugScale(d, duel.phase !== "open" || duel.peer?.bodyweight ? settings.values.bodyweightKg : 0) }),
       prepare(o) {
@@ -360,12 +362,28 @@ function renderHome() {
         create("p", { className: "muted", textContent: g.about }),
         ...(g.levels ? [levelRow(id, g.levels)] : []),
         ...(g.rows ? g.rows(id) : [rangeRow(id)]),
-        create("div", { className: "actions" }, [
-          withFriend ? button("primary", `Play with ${duel.peerName}`, () => hostDuel(id)) : button("primary", "Play", () => start(id)),
-        ]),
+        ...(withFriend ? duelPlayRow(id, g) : [create("div", { className: "actions" }, [button("primary", "Play", () => start(id))])]),
       ]),
     ),
   );
+}
+
+// The host's Play with <friend>; games that need a sensor on both phones say what is missing.
+function duelPlayRow(id, g) {
+  const play = button("primary", `Play with ${duel.peerName}`, () => hostDuel(id));
+  let missing = "";
+  if (g.duel.needsSensor) {
+    const mine = device.connected;
+    const theirs = Boolean(duel.peer?.sensor);
+    if (!mine && !theirs) missing = `Needs a sensor on both phones: connect yours, and ${duel.peerName} theirs.`;
+    else if (!mine) missing = "Needs a sensor on both phones: connect yours.";
+    else if (!theirs) missing = `Needs a sensor on both phones: ${duel.peerName} has none connected.`;
+  }
+  play.disabled = Boolean(missing);
+  return [
+    ...(missing ? [create("p", { className: "muted", textContent: missing })] : []),
+    create("div", { className: "actions" }, [play]),
+  ];
 }
 
 // ---- Running a game ----
@@ -416,7 +434,8 @@ function currentLevel() {
 
 // The force in kg (Tug of war: no cap at the full range); touch is a share of fullKg.
 function currentKg() {
-  if (input.touching) return clamp(input.touchLevel, 0, 1) * run.fullKg;
+  const touchAllowed = !(run.net && run.game.duel.needsSensor);
+  if (input.touching && touchAllowed) return clamp(input.touchLevel, 0, 1) * run.fullKg;
   return sensorLive() ? Math.max(0, input.kg) : 0;
 }
 
@@ -431,7 +450,9 @@ function draw() {
 function renderBar() {
   el.score.textContent = run.net ? run.game.duel.scoreText(run.s, run) : run.game.scoreText(run.s);
   el.pause.hidden = Boolean(run.net);
-  el.kg.textContent = sensorLive() && !input.touching ? `${Math.max(0, input.kg).toFixed(1)} kg` : "Touch";
+  const sensorOnly = run.net && run.game.duel.needsSensor;
+  if (sensorOnly) el.kg.textContent = sensorLive() ? `${Math.max(0, input.kg).toFixed(1)} kg` : "No sensor";
+  else el.kg.textContent = sensorLive() && !input.touching ? `${Math.max(0, input.kg).toFixed(1)} kg` : "Touch";
   el.pause.textContent = run.paused ? "Resume" : "Pause";
   el.pause.disabled = run.ended;
 }
@@ -665,7 +686,11 @@ export function initPlay() {
   profiles.addEventListener("change", () => !run && renderHome());
   settings.addEventListener("change", () => !run && renderHome());
   sessions.addEventListener("change", () => !run && renderHome()); // a new Max pull test
-  duel.me = () => ({ bodyweight: settings.values.bodyweightKg > 0 });
+  duel.me = () => ({ bodyweight: settings.values.bodyweightKg > 0, sensor: device.connected });
+  device.on("connection", () => {
+    sendHi();
+    if (!run) renderHome();
+  });
   duel.addEventListener("change", () => !run && renderHome());
   duel.addEventListener("message", onDuelMessage);
   duel.addEventListener("lost", () => run?.net && !run.ended && stopDuel(duel.error || "The connection ended."));

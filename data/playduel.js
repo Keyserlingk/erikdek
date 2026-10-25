@@ -4,7 +4,8 @@
 // two-phone games run on. The host picks the game and its settings; the guest follows.
 //
 // Messages between the phones (all { t, ... }):
-//   hi     { bodyweight, maxKg }   once connected: what the scales need from each player
+//   hi     { bodyweight, sensor }  once connected and when the sensor comes or goes: what
+//                                  the games need from each player
 //   start  { game, opts }          host → guest: start this game with these settings
 //   tick   { d, ev }               ~30/s during a game: the game's own payload + events
 //   leave                          back to the lobby (quit, or the end screen's Back)
@@ -47,7 +48,7 @@ function attach(link) {
     duel.phase = "open";
     duel.peerName = detail.peerName;
     duel.error = "";
-    link.send({ t: "hi", ...duel.me() });
+    sendHi();
     measurePing();
     pinger = setInterval(measurePing, 5000);
     changed();
@@ -71,6 +72,11 @@ function attach(link) {
     duel.dispatchEvent(new Event("lost"));
     changed();
   });
+}
+
+// Tells the friend this phone's "hi" again (the sensor connected or disconnected).
+export function sendHi() {
+  duel.link?.send({ t: "hi", ...duel.me() });
 }
 
 function measurePing() {
